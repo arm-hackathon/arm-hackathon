@@ -1,20 +1,20 @@
 # Space Habitat Ventilation AI
 
-> **⚠️ Simulation only — not a certified life-support design.**  
-> This project simulates a hypothetical habitat. It must not be presented as real ECLSS design, human-safety guidance, flight software, or a substitute for certified engineering review.
+> ⚠️ **Simulation only — not a certified life-support design.**  
+> This project is a research/demo build. It must not be presented as real ECLSS design, human-safety guidance, flight software, or a substitute for certified engineering review.
 
-A physics-led simulator using ordinary differential equations (ODEs) to model the atmosphere of a pressurised space habitat. An AI ventilation controller reads simulated sensor observations and proposes bounded control actions; the simulator remains the sole source of environmental truth.
+A **physical AI** system for automated ventilation control in a pressurised space habitat. Onboard sensors feed real-time environmental readings (CO₂, O₂, pressure, temperature, humidity) to an AI agent that continuously reasons about cabin state and issues bounded control commands to actuators — fans, scrubbers, and O₂ supply — to keep the environment within safe operating ranges.
 
 ---
 
 ## Table of Contents
 
-- [Objective](#objective)
-- [Architecture](#architecture)
-- [System Model](#system-model)
-- [Build Sequence](#build-sequence)
-- [Scenarios](#scenarios)
-- [Verification Gates](#verification-gates)
+- [Concept](#concept)
+- [System Architecture](#system-architecture)
+- [Hardware & Sensing Layer](#hardware--sensing-layer)
+- [AI Agent](#ai-agent)
+- [Actuator Layer](#actuator-layer)
+- [Scenarios & Testing](#scenarios--testing)
 - [Repository Structure](#repository-structure)
 - [Getting Started](#getting-started)
 - [Parameter Registry](#parameter-registry)
@@ -23,127 +23,159 @@ A physics-led simulator using ordinary differential equations (ODEs) to model th
 
 ---
 
-## Objective
+## Concept
 
-Create an interactive simulation in which an AI ventilation controller must keep a virtual pressurised cabin within defined environmental targets while faults and crew-driven loads occur. The project demonstrates **closed-loop reasoning, traceability, and failure handling** — not operational suitability.
+The core idea is a closed-loop physical AI controller: sensors observe the real (or emulated) cabin environment, an AI agent interprets those readings and decides on control actions, and actuators respond — all in a continuous feedback cycle. The AI does **not** run an internal physics model; it reasons directly from sensor data, mimicking how a real embedded controller would operate.
+
+### What "Physical AI" Means Here
+
+| Traditional Simulation | Physical AI (This Project) |
+|---|---|
+| Ground truth from an ODE model | Ground truth from sensors / emulated hardware |
+| Controller reads synthetic state | Controller reads live or emulated sensor streams |
+| Physics runs in software | Physics happens in hardware (or a hardware-in-the-loop emulator) |
+| Evaluate against simulation trace | Evaluate against real sensor logs and actuator response |
 
 ### Success Criteria
 
-- Deterministic, replayable ODE simulation of the selected habitat scope
-- Clear separation between physical state, noisy sensors, AI decisions, and actuator effects
-- Scenario runs exposing normal operation, degraded ventilation, increased crew load, and component failures
-- Mass-balance and safety-invariant tests pass before the AI layer is evaluated
-- Team-readable report/dashboard showing state over time, events, actions, and outcome reasoning
+- AI agent maintains cabin CO₂, O₂, pressure, temperature, and humidity within target ranges under normal and fault conditions
+- Clear separation between sensing, reasoning, and actuation layers
+- All actuator commands are bounded and traceable to agent rationale
+- System degrades gracefully and alerts on faults (sensor dropout, fan failure, scrubber loss)
+- Full run logs: sensor readings, agent decisions, actuator states, and outcome classification
 
 ---
 
-## Architecture
+## System Architecture
 
 ```
-Scenario + parameter set
-        |
-        v
-Physics engine (ODE derivative + numerical integrator) ----> event log / ground-truth trace
-        |                                                              ^
-        v                                                              |
-Sensor model (sampling, delay, noise, dropout)                         |
-        |                                                              |
-        v                                                              |
-AI controller / deterministic baseline ---------> bounded actuator commands
-        |
-        v
-Evaluation layer (targets, invariants, scenario score, replay)
+┌─────────────────────────────────────────────────────────────┐
+│                    SPACE HABITAT CABIN                      │
+│                                                             │
+│   [CO₂ Sensor] [O₂ Sensor] [Pressure] [Temp] [Humidity]   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ sensor readings (real-time stream)
+                       ▼
+            ┌──────────────────┐
+            │   Sensor Layer   │  sampling, calibration, fault detection
+            └────────┬─────────┘
+                     │ normalised observation vector
+                     ▼
+            ┌──────────────────┐
+            │    AI Agent      │  interprets state → selects action → logs rationale
+            └────────┬─────────┘
+                     │ bounded control commands
+                     ▼
+            ┌──────────────────┐
+            │  Actuator Layer  │  fans, scrubbers, O₂ supply valves
+            └────────┬─────────┘
+                     │ physical effect on cabin environment
+                     ▼
+            ┌──────────────────┐
+            │  Evaluation &    │  target tracking, fault logs, run report
+            │  Logging Layer   │
+            └──────────────────┘
 ```
+
+### Layer Responsibilities
 
 | Layer | Owns | Must NOT own |
 |---|---|---|
-| Physics engine | State evolution, units, event application, ground truth | AI policy, UI formatting, safety claims |
-| Sensor model | What the controller can observe and when | Changing ground truth to make controller look better |
-| AI / rules controller | Action selection and rationale from observations | Writing directly to state or bypassing actuator constraints |
-| Evaluator | Scenario pass/fail, metrics, replay evidence | Silently repairing invalid simulation output |
-| UI / report | Readable traces and comparison views | Embedding hidden simulation logic |
+| Sensor layer | Raw readings, calibration, noise flagging, dropout detection | AI policy or actuator commands |
+| AI agent | State interpretation, action selection, rationale logging | Direct hardware writes; bypassing actuator bounds |
+| Actuator layer | Executing bounded commands, reporting actuator state/faults | Overriding AI commands or modifying sensor data |
+| Evaluation | Run pass/fail, metrics, replay logs | Silently correcting invalid sensor or actuator data |
 
 ---
 
-## System Model
+## Hardware & Sensing Layer
 
-The simulator state is a time-indexed vector `y(t)`. Each derivative is computed from known sources, sinks, flows, actuator settings, and faults.
+The system is designed around low-cost, readily available sensors for rapid prototyping. All sensors communicate over I²C or UART and are read by a central microcontroller (e.g. Raspberry Pi or Arduino).
 
-| State / Input | Meaning | v1 Treatment |
+| Variable | Target Sensor | Interface | Notes |
+|---|---|---|---|
+| CO₂ concentration | MH-Z19C / SCD40 | UART / I²C | NDIR-based; requires warm-up period |
+| O₂ concentration | ME2-O2 electrochemical | Analog/UART | Calibrate at ambient before use |
+| Cabin pressure | BMP390 / LPS22HB | I²C | ±0.5 hPa typical accuracy |
+| Temperature | SHT40 / BME688 | I²C | Co-locate with humidity sensor |
+| Humidity | SHT40 / BME688 | I²C | Relative humidity |
+
+### Sensor Contract
+
+- Readings are **timestamped** at acquisition, not at agent ingestion
+- Dropout (no reading within `sample_timeout`) is surfaced to the agent as a distinct `SENSOR_FAULT` observation — never silently filled
+- Calibration offsets stored in `params/sensor_calibration.json`; never hardcoded
+
+---
+
+## AI Agent
+
+The agent operates on a fixed control cadence (e.g. every 5 seconds). At each tick it:
+
+1. **Observes** — receives the latest normalised sensor vector
+2. **Classifies state** — maps observations to one of: `NOMINAL`, `WARNING`, `ALERT`, `FAULT`
+3. **Selects action** — chooses actuator setpoints from a bounded action space
+4. **Logs rationale** — records the observation, classification, chosen action, and reason in structured JSON
+
+### Action Space
+
+| Actuator | Command Range | Unit |
 |---|---|---|
-| `n_CO2` | Amount of CO₂ in cabin air | Crew generation; ventilation removal; scrubber removal |
-| `n_O2` | Amount of O₂ in cabin air | Crew consumption; generator supply; leak/outflow |
-| `P` | Cabin pressure | Derived from total gas, temperature, volume, and leaks |
-| `T` | Cabin temperature | Simplified heat load and ventilation/HVAC coupling |
-| `w` | Water-vapour / humidity | Crew moisture load; dehumidification coupling |
-| `u(t)` | Actuator command vector | Fan/flow setpoint, scrubber setting, O₂ supply; bounded |
-| `d(t)` | Disturbance and fault vector | Crew count/activity, leak, fan degradation, scrubber loss |
+| Circulation fan speed | 0 – 100 | % of max RPM |
+| CO₂ scrubber duty cycle | 0 – 100 | % |
+| O₂ supply valve | 0 – 100 | % open |
+| Dehumidifier duty cycle | 0 – 100 | % |
 
-### Representative Conservation Equation
+### Agent Modes
 
+- **Reactive (baseline):** Rule-based thresholds — deterministic, fully auditable, used as the baseline to beat
+- **Learned (AI):** Trained or prompted model (e.g. RL policy or LLM reasoning agent) that must be compared against the reactive baseline on identical scenarios before any improvement is claimed
+
+### Rationale Log Schema
+
+```json
+{
+  "tick": 142,
+  "timestamp": "2026-07-20T14:00:00Z",
+  "observations": { "co2_ppm": 1450, "o2_pct": 20.1, "pressure_hpa": 1012.3, "temp_c": 22.5, "humidity_pct": 55.2 },
+  "state_class": "WARNING",
+  "action": { "fan_pct": 80, "scrubber_pct": 90, "o2_valve_pct": 10, "dehumidifier_pct": 0 },
+  "rationale": "CO₂ above 1400 ppm threshold; increasing scrubber and fan. O₂ nominal — valve held low.",
+  "active_faults": []
+}
 ```
-d(n_CO2)/dt = crew_CO2_generation(t) + inflow_CO2(t) - outflow_CO2(t) - scrubber_removal(t)
-```
-
-Concentration is derived from gas amount and cabin volume. All parameters must have explicit units and documented sources — no hard-coded plausible-looking values.
-
-### Integrator Contract
-
-- Derivative as a pure function: `f(time, state, controls, disturbances, parameters) → state_derivative`
-- Configurable numerical solver — start with [`scipy.integrate.solve_ivp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html); record solver, tolerances, and time grid in each run artifact
-- Controller observations evaluated on a fixed cadence even if the ODE solver uses adaptive internal steps
-- Non-negativity and conservation validated after every integration window; run labelled **invalid** if any invariant breaks
 
 ---
 
-## Build Sequence
+## Actuator Layer
 
-| Phase | Deliverable | Exit Gate |
-|---|---|---|
-| **P0 — Contract** | Parameter registry, scenario schema, equations, assumptions | Every required parameter has a cited source or explicit `TBD`; team approves scope |
-| **P1 — Plant** | Deterministic single-zone ODE simulator | Conservation / bounds / replay tests pass |
-| **P2 — Baseline** | Rules controller + observability trace | Baseline handles nominal scenario; failure modes visible |
-| **P3 — AI** | AI adapter with bounded actions and rationale | AI compared against baseline on held-out fault scenarios |
-| **P4 — Fidelity** | Optional zones, transfer flows, richer sensors | v1 regression-green; new complexity earns a measured benefit |
+Actuators are controlled via GPIO / PWM from the host microcontroller. Each actuator has:
 
-### v1 Scope
-
-**Included:** One well-mixed pressurised cabin; CO₂, O₂, pressure, temperature, and humidity state variables; crew loads, ventilation flow, removal/generation equipment, bounded leak/fault events; deterministic rules baseline.
-
-**Excluded:** CFD / duct geometry / spatial turbulence; real-life habitat-safe thresholds or certification-grade parameter values; direct hardware connection; training an AI model from scratch.
+- A **hard saturation limit** enforced in firmware — the agent cannot exceed it regardless of command
+- A **state reporter** that feeds back actual position/speed to the evaluation layer
+- A **fault flag** raised on unexpected state (e.g. fan not responding to command)
 
 ---
 
-## Scenarios
+## Scenarios & Testing
 
-| Scenario | What Changes | What It Proves |
+| Scenario | What Changes | What It Tests |
 |---|---|---|
-| Nominal operation | Stable crew load and healthy actuators | Plant stability, controller cadence, report baseline |
-| Crew-load step | Activity/occupancy increases at a known time | Response to a changing source term |
-| Fan degradation | Available flow falls gradually or suddenly | Detection, bounded mitigation, escalation reporting |
-| Scrubber degradation | Removal capacity decreases | CO₂ mass balance and controller adaptation |
-| Sensor fault | Delay, dropout, or biased reading | Separation of observable state from ground truth |
-| Leak event | Additional outflow begins | Pressure/gas coupling and invalid-state protection |
+| Nominal operation | Stable occupancy, all actuators healthy | Steady-state control, baseline logging |
+| Crew activity spike | Occupancy or activity increases sharply | Agent response speed, CO₂ and O₂ coupling |
+| Fan failure | Fan stops responding to commands | Fault detection, graceful degradation, alerting |
+| Scrubber degradation | Scrubber efficiency drops gradually | CO₂ drift detection, adaptive scrubber + fan response |
+| Sensor dropout | One or more sensors stop reporting | Fault classification, safe fallback behaviour |
+| Biased sensor | Sensor reports plausible but wrong values | Anomaly detection, cross-sensor consistency checks |
+| Slow leak | Gradual pressure/O₂ loss | Pressure coupling, O₂ supply response, alert escalation |
 
 ### Minimum Evidence per Run
 
-- Scenario and parameter-set identifiers, code revision, solver/tolerance settings, random seed
-- Time series for state, observed sensors, actuator commands, active faults, and invariant status
-- Outcome line: `pass` / `controlled degradation` / `invalid simulation` / `controller failure`
-- For AI runs: action rationale in structured fields — never only free text
-
----
-
-## Verification Gates
-
-| Gate | Required Proof | Failure Handling |
-|---|---|---|
-| Mass balance | Closed-system test: no unexplained creation or loss | Block controller evaluation; fix plant equations first |
-| Physical bounds | Amounts, concentrations, capacities within declared bounds | Mark run invalid; no clipping to hide errors |
-| Determinism | Same params + seed reproduces same trace within tolerance | Record solver/version drift and investigate |
-| Event timing | Fault/command changes at exact scheduled control boundary | Fix scheduler/event ordering before scoring AI |
-| Baseline comparison | AI compared to deterministic controller over same scenarios | Do not claim improvement without paired traces |
-| Replayability | Fresh process reproduces a saved run from artifact bundle | Treat result as anecdotal, not evidence |
+- Scenario ID, hardware/firmware revision, sensor calibration file version, random seed (if any)
+- Full time-series log: sensor readings, agent observations, state classifications, actions, active faults
+- Outcome: `PASS` / `CONTROLLED DEGRADATION` / `AGENT FAILURE` / `SENSOR FAULT`
+- AI runs must include structured rationale — never free text only
+- AI performance must be compared to the reactive baseline on the same scenario before claiming improvement
 
 ---
 
@@ -153,28 +185,35 @@ Concentration is derived from gas amount and cabin volume. All parameters must h
 arm-hackathon/
 ├── README.md
 ├── docs/
-│   └── base-plan-v0.1.pdf        # Source design document
+│   └── base-plan-v0.1.pdf         # Origin design document
 ├── params/
-│   └── registry.csv              # Versioned parameter registry (Appendix A)
+│   ├── registry.json               # Parameter registry with units + sources
+│   └── sensor_calibration.json     # Per-sensor offsets and thresholds
 ├── scenarios/
 │   ├── nominal.json
-│   └── fan_degradation.json
-├── simulator/
+│   ├── crew_spike.json
+│   └── fan_failure.json
+├── sensing/
 │   ├── __init__.py
-│   ├── physics.py                # ODE derivative (pure function)
-│   ├── integrator.py             # solve_ivp wrapper + invariant checks
-│   ├── sensor_model.py           # Noise, delay, dropout
-│   └── actuators.py              # Bounded actuator model
-├── controllers/
-│   ├── baseline.py               # Deterministic rules controller
-│   └── ai_agent.py               # AI controller adapter
+│   ├── reader.py                   # Sensor polling + timestamping
+│   ├── calibration.py              # Offset correction + unit conversion
+│   └── fault_detector.py          # Dropout, out-of-range, and consistency checks
+├── agent/
+│   ├── __init__.py
+│   ├── baseline.py                 # Reactive rule-based controller
+│   ├── ai_agent.py                 # AI controller (RL / LLM / other)
+│   └── logger.py                   # Structured rationale + run log writer
+├── actuation/
+│   ├── __init__.py
+│   ├── controller.py               # GPIO/PWM command dispatch + saturation
+│   └── state_reporter.py          # Actuator feedback + fault flags
 ├── evaluation/
-│   ├── runner.py                 # Scenario runner + report
-│   └── metrics.py                # Time-above-target, excursion, invariant failures
+│   ├── runner.py                   # Scenario runner
+│   └── metrics.py                  # Target tracking, fault stats, comparison report
 ├── tests/
-│   ├── test_mass_balance.py
-│   ├── test_bounds.py
-│   └── test_determinism.py
+│   ├── test_sensor_faults.py
+│   ├── test_actuator_bounds.py
+│   └── test_agent_baseline.py
 └── requirements.txt
 ```
 
@@ -190,40 +229,52 @@ cd arm-hackathon
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the P1 plant tests (must be green before adding a controller)
+# Run unit tests
 python -m pytest tests/
 
-# Run the nominal scenario
+# Start a scenario run (hardware connected or emulated)
 python -m evaluation.runner --scenario scenarios/nominal.json
 ```
 
-> **Prerequisites:** Python 3.10+, `scipy`, `numpy`, `pandas`, `matplotlib` (or similar plotting library).
+> **Prerequisites:** Python 3.10+, `numpy`, `pandas`, `RPi.GPIO` (or GPIO emulator for desktop dev), plus any sensor-specific libraries.
 
 ---
 
 ## Parameter Registry
 
-All parameters live in `params/registry.csv`. No parameter enters a release scenario without the following metadata:
+All tunable values live in `params/registry.json`. No value enters a release without:
 
-| Parameter | Unit | Value / Range | Source | Confidence | Notes |
-|---|---|---|---|---|---|
-| `cabin_volume` | m³ | TBD | TBD | TBD | Defined model geometry |
-| `crew_CO2_generation` | TBD | TBD | TBD | TBD | Function of activity/load |
-| `crew_O2_consumption` | TBD | TBD | TBD | TBD | Function of activity/load |
-| `scrubber_capacity` | TBD | TBD | TBD | TBD | Virtual equipment model |
-| `fan_flow_capacity` | TBD | TBD | TBD | TBD | Virtual actuator limit |
-| `leak_rate` | TBD | TBD | TBD | TBD | Scenario-specific disturbance |
+| Field | Description |
+|---|---|
+| `unit` | SI unit or % |
+| `value` | Current value or `"TBD"` |
+| `source` | Datasheet, measurement, or `"synthetic"` |
+| `confidence` | `high` / `medium` / `low` / `synthetic` |
+| `notes` | Context, limits, calibration cadence |
+
+Key parameters to populate before first hardware run:
+
+| Parameter | Unit | Status |
+|---|---|---|
+| `co2_warning_threshold` | ppm | TBD |
+| `co2_alert_threshold` | ppm | TBD |
+| `o2_min_threshold` | % | TBD |
+| `pressure_nominal` | hPa | TBD |
+| `control_cadence` | s | TBD |
+| `fan_max_rpm` | RPM | TBD |
+| `scrubber_max_flow` | L/min | TBD |
 
 ---
 
 ## References
 
-- [NASA NTRS 19930018529 — Environmental Control and Life Support System](https://ntrs.nasa.gov/citations/19930018529) — ECLSS subsystem decomposition
-- [NASA NTRS 20170006211 — Environmental Control and Life Support Systems](https://ntrs.nasa.gov/citations/20170006211) — Ventilation/environmental-control framing
-- [SciPy `solve_ivp` API](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html) — ODE integration interface
+- [NASA NTRS 19930018529 — Environmental Control and Life Support System](https://ntrs.nasa.gov/citations/19930018529)
+- [NASA NTRS 20170006211 — Environmental Control and Life Support Systems](https://ntrs.nasa.gov/citations/20170006211)
+- [SCD40 CO₂ Sensor Datasheet — Sensirion](https://sensirion.com/products/catalog/SCD40/)
+- [MH-Z19C CO₂ Sensor Datasheet — Winsen](https://www.winsen-sensor.com/sensors/co2-sensor/mh-z19c.html)
 
 ---
 
 ## Disclaimer
 
-This is a **simulation-only** research/demo project. Parameter values are synthetic unless explicitly cited. No results should be interpreted as guidance for real spacecraft environmental control, crew safety, or certified life-support design. All thresholds and hardware numbers are placeholders pending team review.
+This is a **simulation/prototype-only** research and demo project built for a hackathon. No results should be interpreted as guidance for real spacecraft environmental control, crew safety, or certified life-support design. All sensor thresholds and hardware numbers are placeholders pending team review and must not be used in any safety-critical application.
