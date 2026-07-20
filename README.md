@@ -1,65 +1,82 @@
-# Space Habitat Ventilation AI
+# HVAC Intelligence Layer — Belimo Device Diagnostics on Arm
 
 > Submission for the [Arm Create: AI Optimization Challenge 2026](https://arm-ai-optimization-challenge.devpost.com/) — **Physical AI track**
 
-An AI ventilation controller for a pressurised space habitat, running fully on an Arm-powered edge device. Sensors feed real-time CO₂, O₂, pressure, temperature, and humidity readings to an on-device AI agent that classifies cabin state and issues bounded commands to fans, scrubbers, and O₂ supply — with all inference running locally, optimised for Arm.
+A smart integration and diagnostics layer for Belimo HVAC actuators. Low-level device data — motor torque, power draw, setpoint, position, temperature — is ingested, normalised, and fed to an on-device AI agent running on an Arm-powered Raspberry Pi. The agent detects device faults early, predicts their downstream effect on building-wide airflow, and exposes clean, building-level insight that third-party integrators can actually use.
 
 ---
 
-## Why This Fits the Physical AI Track
+## The Problem
 
-The Arm AI Optimization Challenge asks for projects that demonstrate **AI optimization on Arm-powered platforms** in real-world, physical contexts — robotics, embedded devices, sensors, and edge environments. This project delivers:
+HVAC energy demand is rising — climate change is driving more cooling load, and datacentre growth is compounding it. Belimo sells best-in-class individual actuators, but the raw device data they expose is low-level and fragmented. Third-party integrators face real complexity turning it into useful whole-building insight.
 
-- **On-device inference** — the AI agent runs entirely on an Arm64/Cortex-M/A-class board (e.g. Raspberry Pi 5, Jetson Orin Nano), no cloud call needed
-- **Measurable optimization** — latency, model size, and inference throughput benchmarked with [Arm Performix](https://developer.arm.com/)
-- **Real physical loop** — sensors → AI reasoning → actuator commands → environment change → repeat
-- **Safety-critical context** — demonstrates that edge AI can operate reliably under fault conditions
+Two costly failure modes result:
+1. **Silent faults** — a broken actuator goes undetected until an engineer notices the building is too hot
+2. **Slow diagnosis** — even when a fault is found, locating which device caused it and understanding the airflow impact across the building takes time
 
 ---
 
-## System Overview
+## Solution
+
+Build a layer that sits between Belimo devices and building management systems, running locally on an Arm edge board:
 
 ```
-Sensors (CO₂ / O₂ / P / T / RH)
-         │
-         ▼
-   Sensor Layer  ←—— calibration, dropout detection
-         │
-         ▼
-    AI Agent  ←——— runs on Arm device (quantized model / rule-hybrid)
-         │           classifies state → selects action → logs rationale
-         ▼
-  Actuator Layer →—— fan speed, scrubber duty, O₂ valve (PWM/GPIO)
-         │
-         ▼
-  Evaluation & Logging
+Belimo Devices  (actuator position, torque, power, setpoint, PCB temp, tag)
+       │
+       ▼
+  Ingestion & Normalisation  ←── per-device calibration, tag resolution
+       │
+       ▼
+   AI Agent (on Arm / Raspberry Pi + InfluxDB)
+       │  ├─ Fault Detection   → flag anomalous device behaviour early
+       │  └─ Airflow Diagnosis → model downstream impact on building airflow
+       ▼
+  Building-Level API / Dashboard
+       │  clean, normalised data ready for BMS or third-party integrators
+       ▼
+  Alerts & Reports
 ```
 
-| State Variable | Sensor | Interface |
+---
+
+## Device Inputs
+
+| Input | Source | Notes |
 |---|---|---|
-| CO₂ (ppm) | SCD40 / MH-Z19C | I²C / UART |
-| O₂ (%) | ME2-O2 | Analog |
-| Pressure (hPa) | BMP390 | I²C |
-| Temperature (°C) | SHT40 | I²C |
-| Humidity (% RH) | SHT40 | I²C |
+| Internal PCB / box temperature | Belimo device telemetry | Thermal fault indicator |
+| Motor torque | Device telemetry | Mechanical stress / obstruction |
+| Power draw | Device telemetry | Efficiency baseline + anomaly |
+| Setpoint & actual position | Device telemetry | Tracking error detection |
+| Movement direction | Device telemetry | Unexpected reversals |
+| Tag / device ID | Configuration | Building topology mapping |
+
+Normalised position data is the key output — exposed locally via Raspberry Pi and stored in **InfluxDB** for time-series analysis.
 
 ---
 
 ## AI Agent
 
-The agent runs on a fixed cadence (configurable, default 5 s). Each tick:
+Runs on a fixed cadence on the Arm edge board. Each tick:
 
-1. **Observe** — read normalised sensor vector
-2. **Classify** — `NOMINAL` / `WARNING` / `ALERT` / `FAULT`
-3. **Act** — output bounded actuator setpoints (0–100% per channel)
-4. **Log** — structured JSON rationale per decision
+1. **Ingest** — pull latest telemetry from all registered devices
+2. **Normalise** — apply per-device calibration and tag context
+3. **Detect** — flag devices with anomalous torque, power, tracking error, or temperature
+4. **Diagnose** — model airflow impact of any flagged fault across the building graph
+5. **Log** — structured JSON decision record per tick
 
-### Arm Optimization Focus
+### Arm Optimisation Focus
 
-- Model quantized to **INT8** for fast inference on Arm Cortex / NEON pipelines
-- Benchmarked with **Arm Performix** for tokens/sec and latency
-- Fallback to a deterministic rule-based controller if inference exceeds latency budget
-- Target: full sense→decide→act loop under **100 ms** on target hardware
+- Inference runs fully **on-device** (Raspberry Pi 5 / Cortex-A class), no cloud dependency
+- Anomaly detection model quantized to **INT8** for Arm NEON pipelines
+- Benchmarked with **Arm Performix** for latency and throughput
+- Target: full ingest → detect → diagnose loop under **200 ms** per tick
+- Fallback to deterministic threshold rules if inference exceeds latency budget
+
+---
+
+## Scope — Air First
+
+The concept applies to both air and water systems. v1 targets **air** — easier to prototype, simulate, and demo in a hackathon setting. Water systems are a natural v2 extension.
 
 ---
 
@@ -67,16 +84,29 @@ The agent runs on a fixed cadence (configurable, default 5 s). Each tick:
 
 ```
 arm-hackathon/
-├── agent/            # AI controller + baseline rule controller
-├── sensing/          # Sensor polling, calibration, fault detection
-├── actuation/        # GPIO/PWM dispatch + actuator state reporting
+├── ingestion/        # Belimo device polling, normalisation, tag resolution
+├── agent/            # AI fault detector + airflow diagnosis model
+├── storage/          # InfluxDB interface + time-series helpers
+├── api/              # Local REST/MQTT API for BMS / integrators
 ├── evaluation/       # Scenario runner, metrics, comparison report
-├── params/           # Parameter registry + sensor calibration files
-├── scenarios/        # Scenario definitions (nominal, fault, spike)
-├── tests/            # Sensor fault, actuator bounds, agent baseline tests
+├── params/           # Device registry + calibration files
+├── scenarios/        # Scenario definitions (nominal, fault, degradation)
+├── tests/            # Fault detection, normalisation, agent baseline tests
 ├── benchmarks/       # Arm Performix results + latency logs
 └── requirements.txt
 ```
+
+---
+
+## Scenarios
+
+| Scenario | What Changes | What It Tests |
+|---|---|---|
+| Nominal | All devices healthy | Baseline normalisation, latency |
+| Single device fault | One actuator torque/position anomaly | Early fault detection |
+| Cascading airflow impact | Faulted device starves downstream zones | Building-level diagnosis |
+| Slow degradation | Torque creeps up over hours | Trend detection before failure |
+| Device dropout | Telemetry stops arriving | Safe fallback, alert escalation |
 
 ---
 
@@ -94,20 +124,8 @@ python -m pytest tests/
 python -m evaluation.runner --scenario scenarios/nominal.json
 ```
 
-**Target hardware:** Raspberry Pi 5 / any Arm64 or Cortex-A board running Linux.  
+**Target hardware:** Raspberry Pi 5 (Arm Cortex-A76) running Linux + InfluxDB  
 **Python:** 3.10+
-
----
-
-## Scenarios
-
-| Scenario | Fault Injected | Tests |
-|---|---|---|
-| Nominal | None | Steady-state control, latency baseline |
-| Crew activity spike | CO₂ / O₂ load increase | Response speed and coupling |
-| Fan failure | Fan unresponsive | Fault detection, graceful degradation |
-| Sensor dropout | Sensor stops reporting | Safe fallback, fault classification |
-| Slow pressure leak | Gradual O₂ / pressure loss | Alert escalation, O₂ valve response |
 
 ---
 
@@ -117,4 +135,4 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-> ⚠️ **Simulation / prototype only.** Not a certified life-support design. Thresholds and hardware values are placeholders; do not use in any safety-critical application.
+> ⚠️ **Prototype only.** Not a certified building management or safety system. Device thresholds and airflow models are placeholders pending real Belimo device data.
