@@ -1,177 +1,97 @@
-# HVAC Intelligence Layer — Closed-Loop AI Control on Arm
+# ICARUS
 
-> Submission for the [Arm Create: AI Optimization Challenge 2026](https://arm-ai-optimization-challenge.devpost.com/) — **Physical AI track**
+> **Closed-loop fault response for a simulated habitat ventilation system, optimized for Arm.**
+>
+> Submission in progress for the [Arm Create: AI Optimization Challenge 2026](https://arm-ai-optimization-challenge.devpost.com/) · **Physical AI track**
 
-An on-device AI system for commercial HVAC environments. It ingests real-time actuator telemetry — motor torque, power draw, position, temperature — detects faults and anomalies using a quantized model running on an Arm-powered Raspberry Pi, and **closes the loop** by issuing corrective actuator commands directly: adjusting fan speeds, valve positions, and damper setpoints to compensate before a fault cascades into a building-wide problem.
+ICARUS is a simulated two-zone habitat ventilation controller. It ingests telemetry from a circulation plant, uses a compact AI model to detect a degrading primary fan, and applies a deterministic safety governor to issue a bounded virtual command to a healthy redundant fan.
 
-Sensor → AI inference → actuator command → physical effect → repeat.
-
----
-
-## The Problem
-
-HVAC energy demand is rising — climate change is driving more cooling load, and datacentre growth is compounding it. Modern smart actuators expose rich telemetry, but two costly failure modes persist:
-
-1. **Silent faults** — a degrading actuator goes undetected until the building overheats
-2. **Slow recovery** — even when a fault is found, compensating healthy devices manually takes time, and the airflow impact across the building is rarely understood quickly
-
-Existing BMS systems alert. They don’t autonomously compensate.
-
----
-
-## Solution
-
-A closed-loop AI controller running entirely on an Arm edge board, sitting between the actuator network and the BMS:
-
-```
-Actuator Telemetry  (position, torque, power, setpoint, PCB temp, tag)
-        │
-        ▼
-  Ingestion & Normalisation  ←── per-device calibration, tag resolution
-        │
-        ▼
-   AI Agent  ────────────────────── (Raspberry Pi 5, ONNX Runtime INT8)
-       │                                    │
-       ├─ Anomaly Detection                  │
-       ├─ Airflow Impact Modelling           │
-       └─ Corrective Action Selection        │
-        │                                    │
-        ▼                                    ▼
-  Actuator Commands              Benchmarks (Arm Performix)
-  (fan speed, valve %, damper)   latency, throughput, INT8 vs FP32
-        │
-        ▼
-  Physical Environment Changes
-        │
-        ▼  (feedback loop)
-  Actuator Telemetry  ────────────────▲
+```text
+simulated sensors → compact AI inference → safety governor → virtual actuator command
+       ↑                                                               │
+       └──────────── changed ventilation-plant state and replay ───────┘
 ```
 
----
+This is a simulation and research prototype. It makes no claim to control real spacecraft, life-support equipment, or certified safety-critical systems.
 
-## Device Inputs
+## The demo
 
-| Input | Notes |
-|---|---|
-| Motor torque | Mechanical stress / obstruction detection |
-| Power draw | Efficiency baseline + anomaly |
-| Setpoint & actual position | Tracking error — key fault signal |
-| Movement direction | Unexpected reversal detection |
-| Internal PCB / box temperature | Thermal fault indicator |
-| Tag / device ID | Building topology mapping |
+The first scenario is deliberately narrow:
 
----
+1. A deterministic two-zone habitat ventilation plant begins in a nominal state.
+2. The primary circulation fan degrades, reducing actual airflow.
+3. Telemetry records airflow, CO2/air-quality proxy, temperature, commanded fan speed, actual fan output, and tracking residual.
+4. A compact ONNX model scores the telemetry window for a fault.
+5. The safety governor either commands a bounded boost to a healthy redundant fan or hands control back when telemetry/model output is invalid.
+6. The simulator applies that decision and writes a replay trace proving the resulting plant-state change.
 
-## AI Agent — Closed Loop
+The point is not an animated dashboard. The point is a visible, testable loop: **fault → inference → safe decision → virtual action → recovery**.
 
-Runs on a fixed cadence (default 5 s) on the Arm edge board. Each tick:
+## Why Physical AI
 
-1. **Ingest** — read normalised telemetry from all registered devices
-2. **Detect** — anomaly model flags devices with abnormal torque, power, tracking error, or temperature
-3. **Diagnose** — graph model estimates downstream airflow impact of any flagged fault
-4. **Act** — issue corrective setpoint commands to healthy neighbouring devices to compensate
-5. **Log** — structured JSON record: observation, classification, action, rationale
+The Arm Create Physical AI track accepts systems using real or simulated sensor data that produce control signals, anomaly detection, alerting, or actuator decisions for a physical system. ICARUS uses simulated environmental and actuator telemetry, performs local fault inference, and produces a virtual ventilation command under hard safety bounds.
 
-### Actuator Command Space
+## Arm optimization evidence
 
-| Actuator | Command | Range |
-|---|---|---|
-| Circulation fan | Speed setpoint | 0–100% |
-| Damper / valve | Position setpoint | 0–100% open |
-| Bypass damper | Open / close | Binary + %|
+ICARUS will run inference on a declared Arm64 target. The project will publish a reproducible benchmark comparing:
 
-All commands are **hard-bounded in firmware** — the agent cannot exceed physical actuator limits.
+- FP32 ONNX inference against an INT8-quantized path
+- model artifact size
+- p50 and p95 inference latency
+- inference throughput / control-loop deadline behaviour
+- fault-detection quality and false alarms
+- target specification and exact benchmark commands
 
----
+No Raspberry Pi, NEON, Arm Performix, memory, latency, or sub-200 ms claim will be made until it has an attached measurement receipt from the declared target.
 
-## Arm Optimisation Story
+## Planned first vertical slice
 
-The core optimisation is a **measured before/after comparison** of the anomaly detection model on Arm hardware:
+The first runnable slice contains only the proof loop:
 
-| Stage | Model | Runtime | Target metric |
-|---|---|---|---|
-| Baseline | FP32 ONNX autoencoder | ONNX Runtime (default) | Latency (ms), memory (MB) |
-| Optimised | INT8 quantized ONNX | ONNX Runtime + Arm NEON | Latency (ms), memory (MB) |
-
-- Quantization via `onnxruntime.quantization` — post-training static INT8
-- Benchmarked with **Arm Performix** on Raspberry Pi 5 (Cortex-A76)
-- Target: full sense → detect → act loop under **200 ms** at INT8
-- Fallback to deterministic threshold rules if inference exceeds latency budget
-- All benchmark results stored in `benchmarks/` with raw Performix output
-
----
-
-## Scope — Air First
-
-v1 targets air systems — simpler to prototype and demo. Water systems (pumps, valves, heat exchangers) are a natural v2 extension using the same agent architecture.
-
----
-
-## Repo Structure
-
-```
-arm-hackathon/
-├── ingestion/        # Device polling, normalisation, tag resolution
-├── agent/
-│   ├── detector.py   # ONNX anomaly detection model (FP32 + INT8)
-│   ├── graph.py      # Airflow impact model across device topology
-│   ├── controller.py # Corrective action selection + command dispatch
-│   ├── baseline.py   # Deterministic rule-based fallback controller
-│   └── logger.py     # Structured JSON rationale logging
-├── actuation/        # Actuator command dispatch + hard bound enforcement
-├── storage/          # InfluxDB interface + time-series helpers
-├── api/              # Local REST/MQTT API for BMS / integrators
-├── evaluation/       # Scenario runner, metrics, comparison report
-├── params/           # Device registry + calibration files
-├── scenarios/        # Scenario definitions (nominal, fault, degradation)
-├── benchmarks/       # Arm Performix results — FP32 vs INT8 comparison
-├── tests/
-│   ├── test_detector.py
-│   ├── test_actuation_bounds.py
-│   └── test_agent_vs_baseline.py
-└── requirements.txt
+```text
+icarus/
+├── simulation/       # deterministic two-zone ventilation plant
+├── scenarios/        # nominal, primary fan degradation, invalid sensor
+├── model/            # synthetic-data training, FP32 ONNX export, inference
+├── control/          # safety governor and bounded virtual actuation
+├── traces/           # JSONL replay writer
+├── tests/            # scenario, safety, replay, and model-path tests
+└── benchmarks/       # added after the local loop is green
 ```
 
----
+It intentionally excludes a web dashboard, API, database, MQTT, hardware integration, and topology model. Those can wait until there is an actual system worth displaying.
 
-## Scenarios
+## Acceptance conditions for the first slice
 
-| Scenario | Fault Injected | What It Tests |
-|---|---|---|
-| Nominal | None | Steady-state control, latency baseline |
-| Single device fault | One actuator tracking error | Detection + neighbour compensation |
-| Cascading airflow impact | Faulted device starves downstream zones | Graph diagnosis + multi-device response |
-| Slow degradation | Torque creeps up over hours | Trend detection before failure |
-| Device dropout | Telemetry stops arriving | Safe fallback, deterministic controller takes over |
+- Nominal scenario produces no fault command.
+- Primary-fan degradation is injected deterministically and detected by the ONNX model.
+- Governor commands the redundant fan within its safe range, never above 80%.
+- Invalid telemetry produces `HAND_BACK`, not an autonomous command.
+- The replay trace is deterministic for a fixed scenario seed.
+- The trace demonstrates that the command changes simulated plant state and restores airflow above the scenario floor.
 
----
+## Status
 
-## Getting Started
+**Planning and scaffold stage.** The repository currently does not yet contain the simulator, model, benchmark results, or a hardware deployment. The README is a contract for what will be built and measured, not evidence that it already exists.
+
+## Intended usage
+
+Once the first slice lands, a clean environment should be able to run:
 
 ```bash
-git clone https://github.com/akurkar07/arm-hackathon.git
-cd arm-hackathon
-pip install -r requirements.txt
-
-# Run tests
-python -m pytest tests/
-
-# Run a scenario
-python -m evaluation.runner --scenario scenarios/nominal.json
-
-# Run INT8 vs FP32 benchmark
-python -m benchmarks.run --device rpi5
+python -m pytest
+python -m icarus.run --scenario primary_fan_degradation --seed 7 --trace out/degradation.jsonl
 ```
 
-**Target hardware:** Raspberry Pi 5 (Arm Cortex-A76) running Linux + InfluxDB  
-**Python:** 3.10+ | **Key deps:** `onnxruntime`, `onnx`, `numpy`, `influxdb-client`, `paho-mqtt`
+Expected result: a non-empty replay trace and summary showing injected degradation, model detection, safety-governed redundant-fan command, and recovery.
 
----
+## Safety and scope
+
+- Simulation only. No live plant, client, or production telemetry.
+- No real actuator command is emitted.
+- The governor enforces bounded commands and a handback path.
+- This is not a certified environmental-control or safety system.
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
-
----
-
-> ⚠️ **Prototype only.** Not a certified building management or safety system. Device thresholds, airflow models, and benchmark targets are placeholders pending real hardware validation.
+[MIT](LICENSE)
