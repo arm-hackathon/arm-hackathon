@@ -1,14 +1,14 @@
-# HVAC Intelligence Layer — Belimo Device Diagnostics on Arm
+# HVAC Intelligence Layer — Smart Actuator Diagnostics on Arm
 
 > Submission for the [Arm Create: AI Optimization Challenge 2026](https://arm-ai-optimization-challenge.devpost.com/) — **Physical AI track**
 
-A smart integration and diagnostics layer for Belimo HVAC actuators. Low-level device data — motor torque, power draw, setpoint, position, temperature — is ingested, normalised, and fed to an on-device AI agent running on an Arm-powered Raspberry Pi. The agent detects device faults early, predicts their downstream effect on building-wide airflow, and exposes clean, building-level insight that third-party integrators can actually use.
+A smart integration and diagnostics layer for commercial HVAC actuators. Low-level device data — motor torque, power draw, setpoint, position, temperature — is ingested, normalised, and fed to an on-device AI agent running on an Arm-powered Raspberry Pi. The agent detects device faults early, predicts their downstream effect on building-wide airflow, and exposes clean, building-level insight that third-party integrators can actually use.
 
 ---
 
 ## The Problem
 
-HVAC energy demand is rising — climate change is driving more cooling load, and datacentre growth is compounding it. Belimo sells best-in-class individual actuators, but the raw device data they expose is low-level and fragmented. Third-party integrators face real complexity turning it into useful whole-building insight.
+HVAC energy demand is rising — climate change is driving more cooling load, and datacentre growth is compounding it. Modern smart actuators expose rich low-level telemetry, but it is fragmented and hard to consume. Third-party integrators face real complexity turning raw device data into useful whole-building insight.
 
 Two costly failure modes result:
 1. **Silent faults** — a broken actuator goes undetected until an engineer notices the building is too hot
@@ -18,10 +18,10 @@ Two costly failure modes result:
 
 ## Solution
 
-Build a layer that sits between Belimo devices and building management systems, running locally on an Arm edge board:
+A layer that sits between smart actuator devices and building management systems, running locally on an Arm edge board:
 
 ```
-Belimo Devices  (actuator position, torque, power, setpoint, PCB temp, tag)
+Smart Actuators  (position, torque, power, setpoint, PCB temp, tag)
        │
        ▼
   Ingestion & Normalisation  ←── per-device calibration, tag resolution
@@ -43,7 +43,7 @@ Belimo Devices  (actuator position, torque, power, setpoint, PCB temp, tag)
 
 | Input | Source | Notes |
 |---|---|---|
-| Internal PCB / box temperature | Belimo device telemetry | Thermal fault indicator |
+| Internal PCB / box temperature | Device telemetry | Thermal fault indicator |
 | Motor torque | Device telemetry | Mechanical stress / obstruction |
 | Power draw | Device telemetry | Efficiency baseline + anomaly |
 | Setpoint & actual position | Device telemetry | Tracking error detection |
@@ -84,7 +84,7 @@ The concept applies to both air and water systems. v1 targets **air** — easier
 
 ```
 arm-hackathon/
-├── ingestion/        # Belimo device polling, normalisation, tag resolution
+├── ingestion/        # Device polling, normalisation, tag resolution
 ├── agent/            # AI fault detector + airflow diagnosis model
 ├── storage/          # InfluxDB interface + time-series helpers
 ├── api/              # Local REST/MQTT API for BMS / integrators
@@ -135,4 +135,4 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-> ⚠️ **Prototype only.** Not a certified building management or safety system. Device thresholds and airflow models are placeholders pending real Belimo device data.
+> ⚠️ **Prototype only.** Not a certified building management or safety system. Device thresholds and airflow models are placeholders pending real-world device data.
