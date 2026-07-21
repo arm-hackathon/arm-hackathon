@@ -260,6 +260,80 @@ INVALID_CASES = [
         "health",
         id="bool_health_is_not_a_number",
     ),
+    # Python's json accepts NaN/Infinity tokens; a validated scenario must not.
+    pytest.param(
+        lambda d: [
+            z.update(air_volume=float("nan"))
+            for z in d["zones"]
+            if z["id"] == "cabin_a"
+        ],
+        "finite",
+        id="nan_air_volume",
+    ),
+    pytest.param(
+        lambda d: [
+            z.update(air_volume=float("inf"))
+            for z in d["zones"]
+            if z["id"] == "cabin_a"
+        ],
+        "finite",
+        id="infinite_air_volume",
+    ),
+    pytest.param(
+        lambda d: [
+            z.update(co2_generation_per_second=float("nan"))
+            for z in d["zones"]
+            if z["id"] == "cabin_a"
+        ],
+        "finite",
+        id="nan_co2_source",
+    ),
+    pytest.param(
+        lambda d: [
+            c.update(max_airflow=float("inf"))
+            for c in d["connections"]
+            if c["id"] == "cabin_a_to_processing"
+        ],
+        "finite",
+        id="infinite_max_airflow",
+    ),
+    pytest.param(
+        lambda d: [
+            c.update(health=float("nan"))
+            for c in d["connections"]
+            if c["id"] == "cabin_a_to_processing"
+        ],
+        "finite",
+        id="nan_health",
+    ),
+    # A self-loop touches no other zone; the air_processing variant used to
+    # slip past the hub rules and crash the run with a raw KeyError.
+    pytest.param(
+        lambda d: d["connections"].append(
+            {
+                "id": "processing_self_loop",
+                "from": "processing",
+                "to": "processing",
+                "max_airflow": 5.0,
+                "health": 1.0,
+            }
+        ),
+        "itself",
+        id="air_processing_self_loop",
+    ),
+    pytest.param(
+        lambda d: d["connections"].append(
+            {
+                "id": "cabin_a_self_loop",
+                "from": "cabin_a",
+                "to": "cabin_a",
+                "max_airflow": 5.0,
+                "health": 1.0,
+            }
+        ),
+        "itself",
+        id="non_processing_self_loop",
+    ),
 ]
 
 

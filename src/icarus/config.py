@@ -17,6 +17,7 @@ docs/simulation-rules.md for the full rules.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -149,7 +150,13 @@ def _require_number(value: Any, what: str) -> float:
     # bool is a subclass of int; JSON true/false is never a valid number here.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{what} must be a number, got {value!r}")
-    return float(value)
+    result = float(value)
+    # Python's json accepts NaN/Infinity tokens. Neither is a usable simulation
+    # value, and NaN comparisons are always False, so range checks below would
+    # silently wave them through.
+    if not math.isfinite(result):
+        raise ValueError(f"{what} must be a finite number, got {value!r}")
+    return result
 
 
 def _parse_zones(data: dict) -> tuple[ZoneSpec, ...]:
@@ -236,6 +243,13 @@ def _parse_connections(data: dict, zone_ids: set[str]) -> tuple[ConnectionSpec, 
                     f"connection {connection_id!r} references unknown zone {zone_ref!r} "
                     f"in field {endpoint!r}"
                 )
+        # A self-loop moves air nowhere. The air_processing variant otherwise
+        # satisfies "touches the bay" and evades the per-zone pairing counts,
+        # then crashes the run with a raw KeyError.
+        if from_zone == to_zone:
+            raise ValueError(
+                f"connection {connection_id!r} loops from zone {from_zone!r} to itself"
+            )
         max_airflow = _require_number(
             raw["max_airflow"], f"connection {connection_id!r}: max_airflow"
         )

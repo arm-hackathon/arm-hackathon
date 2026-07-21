@@ -132,8 +132,11 @@ CLI prints it and exits non-zero) when it has:
 - an unsupported preset;
 - a non-positive air volume or a negative CO2 source;
 - a connection referencing an unknown source or target zone;
+- a connection that loops from a zone back to itself;
 - a non-positive max airflow;
 - a health outside `0.0..1.0`;
+- a non-finite number (`NaN` or `Infinity`, which Python's JSON parser
+  accepts) in any numeric field;
 - a connection that does not touch the air-processing bay (hub layout
   only), or more than one directed path between the same zone pair;
 - a non-processing zone missing either its path to processing or its
