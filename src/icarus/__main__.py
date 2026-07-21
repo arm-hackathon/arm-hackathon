@@ -1,39 +1,45 @@
-"""Run a named scenario and write its JSONL replay trace.
+"""Run an explicit scenario JSON file and write its JSONL replay trace.
 
 Usage:
-    PYTHONPATH=src python3 -m icarus <scenario-name> <trace-path>
+    PYTHONPATH=src python3 -m icarus <scenario.json> <trace-path>
 
 Example:
-    PYTHONPATH=src python3 -m icarus primary_fan_degradation traces/primary_fan_degradation.jsonl
+    PYTHONPATH=src python3 -m icarus scenarios/standard_habitat.json traces/standard_habitat.jsonl
 """
 
 import sys
 
-from icarus.scenario import SCENARIOS, run_scenario
+from icarus.config import load_scenario
+from icarus.scenario import run_scenario
 
-USAGE = """Usage: PYTHONPATH=src python3 -m icarus <scenario-name> <trace-path>
-Example: PYTHONPATH=src python3 -m icarus primary_fan_degradation traces/primary_fan_degradation.jsonl"""
+USAGE = (
+    "Usage: PYTHONPATH=src python3 -m icarus <scenario.json> <trace-path>\n"
+    "Example: PYTHONPATH=src python3 -m icarus scenarios/standard_habitat.json "
+    "traces/standard_habitat.jsonl"
+)
 
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(USAGE, file=sys.stderr)
         return 2
-    name, trace_path = argv
-    if name not in SCENARIOS:
-        print(
-            f"unknown scenario {name!r}; choose from: {', '.join(sorted(SCENARIOS))}",
-            file=sys.stderr,
-        )
+    scenario_path, trace_path = argv
+    try:
+        config = load_scenario(scenario_path)
+    except ValueError as exc:
+        print(f"invalid scenario: {exc}", file=sys.stderr)
         return 2
-    records = run_scenario(name, trace_path=trace_path)
+    records = run_scenario(config, trace_path=trace_path)
     last = records[-1]
-    print(f"scenario={name} ticks={len(records)} trace={trace_path}")
+    zone_summary = " ".join(
+        f"{zone.id}_co2={last.zones[zone.id]['co2']:.3f}"
+        for zone in config.non_processing_zones()
+    )
+    processing_id = config.processing_zone().id
+    print(f"scenario={scenario_path} ticks={len(records)} trace={trace_path}")
     print(
-        f"final tick={last.tick} room_a_co2={last.room_a_co2:.3f} "
-        f"room_b_co2={last.room_b_co2:.3f} "
-        f"main_fan_effectiveness={last.main_fan_effectiveness:.2f} "
-        f"airflow={last.airflow:.3f}"
+        f"final tick={last.tick} {zone_summary} "
+        f"captured_co2={last.zones[processing_id]['captured_co2']:.3f}"
     )
     return 0
 

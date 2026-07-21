@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "zones": [
+    {
+      "id": "cabin_a",
+      "label": "Crew Cabin A",
+      "preset": "crew_cabin",
+      "co2_generation_per_second": 1.0,
+      "air_volume": 100.0
+    },
+    {
+      "id": "cabin_b",
+      "label": "Crew Cabin B",
+      "preset": "crew_cabin",
+      "co2_generation_per_second": 1.0,
+      "air_volume": 100.0
+    },
+    {
+      "id": "lab",
+      "label": "Lab",
+      "preset": "lab",
+      "co2_generation_per_second": 0.0,
+      "air_volume": 80.0
+    },
+    {
+      "id": "processing",
+      "label": "Air Processing Bay",
+      "preset": "air_processing",
+      "co2_generation_per_second": 0.0,
+      "air_volume": 120.0
+    }
+  ],
+  "connections": [
+    {
+      "id": "cabin_a_to_processing",
+      "from": "cabin_a",
+      "to": "processing",
+      "max_airflow": 10.0,
+      "health": 1.0
+    },
+    {
+      "id": "processing_to_cabin_a",
+      "from": "processing",
+      "to": "cabin_a",
+      "max_airflow": 10.0,
+      "health": 1.0
+    },
+    {
+      "id": "cabin_b_to_processing",
+      "from": "cabin_b",
+      "to": "processing",
+      "max_airflow": 10.0,
+      "health": 1.0
+    },
+    {
+      "id": "processing_to_cabin_b",
+      "from": "processing",
+      "to": "cabin_b",
+      "max_airflow": 10.0,
+      "health": 1.0
+    },
+    {
+      "id": "lab_to_processing",
+      "from": "lab",
+      "to": "processing",
+      "max_airflow": 8.0,
+      "health": 1.0
+    },
+    {
+      "id": "processing_to_lab",
+      "from": "processing",
+      "to": "lab",
+      "max_airflow": 8.0,
+      "health": 1.0
+    }
+  ]
+}
