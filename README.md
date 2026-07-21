@@ -80,7 +80,7 @@ Once the first slice lands, a clean environment should be able to run:
 
 ```bash
 python -m pytest
-python -m icarus.run --scenario primary_fan_degradation --seed 7 --trace out/degradation.jsonl
+python -m icarus primary_fan_degradation out/degradation.jsonl
 ```
 
 Expected result: a non-empty replay trace and summary showing injected degradation, model detection, safety-governed redundant-fan command, and recovery.
