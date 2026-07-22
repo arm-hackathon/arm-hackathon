@@ -5,8 +5,8 @@ graph: ``zones`` (rooms) and ``connections`` (directed air paths). This
 module is the only place that parses that format; the rest of the
 simulation works on the validated :class:`HabitatConfig` it returns.
 
-This PR supports the simple hub layout only: every connection links one
-non-processing zone to the single ``air_processing`` bay, and every
+The current format supports the simple hub layout only: every connection
+links one non-processing zone to the single ``air_processing`` bay, and every
 non-processing zone has exactly one path each way. It is not a general
 fluid solver.
 
@@ -22,17 +22,41 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-SUPPORTED_SCENARIO_VERSION = 1
+from icarus.actuator import ActuatorSettings
+from icarus.control import CO2ControlSettings
+
+SUPPORTED_SCENARIO_VERSION = 5
 
 ALLOWED_PRESETS = frozenset({"crew_cabin", "lab", "air_processing", "storage"})
 
-# Declared fraction of moved-air CO2 the air_processing scrubber captures
-# each tick. Declared here because the scenario format fixes the zone
-# fields; a future PR may move it onto the air_processing preset.
-AIR_PROCESSING_SCRUBBER_REMOVAL_FRACTION = 0.5
-
-_ZONE_FIELDS = ("id", "label", "preset", "co2_generation_per_second", "air_volume")
+_ZONE_FIELDS = (
+    "id",
+    "label",
+    "preset",
+    "co2_generation_per_second",
+    "co2_generation_epsilon",
+    "co2_noise_correlation",
+    "occupancy_profile",
+    "air_volume",
+)
 _CONNECTION_FIELDS = ("id", "from", "to", "max_airflow", "health")
+_CONTROL_FIELDS = (
+    "co2_lower_threshold",
+    "co2_upper_threshold",
+    "minimum_command",
+    "maximum_command",
+)
+_ACTUATOR_FIELDS = ("full_stroke_seconds", "moving_power", "holding_power")
+_AIR_SYSTEM_FIELDS = ("shared_airflow_capacity", "scrubber_removal_fraction")
+
+
+@dataclass(frozen=True)
+class OccupancyPeriod:
+    """One inclusive tick range that scales a zone's baseline CO2 source."""
+
+    start_tick: int
+    end_tick: int
+    multiplier: float
 
 
 @dataclass(frozen=True)
@@ -43,7 +67,25 @@ class ZoneSpec:
     label: str
     preset: str
     co2_generation_per_second: float
+    co2_generation_epsilon: float
+    co2_noise_correlation: float
+    occupancy_profile: tuple[OccupancyPeriod, ...]
     air_volume: float
+
+
+@dataclass(frozen=True)
+class SimulationSettings:
+    """Settings that make variable scenario inputs exactly replayable."""
+
+    random_seed: int
+
+
+@dataclass(frozen=True)
+class AirSystemSettings:
+    """Capacity and cleaning performance shared by all zone loops."""
+
+    shared_airflow_capacity: float
+    scrubber_removal_fraction: float
 
 
 @dataclass(frozen=True)
@@ -64,6 +106,10 @@ class HabitatConfig:
     version: int
     zones: tuple[ZoneSpec, ...]
     connections: tuple[ConnectionSpec, ...]
+    control: CO2ControlSettings
+    actuator: ActuatorSettings
+    simulation: SimulationSettings
+    air_system: AirSystemSettings
 
     def processing_zone(self) -> ZoneSpec:
         """The single air_processing zone (validation guarantees exactly one)."""
@@ -130,7 +176,19 @@ def parse_scenario(data: Any) -> HabitatConfig:
         raise ValueError("scenario has more than one air_processing zone")
     connections = _parse_connections(data, {z.id for z in zones})
     _enforce_hub_pairing(zones, connections)
-    return HabitatConfig(version=version, zones=zones, connections=connections)
+    control = _parse_control(data)
+    actuator = _parse_actuator(data)
+    simulation = _parse_simulation(data)
+    air_system = _parse_air_system(data)
+    return HabitatConfig(
+        version=version,
+        zones=zones,
+        connections=connections,
+        control=control,
+        actuator=actuator,
+        simulation=simulation,
+        air_system=air_system,
+    )
 
 
 def _parse_version(data: dict) -> int:
@@ -144,6 +202,99 @@ def _parse_version(data: dict) -> int:
             f"unsupported version {version}; expected {SUPPORTED_SCENARIO_VERSION}"
         )
     return version
+
+
+def _parse_control(data: dict) -> CO2ControlSettings:
+    if "control" not in data:
+        raise ValueError("scenario must define 'control'")
+    raw = data["control"]
+    if not isinstance(raw, dict):
+        raise ValueError("'control' must be an object")
+    for field_name in _CONTROL_FIELDS:
+        if field_name not in raw:
+            raise ValueError(f"control is missing required field {field_name!r}")
+    try:
+        return CO2ControlSettings(
+            lower_threshold=_require_number(
+                raw["co2_lower_threshold"], "control co2_lower_threshold"
+            ),
+            upper_threshold=_require_number(
+                raw["co2_upper_threshold"], "control co2_upper_threshold"
+            ),
+            minimum_command=_require_number(
+                raw["minimum_command"], "control minimum_command"
+            ),
+            maximum_command=_require_number(
+                raw["maximum_command"], "control maximum_command"
+            ),
+        )
+    except ValueError as exc:
+        raise ValueError(f"invalid control settings: {exc}") from None
+
+
+def _parse_actuator(data: dict) -> ActuatorSettings:
+    if "actuator" not in data:
+        raise ValueError("scenario must define 'actuator'")
+    raw = data["actuator"]
+    if not isinstance(raw, dict):
+        raise ValueError("'actuator' must be an object")
+    for field_name in _ACTUATOR_FIELDS:
+        if field_name not in raw:
+            raise ValueError(f"actuator is missing required field {field_name!r}")
+    try:
+        return ActuatorSettings(
+            full_stroke_seconds=_require_number(
+                raw["full_stroke_seconds"], "actuator full_stroke_seconds"
+            ),
+            moving_power=_require_number(
+                raw["moving_power"], "actuator moving_power"
+            ),
+            holding_power=_require_number(
+                raw["holding_power"], "actuator holding_power"
+            ),
+        )
+    except ValueError as exc:
+        raise ValueError(f"invalid actuator settings: {exc}") from None
+
+
+def _parse_simulation(data: dict) -> SimulationSettings:
+    if "simulation" not in data:
+        raise ValueError("scenario must define 'simulation'")
+    raw = data["simulation"]
+    if not isinstance(raw, dict):
+        raise ValueError("'simulation' must be an object")
+    if "random_seed" not in raw:
+        raise ValueError("simulation is missing required field 'random_seed'")
+    seed = raw["random_seed"]
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise ValueError("simulation random_seed must be an integer")
+    return SimulationSettings(random_seed=seed)
+
+
+def _parse_air_system(data: dict) -> AirSystemSettings:
+    if "air_system" not in data:
+        raise ValueError("scenario must define 'air_system'")
+    raw = data["air_system"]
+    if not isinstance(raw, dict):
+        raise ValueError("'air_system' must be an object")
+    for field_name in _AIR_SYSTEM_FIELDS:
+        if field_name not in raw:
+            raise ValueError(f"air_system is missing required field {field_name!r}")
+    capacity = _require_number(
+        raw["shared_airflow_capacity"], "air_system shared_airflow_capacity"
+    )
+    removal = _require_number(
+        raw["scrubber_removal_fraction"],
+        "air_system scrubber_removal_fraction",
+    )
+    if capacity <= 0.0:
+        raise ValueError("air_system shared_airflow_capacity must be positive")
+    if not 0.0 <= removal <= 1.0:
+        raise ValueError("air_system scrubber_removal_fraction must be in 0.0..1.0")
+    return AirSystemSettings(
+        shared_airflow_capacity=capacity,
+        scrubber_removal_fraction=removal,
+    )
 
 
 def _require_number(value: Any, what: str) -> float:
@@ -198,6 +349,25 @@ def _parse_zones(data: dict) -> tuple[ZoneSpec, ...]:
             raise ValueError(
                 f"zone {zone_id!r}: co2_generation_per_second must not be negative"
             )
+        co2_epsilon = _require_number(
+            raw["co2_generation_epsilon"],
+            f"zone {zone_id!r}: co2_generation_epsilon",
+        )
+        if co2_epsilon < 0.0:
+            raise ValueError(
+                f"zone {zone_id!r}: co2_generation_epsilon must not be negative"
+            )
+        noise_correlation = _require_number(
+            raw["co2_noise_correlation"],
+            f"zone {zone_id!r}: co2_noise_correlation",
+        )
+        if not 0.0 <= noise_correlation <= 1.0:
+            raise ValueError(
+                f"zone {zone_id!r}: co2_noise_correlation must be in 0.0..1.0"
+            )
+        occupancy_profile = _parse_occupancy_profile(
+            raw["occupancy_profile"], zone_id
+        )
         if zone_id in seen_ids:
             raise ValueError(f"duplicate zone id {zone_id!r}")
         seen_ids.add(zone_id)
@@ -207,10 +377,61 @@ def _parse_zones(data: dict) -> tuple[ZoneSpec, ...]:
                 label=raw["label"],
                 preset=preset,
                 co2_generation_per_second=co2_generation,
+                co2_generation_epsilon=co2_epsilon,
+                co2_noise_correlation=noise_correlation,
+                occupancy_profile=occupancy_profile,
                 air_volume=air_volume,
             )
         )
     return tuple(zones)
+
+
+def _parse_occupancy_profile(
+    raw_profile: Any, zone_id: str
+) -> tuple[OccupancyPeriod, ...]:
+    if not isinstance(raw_profile, list):
+        raise ValueError(f"zone {zone_id!r}: occupancy_profile must be a list")
+    periods: list[OccupancyPeriod] = []
+    for raw in raw_profile:
+        if not isinstance(raw, dict):
+            raise ValueError(
+                f"zone {zone_id!r}: occupancy period must be an object"
+            )
+        for field_name in ("start_tick", "end_tick", "multiplier"):
+            if field_name not in raw:
+                raise ValueError(
+                    f"zone {zone_id!r}: occupancy period is missing {field_name!r}"
+                )
+        start = raw["start_tick"]
+        end = raw["end_tick"]
+        if (
+            isinstance(start, bool)
+            or not isinstance(start, int)
+            or isinstance(end, bool)
+            or not isinstance(end, int)
+        ):
+            raise ValueError(
+                f"zone {zone_id!r}: occupancy ticks must be integers"
+            )
+        if start < 1 or end < start:
+            raise ValueError(
+                f"zone {zone_id!r}: occupancy tick range is invalid"
+            )
+        multiplier = _require_number(
+            raw["multiplier"], f"zone {zone_id!r}: occupancy multiplier"
+        )
+        if multiplier < 0.0:
+            raise ValueError(
+                f"zone {zone_id!r}: occupancy multiplier must not be negative"
+            )
+        periods.append(OccupancyPeriod(start, end, multiplier))
+    periods.sort(key=lambda period: period.start_tick)
+    for previous, current in zip(periods, periods[1:]):
+        if current.start_tick <= previous.end_tick:
+            raise ValueError(
+                f"zone {zone_id!r}: occupancy periods must not overlap"
+            )
+    return tuple(periods)
 
 
 def _parse_connections(data: dict, zone_ids: set[str]) -> tuple[ConnectionSpec, ...]:
