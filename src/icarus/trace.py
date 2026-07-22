@@ -13,15 +13,17 @@ from pathlib import Path
 class TickRecord:
     """The persisted state of one tick.
 
-    ``zones`` maps every zone id to its CO2 readings; the air_processing
-    bay's entry also carries its cumulative ``captured_co2`` counter.
-    ``connections`` maps every connection id to its actual ``airflow`` and
-    ``health`` for the tick.
+    ``zones`` contains source mass, stored mass and concentration telemetry.
+    ``connections`` contains requested and allocated airflow. ``actuators``
+    records setpoint, actual position, movement, power and tracking residual.
+    ``system`` records the shared fan capacity and allocation scale.
     """
 
     tick: int
     zones: dict[str, dict[str, float]] = field(default_factory=dict)
     connections: dict[str, dict[str, float]] = field(default_factory=dict)
+    actuators: dict[str, dict[str, float]] = field(default_factory=dict)
+    system: dict[str, float] = field(default_factory=dict)
 
 
 class TraceWriter:

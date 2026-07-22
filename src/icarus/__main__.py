@@ -32,7 +32,8 @@ def main(argv: list[str]) -> int:
     records = run_scenario(config, trace_path=trace_path)
     last = records[-1]
     zone_summary = " ".join(
-        f"{zone.id}_co2={last.zones[zone.id]['co2']:.3f}"
+        f"{zone.id}_co2_concentration="
+        f"{last.zones[zone.id]['co2_concentration']:.4f}"
         for zone in config.non_processing_zones()
     )
     processing_id = config.processing_zone().id

@@ -20,11 +20,21 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
 ):
     config = load_scenario(standard_scenario_path)
 
-    assert config.version == 1
+    assert config.version == 5
     assert len(config.zones) == 4
     assert len(config.connections) == 6
     assert {z.id for z in config.zones} == ZONE_IDS
     assert {c.id for c in config.connections} == CONNECTION_IDS
+    assert config.control.lower_threshold == 0.0
+    assert config.control.upper_threshold == 0.2
+    assert config.control.minimum_command == 0.1
+    assert config.control.maximum_command == 1.0
+    assert config.actuator.full_stroke_seconds == 30.0
+    assert config.actuator.moving_power == 1.0
+    assert config.actuator.holding_power == 0.05
+    assert config.simulation.random_seed == 7
+    assert config.air_system.shared_airflow_capacity == 24.0
+    assert config.air_system.scrubber_removal_fraction == 0.5
 
 
 def test_standard_habitat_zone_fields(standard_scenario_path):
@@ -37,12 +47,17 @@ def test_standard_habitat_zone_fields(standard_scenario_path):
     assert by_id["lab"].preset == "lab"
     assert by_id["processing"].preset == "air_processing"
 
-    # Crew cabins carry a positive CO2 source; lab and processing start at zero.
+    # Occupied zones carry a positive source; processing remains at zero.
     assert by_id["cabin_a"].co2_generation_per_second > 0.0
     assert by_id["cabin_b"].co2_generation_per_second > 0.0
-    assert by_id["lab"].co2_generation_per_second == 0.0
+    assert by_id["lab"].co2_generation_per_second == 0.15
     assert by_id["processing"].co2_generation_per_second == 0.0
     assert all(z.air_volume > 0.0 for z in config.zones)
+    assert by_id["cabin_a"].co2_generation_epsilon == 0.18
+    assert by_id["cabin_b"].co2_generation_epsilon == 0.18
+    assert by_id["lab"].co2_generation_epsilon == 0.04
+    assert by_id["cabin_a"].co2_noise_correlation == 0.85
+    assert len(by_id["cabin_a"].occupancy_profile) == 3
 
 
 def test_standard_habitat_hub_paths_are_healthy_and_paired(standard_scenario_path):
@@ -79,6 +94,51 @@ INVALID_CASES = [
         lambda d: d.pop("version"),
         "version",
         id="missing_version",
+    ),
+    pytest.param(
+        lambda d: d.pop("control"),
+        "control",
+        id="missing_control",
+    ),
+    pytest.param(
+        lambda d: d.pop("actuator"),
+        "actuator",
+        id="missing_actuator",
+    ),
+    pytest.param(
+        lambda d: d.pop("simulation"),
+        "simulation",
+        id="missing_simulation",
+    ),
+    pytest.param(
+        lambda d: d.pop("air_system"),
+        "air_system",
+        id="missing_air_system",
+    ),
+    pytest.param(
+        lambda d: d["air_system"].update(shared_airflow_capacity=0.0),
+        "shared_airflow_capacity",
+        id="invalid_shared_capacity",
+    ),
+    pytest.param(
+        lambda d: d["simulation"].update(random_seed=True),
+        "random_seed",
+        id="invalid_random_seed",
+    ),
+    pytest.param(
+        lambda d: d["actuator"].update(full_stroke_seconds=0.0),
+        "full stroke",
+        id="invalid_actuator_stroke_time",
+    ),
+    pytest.param(
+        lambda d: d["control"].update(co2_upper_threshold=0.0),
+        "upper threshold",
+        id="invalid_control_thresholds",
+    ),
+    pytest.param(
+        lambda d: d["control"].update(maximum_command=1.5),
+        "maximum actuator command",
+        id="invalid_maximum_command",
     ),
     pytest.param(
         lambda d: d.update(zones=[]),
@@ -141,6 +201,31 @@ INVALID_CASES = [
         ],
         "co2_generation_per_second",
         id="negative_co2_source",
+    ),
+    pytest.param(
+        lambda d: [
+            z.update(co2_generation_epsilon=-0.1)
+            for z in d["zones"]
+            if z["id"] == "cabin_a"
+        ],
+        "co2_generation_epsilon",
+        id="negative_co2_epsilon",
+    ),
+    pytest.param(
+        lambda d: [
+            z.update(co2_noise_correlation=1.1)
+            for z in d["zones"]
+            if z["id"] == "cabin_a"
+        ],
+        "co2_noise_correlation",
+        id="invalid_noise_correlation",
+    ),
+    pytest.param(
+        lambda d: d["zones"][0]["occupancy_profile"].append(
+            {"start_tick": 20, "end_tick": 45, "multiplier": 1.0}
+        ),
+        "must not overlap",
+        id="overlapping_occupancy_periods",
     ),
     pytest.param(
         lambda d: [
