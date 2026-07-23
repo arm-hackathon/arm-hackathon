@@ -34,13 +34,16 @@ seven top-level keys:
 
 | Key | Meaning |
 |---|---|
-| `version` | Format version. Only `5` is supported. |
+| `version` | Format version. Only `6` is supported. |
 | `zones` | List of rooms. |
 | `connections` | List of directed air paths between rooms. |
 | `control` | CO₂ thresholds and actuator command bounds. |
 | `actuator` | Stroke time and abstract power characteristics. |
 | `simulation` | Seed used for deterministic source variation. |
 | `air_system` | Shared fan capacity and scrubber removal fraction. |
+
+Version 6 is a closed schema. A version-5 scenario must be updated to version
+6 and contain only the documented fields before it can run.
 
 Every zone has exactly these fields:
 

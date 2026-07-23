@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-24 — scenario and replay validation hardening
+
+- Bumped the scenario format from version 5 to version 6 because unknown
+  scenario fields now fail validation rather than being ignored.
+- Added strict unknown-field validation across scenario blocks, zones,
+  connections and occupancy periods.
+- Tightened visualiser input validation for replay tick sequence, stable entity
+  ids, airflow bounds and connection health.
+
 ## 2026-07-22 — `model-improvement` compared with `main`
 
 ### Simulation and control
