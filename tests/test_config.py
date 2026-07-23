@@ -447,3 +447,24 @@ def test_load_scenario_rejects_non_object_document(tmp_path):
 
     with pytest.raises(ValueError, match="object"):
         load_scenario(path)
+
+
+def test_rejects_unknown_top_level_field(standard_doc):
+    standard_doc["simulaton"] = {"random_seed": 7}
+
+    with pytest.raises(ValueError, match="unexpected field 'simulaton'"):
+        parse_scenario(standard_doc)
+
+
+def test_rejects_unknown_zone_field(standard_doc):
+    standard_doc["zones"][0]["co2_generation_epslion"] = 0.1
+
+    with pytest.raises(ValueError, match="unexpected field 'co2_generation_epslion'"):
+        parse_scenario(standard_doc)
+
+
+def test_rejects_unknown_connection_field(standard_doc):
+    standard_doc["connections"][0]["max_airfow"] = 10.0
+
+    with pytest.raises(ValueError, match="unexpected field 'max_airfow'"):
+        parse_scenario(standard_doc)

@@ -152,3 +152,63 @@ def test_visualiser_cli_rejects_missing_trace(tmp_path, capsys):
 
     assert "trace file not found" in capsys.readouterr().err
     assert not report.exists()
+
+
+def test_load_trace_rejects_non_integer_tick(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    rows[0]["tick"] = 1.5
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "tick must be a positive integer" in str(exc)
+    else:
+        raise AssertionError("fractional tick should be rejected")
+
+
+def test_load_trace_rejects_non_consecutive_ticks(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    rows[1]["tick"] = 3
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "expected tick 2" in str(exc)
+    else:
+        raise AssertionError("non-consecutive tick should be rejected")
+
+
+def test_load_trace_rejects_schema_drift(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    del rows[1]["zones"]["cabin"]
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "zones do not match" in str(exc)
+    else:
+        raise AssertionError("schema drift should be rejected")
+
+
+def test_load_trace_rejects_negative_airflow(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    rows[0]["connections"]["cabin_to_processing"]["airflow"] = -0.1
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "airflow must not be negative" in str(exc)
+    else:
+        raise AssertionError("negative airflow should be rejected")

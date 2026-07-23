@@ -47,7 +47,18 @@ _CONTROL_FIELDS = (
     "maximum_command",
 )
 _ACTUATOR_FIELDS = ("full_stroke_seconds", "moving_power", "holding_power")
+_SIMULATION_FIELDS = ("random_seed",)
 _AIR_SYSTEM_FIELDS = ("shared_airflow_capacity", "scrubber_removal_fraction")
+_OCCUPANCY_FIELDS = ("start_tick", "end_tick", "multiplier")
+_TOP_LEVEL_FIELDS = (
+    "version",
+    "zones",
+    "connections",
+    "control",
+    "actuator",
+    "simulation",
+    "air_system",
+)
 
 
 @dataclass(frozen=True)
@@ -166,14 +177,17 @@ def parse_scenario(data: Any) -> HabitatConfig:
     """
     if not isinstance(data, dict):
         raise ValueError("scenario document must be a JSON object")
+    _reject_unknown_fields(data, _TOP_LEVEL_FIELDS, "scenario")
 
     version = _parse_version(data)
     zones = _parse_zones(data)
+
     processing_count = sum(1 for z in zones if z.preset == "air_processing")
     if processing_count == 0:
         raise ValueError("scenario has no air_processing zone")
     if processing_count > 1:
         raise ValueError("scenario has more than one air_processing zone")
+
     connections = _parse_connections(data, {z.id for z in zones})
     _enforce_hub_pairing(zones, connections)
     control = _parse_control(data)
@@ -210,6 +224,7 @@ def _parse_control(data: dict) -> CO2ControlSettings:
     raw = data["control"]
     if not isinstance(raw, dict):
         raise ValueError("'control' must be an object")
+    _reject_unknown_fields(raw, _CONTROL_FIELDS, "control")
     for field_name in _CONTROL_FIELDS:
         if field_name not in raw:
             raise ValueError(f"control is missing required field {field_name!r}")
@@ -238,6 +253,7 @@ def _parse_actuator(data: dict) -> ActuatorSettings:
     raw = data["actuator"]
     if not isinstance(raw, dict):
         raise ValueError("'actuator' must be an object")
+    _reject_unknown_fields(raw, _ACTUATOR_FIELDS, "actuator")
     for field_name in _ACTUATOR_FIELDS:
         if field_name not in raw:
             raise ValueError(f"actuator is missing required field {field_name!r}")
@@ -263,6 +279,7 @@ def _parse_simulation(data: dict) -> SimulationSettings:
     raw = data["simulation"]
     if not isinstance(raw, dict):
         raise ValueError("'simulation' must be an object")
+    _reject_unknown_fields(raw, _SIMULATION_FIELDS, "simulation")
     if "random_seed" not in raw:
         raise ValueError("simulation is missing required field 'random_seed'")
     seed = raw["random_seed"]
@@ -277,6 +294,7 @@ def _parse_air_system(data: dict) -> AirSystemSettings:
     raw = data["air_system"]
     if not isinstance(raw, dict):
         raise ValueError("'air_system' must be an object")
+    _reject_unknown_fields(raw, _AIR_SYSTEM_FIELDS, "air_system")
     for field_name in _AIR_SYSTEM_FIELDS:
         if field_name not in raw:
             raise ValueError(f"air_system is missing required field {field_name!r}")
@@ -295,6 +313,14 @@ def _parse_air_system(data: dict) -> AirSystemSettings:
         shared_airflow_capacity=capacity,
         scrubber_removal_fraction=removal,
     )
+
+
+def _reject_unknown_fields(
+    raw: dict[str, Any], allowed_fields: tuple[str, ...], description: str
+) -> None:
+    unexpected = sorted(set(raw) - set(allowed_fields))
+    if unexpected:
+        raise ValueError(f"{description} has unexpected field {unexpected[0]!r}")
 
 
 def _require_number(value: Any, what: str) -> float:
@@ -324,6 +350,7 @@ def _parse_zones(data: dict) -> tuple[ZoneSpec, ...]:
     for raw in raw_zones:
         if not isinstance(raw, dict):
             raise ValueError(f"zone entry must be an object, got {raw!r}")
+        _reject_unknown_fields(raw, _ZONE_FIELDS, f"zone {raw.get('id')!r}")
         for field_name in _ZONE_FIELDS:
             if field_name not in raw:
                 raise ValueError(f"zone {raw.get('id')!r} is missing required field {field_name!r}")
@@ -397,6 +424,9 @@ def _parse_occupancy_profile(
             raise ValueError(
                 f"zone {zone_id!r}: occupancy period must be an object"
             )
+        _reject_unknown_fields(
+            raw, _OCCUPANCY_FIELDS, f"zone {zone_id!r}: occupancy period"
+        )
         for field_name in ("start_tick", "end_tick", "multiplier"):
             if field_name not in raw:
                 raise ValueError(
@@ -446,6 +476,9 @@ def _parse_connections(data: dict, zone_ids: set[str]) -> tuple[ConnectionSpec, 
     for raw in raw_connections:
         if not isinstance(raw, dict):
             raise ValueError(f"connection entry must be an object, got {raw!r}")
+        _reject_unknown_fields(
+            raw, _CONNECTION_FIELDS, f"connection {raw.get('id')!r}"
+        )
         for field_name in _CONNECTION_FIELDS:
             if field_name not in raw:
                 raise ValueError(
