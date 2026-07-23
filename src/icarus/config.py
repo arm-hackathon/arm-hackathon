@@ -25,7 +25,7 @@ from typing import Any
 from icarus.actuator import ActuatorSettings
 from icarus.control import CO2ControlSettings
 
-SUPPORTED_SCENARIO_VERSION = 5
+SUPPORTED_SCENARIO_VERSION = 6
 
 ALLOWED_PRESETS = frozenset({"crew_cabin", "lab", "air_processing", "storage"})
 
