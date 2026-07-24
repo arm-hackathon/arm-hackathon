@@ -28,8 +28,12 @@ The current graph supports this hub layout only. It is not a general fluid solve
 - Loads and validates versioned JSON scenario files.
 - Runs a fixed, deterministic 120-tick simulation.
 - Calculates airflow from each path's configured maximum airflow and health.
+- Optionally applies a deterministic gradual primary-fan degradation profile
+  over declared ticks.
 - Models CO2 generation in zones and removal in the air-processing bay.
-- Writes one JSONL trace row per tick with zone CO2, captured CO2, connection airflow, and connection health.
+- Writes one JSONL trace row per tick with observable zone CO2, captured CO2,
+  and connection airflow.
+- Keeps fault labels and hidden health/effectiveness values out of the trace.
 - Produces byte-identical records and traces for repeated runs of the same scenario.
 - Rejects invalid scenario graphs with clear errors.
 
@@ -60,6 +64,14 @@ uv run --extra dev python -m icarus \
 
 A successful run prints the source scenario, tick count, trace path, and final zone/captured-CO2 state. The standard scenario produces 120 trace rows.
 
+The gradual-degradation example uses the same command shape:
+
+```bash
+PYTHONPATH=src python -m icarus \
+  scenarios/primary_fan_degradation.json \
+  traces/primary_fan_degradation.jsonl
+```
+
 ## Repository layout
 
 ```text
@@ -82,8 +94,8 @@ The simulation models circulation and CO2 removal only. Oxygen, pressure, temper
 
 The implementation deliberately does not yet contain:
 
-- fault profiles that change connection health during a run
 - AI or ML fault detection
+- model training or model-labelled trace features
 - ONNX inference, quantization, or Arm benchmarking
 - a safety governor, redundant fan, or automatic actuator command
 - a dashboard, API, MQTT, database, Docker deployment, or cloud service

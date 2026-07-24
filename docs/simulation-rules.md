@@ -30,13 +30,14 @@ safety threshold.
 ## The scenario file
 
 A scenario is versioned JSON (see `scenarios/standard_habitat.json`) with
-three top-level keys:
+three required top-level keys and one optional key:
 
 | Key | Meaning |
 |---|---|
 | `version` | Format version. Only `1` is supported. |
 | `zones` | List of rooms. |
 | `connections` | List of directed air paths between rooms. |
+| `fault_profiles` | Optional list of deterministic scenario-layer faults. |
 
 Every zone has exactly these fields:
 
@@ -57,6 +58,23 @@ Every connection has exactly these fields:
 | `to` | Target zone id. |
 | `max_airflow` | Air the path moves per tick at health 1.0 (`> 0`). |
 | `health` | Path health in `0.0..1.0`. `1.0` is fully healthy. |
+
+The supported fault profile is `gradual_primary_fan_degradation`. It has
+exactly these declared fields:
+
+| Field | Meaning |
+|---|---|
+| `type` | Must be `gradual_primary_fan_degradation`. |
+| `connection_id` | Outbound path from a non-processing zone to the processing bay. |
+| `start_tick` | Positive tick at which effectiveness is still `1.0`. |
+| `end_tick` | Later tick at which the final effectiveness is reached. |
+| `end_effectiveness` | Final multiplier in `[0.0, 1.0)`, held after `end_tick`. |
+
+Between the two declared ticks the effectiveness multiplier is linearly
+interpolated directly from the tick number. The profile targets the outbound
+path because that path meters the full circulation loop; the paired return
+path reports the same resulting airflow. Only one fault profile may target a
+given primary-fan connection.
 
 Exactly one zone must use the `air_processing` preset; it is the scrubber
 bay. The scrubber's removal fraction is a declared constant
@@ -82,6 +100,8 @@ air-processing bay.
 
 Every non-processing zone has one directed path to the processing bay and
 one directed path back. All six connections start at health `1.0`.
+The standard scenario declares no fault profiles, so its numerical behaviour
+is unchanged.
 
 ## One tick, in order
 
@@ -89,16 +109,24 @@ Time advances in fixed 1-second ticks. Each tick, exactly this happens:
 
 1. Every zone adds its configured `co2_generation_per_second` to its own
    airborne CO2.
-2. For each non-processing zone, the loop airflow is calculated from its
-   path to the processing bay: `airflow = max_airflow * health`.
-3. The scrubber captures `zone_co2 * (airflow / air_volume) *
+2. The scenario layer evaluates any primary-fan degradation profile directly
+   from the current tick. With no profile, effectiveness is `1.0`.
+3. For each non-processing zone, the loop airflow is calculated from its
+   path to the processing bay:
+   `airflow = max_airflow * health * effectiveness`.
+4. The scrubber captures `zone_co2 * (airflow / air_volume) *
    scrubber_removal_fraction` CO2 from the air that moved through that
    path. The zone keeps the rest.
-4. All CO2 captured this tick is added to the processing bay's cumulative
+5. All CO2 captured this tick is added to the processing bay's cumulative
    captured counter, which only ever grows.
-5. A trace row is appended to the JSONL trace: every zone's CO2 (plus the
-   processing bay's captured counter) and every connection's actual
-   airflow and health.
+6. A trace row is appended to the JSONL trace: every zone's observable CO2
+   (plus the processing bay's captured counter) and every connection's actual
+   airflow.
+
+The trace deliberately excludes connection health, fault type/label, and the
+hidden effectiveness multiplier. Those values are scenario truth, not model
+features. The observable consequences are the reduced airflow, reduced CO2
+capture, and resulting zone CO2 trajectory.
 
 A loop's return path reports the same actual airflow as its outbound path:
 the outbound leg meters the loop, and the cleaned air comes back along the
@@ -141,13 +169,19 @@ CLI prints it and exits non-zero) when it has:
   only), or more than one directed path between the same zone pair;
 - a non-processing zone missing either its path to processing or its
   return path from processing.
+- a malformed fault profile, an unsupported fault type, an unknown or return
+  connection target, non-positive/out-of-order ticks, a final effectiveness
+  outside `[0.0, 1.0)`, or duplicate profiles for one primary fan.
 
 ## Determinism
 
-Fixed ticks, fixed inputs, no randomness, no wall clock. Running the same
-scenario file twice produces identical records, and trace files are
-byte-identical between runs (floats serialise through `repr` with sorted
-JSON keys). This is what makes a trace a replay.
+Fixed ticks, fixed inputs, no randomness, no wall clock. Fault effectiveness
+is calculated from the declared tick rather than accumulated from prior state.
+Running the same scenario file twice therefore produces identical records,
+and trace files are byte-identical between runs (floats serialise through
+`repr` with sorted JSON keys). This is what makes a trace a replay. The current
+repository has no seed input; the deterministic profile does not introduce
+one or depend on random sampling.
 
 ## How to run
 
@@ -157,6 +191,9 @@ python3 -m pytest
 
 # produce a replay trace from an explicit scenario file
 PYTHONPATH=src python3 -m icarus scenarios/standard_habitat.json traces/standard_habitat.jsonl
+
+# produce a trace with gradual primary-fan degradation
+PYTHONPATH=src python3 -m icarus scenarios/primary_fan_degradation.json traces/primary_fan_degradation.jsonl
 ```
 
 Runtime code uses only the Python standard library. `pytest` is needed for
@@ -164,8 +201,8 @@ the test suite only.
 
 ## Deliberately not here yet
 
-- Gradual fault profiles (connection health changing over time).
-- AI/ML fault detection (ONNX model, quantization, benchmarks).
+- AI/ML fault detection or model training.
+- ONNX inference, PyTorch, quantization, or benchmarks.
 - Safety governor, backup fan, or any automatic command.
 - Dashboard, API, MQTT, database, hardware integration, Docker, cloud.
 - Any claim about real lunar ECLSS safety or engineering accuracy.

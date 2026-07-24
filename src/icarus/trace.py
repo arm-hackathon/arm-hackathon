@@ -15,8 +15,9 @@ class TickRecord:
 
     ``zones`` maps every zone id to its CO2 readings; the air_processing
     bay's entry also carries its cumulative ``captured_co2`` counter.
-    ``connections`` maps every connection id to its actual ``airflow`` and
-    ``health`` for the tick.
+    ``connections`` maps every connection id to its actual ``airflow`` for
+    the tick. Scenario fault labels and hidden effectiveness/health values are
+    intentionally excluded from the persisted telemetry.
     """
 
     tick: int
@@ -39,6 +40,7 @@ class TraceWriter:
     def write(self, record: TickRecord) -> None:
         if self._handle is None:
             raise RuntimeError("TraceWriter.write() called outside a 'with' block")
+        _validate_observable_telemetry(record)
         # sort_keys keeps the byte layout stable so identical runs diff clean.
         self._handle.write(json.dumps(asdict(record), sort_keys=True) + "\n")
 
@@ -46,3 +48,20 @@ class TraceWriter:
         if self._handle is not None:
             self._handle.close()
         return False
+
+
+def _validate_observable_telemetry(record: TickRecord) -> None:
+    """Reject hidden scenario truth before it can enter a trace."""
+    for zone_id, telemetry in record.zones.items():
+        fields = set(telemetry)
+        if "co2" not in fields or not fields <= {"co2", "captured_co2"}:
+            raise ValueError(
+                f"zone {zone_id!r} trace telemetry must contain only observable "
+                f"co2/captured_co2 fields"
+            )
+    for connection_id, telemetry in record.connections.items():
+        if set(telemetry) != {"airflow"}:
+            raise ValueError(
+                f"connection {connection_id!r} trace telemetry must contain only "
+                f"observable airflow"
+            )

@@ -25,6 +25,7 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
     assert len(config.connections) == 6
     assert {z.id for z in config.zones} == ZONE_IDS
     assert {c.id for c in config.connections} == CONNECTION_IDS
+    assert config.fault_profiles == ()
 
 
 def test_standard_habitat_zone_fields(standard_scenario_path):
@@ -58,6 +59,91 @@ def test_standard_habitat_hub_paths_are_healthy_and_paired(standard_scenario_pat
         assert outbound.to_zone == "processing"
         assert inbound.from_zone == "processing"
         assert inbound.to_zone == zone.id
+
+
+def test_gradual_primary_fan_profile_is_loaded_and_interpolated(
+    degradation_scenario_path,
+):
+    config = load_scenario(degradation_scenario_path)
+
+    assert len(config.fault_profiles) == 1
+    profile = config.fault_profiles[0]
+    assert profile.connection_id == "cabin_a_to_processing"
+    assert profile.start_tick == 20
+    assert profile.end_tick == 80
+    assert profile.end_effectiveness == pytest.approx(0.4)
+    assert profile.effectiveness_at(19) == pytest.approx(1.0)
+    assert profile.effectiveness_at(20) == pytest.approx(1.0)
+    assert profile.effectiveness_at(50) == pytest.approx(0.7)
+    assert profile.effectiveness_at(80) == pytest.approx(0.4)
+    assert profile.effectiveness_at(120) == pytest.approx(0.4)
+
+
+def _fault_profile(**overrides):
+    profile = {
+        "type": "gradual_primary_fan_degradation",
+        "connection_id": "cabin_a_to_processing",
+        "start_tick": 20,
+        "end_tick": 80,
+        "end_effectiveness": 0.4,
+    }
+    profile.update(overrides)
+    return profile
+
+
+@pytest.mark.parametrize(
+    "fault_profiles,match",
+    [
+        pytest.param({}, "must be a list", id="fault_profiles_not_list"),
+        pytest.param(
+            [{"type": "gradual_primary_fan_degradation"}],
+            "missing required field",
+            id="missing_fault_field",
+        ),
+        pytest.param(
+            [_fault_profile(type="instant_failure")],
+            "unsupported fault profile type",
+            id="unsupported_fault_type",
+        ),
+        pytest.param(
+            [_fault_profile(connection_id="missing")],
+            "unknown connection",
+            id="unknown_fault_connection",
+        ),
+        pytest.param(
+            [_fault_profile(connection_id="processing_to_cabin_a")],
+            "not a primary fan",
+            id="return_path_is_not_primary_fan",
+        ),
+        pytest.param(
+            [_fault_profile(start_tick=0)],
+            "start_tick.*positive",
+            id="non_positive_start_tick",
+        ),
+        pytest.param(
+            [_fault_profile(end_tick=20)],
+            "end_tick must be after start_tick",
+            id="non_gradual_tick_range",
+        ),
+        pytest.param(
+            [_fault_profile(end_effectiveness=1.0)],
+            "end_effectiveness",
+            id="profile_must_reduce_effectiveness",
+        ),
+        pytest.param(
+            [_fault_profile(), _fault_profile(end_effectiveness=0.2)],
+            "more than one fault profile",
+            id="duplicate_fault_target",
+        ),
+    ],
+)
+def test_invalid_fault_profile_is_rejected_clearly(
+    standard_doc, fault_profiles, match
+):
+    standard_doc["fault_profiles"] = fault_profiles
+
+    with pytest.raises(ValueError, match=match):
+        parse_scenario(standard_doc)
 
 
 def _mutate(doc, fn):
