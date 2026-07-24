@@ -45,6 +45,14 @@ def load_trace(path) -> list[dict[str, Any]]:
                 f"trace line {line_number} is not valid JSON: {exc.msg}"
             ) from None
         _validate_row(row, line_number)
+        expected_tick = len(rows) + 1
+        if row["tick"] != expected_tick:
+            raise ValueError(
+                f"trace line {line_number} expected tick {expected_tick}, "
+                f"got {row['tick']}"
+            )
+        if rows:
+            _validate_schema(row, rows[0], line_number)
         rows.append(row)
 
     if not rows:
@@ -59,13 +67,23 @@ def _finite_number(value: Any, description: str) -> None:
         raise ValueError(f"{description} must be finite")
 
 
+def _validate_schema(
+    row: dict[str, Any], first_row: dict[str, Any], line_number: int
+) -> None:
+    for field in ("zones", "connections", "actuators"):
+        if set(row[field]) != set(first_row[field]):
+            raise ValueError(f"trace line {line_number} {field} do not match line 1")
+
+
 def _validate_row(row: Any, line_number: int) -> None:
     if not isinstance(row, dict):
         raise ValueError(f"trace line {line_number} must be a JSON object")
     for field in ("tick", "zones", "connections", "actuators", "system"):
         if field not in row:
             raise ValueError(f"trace line {line_number} is missing {field!r}")
-    _finite_number(row["tick"], f"trace line {line_number} tick")
+    tick = row["tick"]
+    if isinstance(tick, bool) or not isinstance(tick, int) or tick < 1:
+        raise ValueError(f"trace line {line_number} tick must be a positive integer")
     if not isinstance(row["zones"], dict):
         raise ValueError(f"trace line {line_number} 'zones' must be an object")
     if not isinstance(row["connections"], dict):
@@ -116,6 +134,21 @@ def _validate_row(row: Any, line_number: int) -> None:
             _finite_number(
                 readings[field],
                 f"trace line {line_number} connection {connection_id!r} {field}",
+            )
+        if readings["requested_airflow"] < 0.0:
+            raise ValueError(
+                f"trace line {line_number} connection {connection_id!r} "
+                "requested_airflow must not be negative"
+            )
+        if readings["airflow"] < 0.0:
+            raise ValueError(
+                f"trace line {line_number} connection {connection_id!r} "
+                "airflow must not be negative"
+            )
+        if not 0.0 <= readings["health"] <= 1.0:
+            raise ValueError(
+                f"trace line {line_number} connection {connection_id!r} "
+                "health must be in 0.0..1.0"
             )
 
     actuator_fields = (

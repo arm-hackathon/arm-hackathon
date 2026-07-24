@@ -34,13 +34,16 @@ seven top-level keys:
 
 | Key | Meaning |
 |---|---|
-| `version` | Format version. Only `5` is supported. |
+| `version` | Format version. Only `6` is supported. |
 | `zones` | List of rooms. |
 | `connections` | List of directed air paths between rooms. |
 | `control` | CO₂ thresholds and actuator command bounds. |
 | `actuator` | Stroke time and abstract power characteristics. |
 | `simulation` | Seed used for deterministic source variation. |
 | `air_system` | Shared fan capacity and scrubber removal fraction. |
+
+Version 6 is a closed schema. A version-5 scenario must be updated to version
+6 and contain only the documented fields before it can run.
 
 Every zone has exactly these fields:
 
@@ -168,6 +171,8 @@ occupancy changes, healthy cabin concentration remains below `0.30`.
 CLI prints it and exits non-zero) when it has:
 
 - an unsupported or missing version;
+- an unexpected field at the scenario, block, zone, connection or occupancy
+  period level;
 - missing or invalid simulation seed;
 - missing or invalid shared airflow or scrubber settings;
 - missing, non-finite or inconsistent CO₂ control settings;
@@ -188,6 +193,11 @@ CLI prints it and exits non-zero) when it has:
   only), or more than one directed path between the same zone pair;
 - a non-processing zone missing either its path to processing or its
   return path from processing.
+
+The HTML visualiser also rejects a malformed replay trace. A trace must use
+positive, consecutive integer ticks beginning at `1`, keep the same zone,
+connection and actuator ids on every row, and contain non-negative requested
+and allocated airflow. Connection health must remain in `0.0..1.0`.
 
 ## Determinism
 

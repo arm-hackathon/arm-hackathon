@@ -20,7 +20,7 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
 ):
     config = load_scenario(standard_scenario_path)
 
-    assert config.version == 5
+    assert config.version == 6
     assert len(config.zones) == 4
     assert len(config.connections) == 6
     assert {z.id for z in config.zones} == ZONE_IDS
@@ -35,6 +35,13 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
     assert config.simulation.random_seed == 7
     assert config.air_system.shared_airflow_capacity == 24.0
     assert config.air_system.scrubber_removal_fraction == 0.5
+
+
+def test_version_five_scenarios_are_rejected(standard_doc):
+    standard_doc["version"] = 5
+
+    with pytest.raises(ValueError, match="unsupported version 5; expected 6"):
+        parse_scenario(standard_doc)
 
 
 def test_standard_habitat_zone_fields(standard_scenario_path):
@@ -447,3 +454,24 @@ def test_load_scenario_rejects_non_object_document(tmp_path):
 
     with pytest.raises(ValueError, match="object"):
         load_scenario(path)
+
+
+def test_rejects_unknown_top_level_field(standard_doc):
+    standard_doc["simulaton"] = {"random_seed": 7}
+
+    with pytest.raises(ValueError, match="unexpected field 'simulaton'"):
+        parse_scenario(standard_doc)
+
+
+def test_rejects_unknown_zone_field(standard_doc):
+    standard_doc["zones"][0]["co2_generation_epslion"] = 0.1
+
+    with pytest.raises(ValueError, match="unexpected field 'co2_generation_epslion'"):
+        parse_scenario(standard_doc)
+
+
+def test_rejects_unknown_connection_field(standard_doc):
+    standard_doc["connections"][0]["max_airfow"] = 10.0
+
+    with pytest.raises(ValueError, match="unexpected field 'max_airfow'"):
+        parse_scenario(standard_doc)
