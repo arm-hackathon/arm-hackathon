@@ -212,3 +212,65 @@ def test_load_trace_rejects_negative_airflow(tmp_path):
         assert "airflow must not be negative" in str(exc)
     else:
         raise AssertionError("negative airflow should be rejected")
+
+
+def test_load_trace_rejects_connection_id_drift(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    rows[1]["connections"]["other_duct"] = rows[1]["connections"].pop(
+        "cabin_to_processing"
+    )
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "connections do not match" in str(exc)
+    else:
+        raise AssertionError("connection id drift should be rejected")
+
+
+def test_load_trace_rejects_actuator_id_drift(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    rows[1]["actuators"]["other_actuator"] = rows[1]["actuators"].pop("cabin")
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "actuators do not match" in str(exc)
+    else:
+        raise AssertionError("actuator id drift should be rejected")
+
+
+def test_load_trace_rejects_negative_requested_airflow(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    rows[0]["connections"]["cabin_to_processing"]["requested_airflow"] = -0.1
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "requested_airflow must not be negative" in str(exc)
+    else:
+        raise AssertionError("negative requested airflow should be rejected")
+
+
+def test_load_trace_rejects_out_of_range_connection_health(tmp_path):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    rows[0]["connections"]["cabin_to_processing"]["health"] = 1.1
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    try:
+        load_trace(trace)
+    except ValueError as exc:
+        assert "health must be in 0.0..1.0" in str(exc)
+    else:
+        raise AssertionError("out-of-range connection health should be rejected")
