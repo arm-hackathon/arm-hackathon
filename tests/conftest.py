@@ -8,11 +8,19 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STANDARD_SCENARIO_PATH = REPO_ROOT / "scenarios" / "standard_habitat.json"
+DEGRADATION_SCENARIO_PATH = (
+    REPO_ROOT / "scenarios" / "primary_fan_degradation.json"
+)
 
 
 @pytest.fixture
 def standard_scenario_path() -> Path:
     return STANDARD_SCENARIO_PATH
+
+
+@pytest.fixture
+def degradation_scenario_path() -> Path:
+    return DEGRADATION_SCENARIO_PATH
 
 
 @pytest.fixture
