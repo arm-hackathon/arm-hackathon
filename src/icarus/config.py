@@ -25,7 +25,7 @@ from typing import Any
 from icarus.actuator import ActuatorSettings
 from icarus.control import CO2ControlSettings
 
-SUPPORTED_SCENARIO_VERSION = 6
+SUPPORTED_SCENARIO_VERSION = 7
 
 ALLOWED_PRESETS = frozenset({"crew_cabin", "lab", "air_processing", "storage"})
 
@@ -50,6 +50,14 @@ _ACTUATOR_FIELDS = ("full_stroke_seconds", "moving_power", "holding_power")
 _SIMULATION_FIELDS = ("random_seed",)
 _AIR_SYSTEM_FIELDS = ("shared_airflow_capacity", "scrubber_removal_fraction")
 _OCCUPANCY_FIELDS = ("start_tick", "end_tick", "multiplier")
+_FAULT_PROFILE_FIELDS = (
+    "type",
+    "connection_id",
+    "start_tick",
+    "end_tick",
+    "end_effectiveness",
+)
+_GRADUAL_PRIMARY_FAN_DEGRADATION = "gradual_primary_fan_degradation"
 _TOP_LEVEL_FIELDS = (
     "version",
     "zones",
@@ -58,6 +66,7 @@ _TOP_LEVEL_FIELDS = (
     "actuator",
     "simulation",
     "air_system",
+    "fault_profiles",
 )
 
 
@@ -111,6 +120,25 @@ class ConnectionSpec:
 
 
 @dataclass(frozen=True)
+class GradualPrimaryFanDegradation:
+    """A deterministic linear loss of delivery effectiveness for one loop."""
+
+    connection_id: str
+    start_tick: int
+    end_tick: int
+    end_effectiveness: float
+
+    def effectiveness_at(self, tick: int) -> float:
+        """Return the profile's hidden multiplier at one measured tick."""
+        if tick <= self.start_tick:
+            return 1.0
+        if tick >= self.end_tick:
+            return self.end_effectiveness
+        progress = (tick - self.start_tick) / (self.end_tick - self.start_tick)
+        return 1.0 + progress * (self.end_effectiveness - 1.0)
+
+
+@dataclass(frozen=True)
 class HabitatConfig:
     """A validated scenario graph: zones plus directed hub connections."""
 
@@ -121,6 +149,7 @@ class HabitatConfig:
     actuator: ActuatorSettings
     simulation: SimulationSettings
     air_system: AirSystemSettings
+    fault_profiles: tuple[GradualPrimaryFanDegradation, ...]
 
     def processing_zone(self) -> ZoneSpec:
         """The single air_processing zone (validation guarantees exactly one)."""
@@ -194,6 +223,9 @@ def parse_scenario(data: Any) -> HabitatConfig:
     actuator = _parse_actuator(data)
     simulation = _parse_simulation(data)
     air_system = _parse_air_system(data)
+    fault_profiles = _parse_fault_profiles(data, connections, processing_id=next(
+        zone.id for zone in zones if zone.preset == "air_processing"
+    ))
     return HabitatConfig(
         version=version,
         zones=zones,
@@ -202,6 +234,7 @@ def parse_scenario(data: Any) -> HabitatConfig:
         actuator=actuator,
         simulation=simulation,
         air_system=air_system,
+        fault_profiles=fault_profiles,
     )
 
 
@@ -334,6 +367,14 @@ def _require_number(value: Any, what: str) -> float:
     if not math.isfinite(result):
         raise ValueError(f"{what} must be a finite number, got {value!r}")
     return result
+
+
+def _require_positive_int(value: Any, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{what} must be an integer, got {value!r}")
+    if value <= 0:
+        raise ValueError(f"{what} must be positive")
+    return value
 
 
 def _parse_zones(data: dict) -> tuple[ZoneSpec, ...]:
@@ -529,6 +570,86 @@ def _parse_connections(data: dict, zone_ids: set[str]) -> tuple[ConnectionSpec, 
             )
         )
     return tuple(connections)
+
+
+def _parse_fault_profiles(
+    data: dict,
+    connections: tuple[ConnectionSpec, ...],
+    *,
+    processing_id: str,
+) -> tuple[GradualPrimaryFanDegradation, ...]:
+    if "fault_profiles" not in data:
+        raise ValueError("scenario must define 'fault_profiles'")
+    raw_profiles = data["fault_profiles"]
+    if not isinstance(raw_profiles, list):
+        raise ValueError("'fault_profiles' must be a list")
+
+    by_id = {connection.id: connection for connection in connections}
+    profiles: list[GradualPrimaryFanDegradation] = []
+    seen_targets: set[str] = set()
+    for raw in raw_profiles:
+        if not isinstance(raw, dict):
+            raise ValueError(f"fault profile entry must be an object, got {raw!r}")
+        _reject_unknown_fields(raw, _FAULT_PROFILE_FIELDS, "fault profile")
+        for field_name in _FAULT_PROFILE_FIELDS:
+            if field_name not in raw:
+                raise ValueError(
+                    f"fault profile is missing required field {field_name!r}"
+                )
+        if raw["type"] != _GRADUAL_PRIMARY_FAN_DEGRADATION:
+            raise ValueError(f"unsupported fault profile type {raw['type']!r}")
+
+        connection_id = raw["connection_id"]
+        if not isinstance(connection_id, str) or not connection_id:
+            raise ValueError(
+                "fault profile connection_id must be a non-empty string, "
+                f"got {connection_id!r}"
+            )
+        connection = by_id.get(connection_id)
+        if connection is None:
+            raise ValueError(
+                f"fault profile references unknown connection {connection_id!r}"
+            )
+        if connection.to_zone != processing_id:
+            raise ValueError(
+                f"fault profile connection {connection_id!r} is not an outbound "
+                "loop metering path to the air_processing bay"
+            )
+        if connection_id in seen_targets:
+            raise ValueError(
+                f"more than one fault profile targets connection {connection_id!r}"
+            )
+
+        start_tick = _require_positive_int(
+            raw["start_tick"], f"fault profile {connection_id!r}: start_tick"
+        )
+        end_tick = _require_positive_int(
+            raw["end_tick"], f"fault profile {connection_id!r}: end_tick"
+        )
+        if end_tick <= start_tick:
+            raise ValueError(
+                f"fault profile {connection_id!r}: end_tick must be after start_tick"
+            )
+        end_effectiveness = _require_number(
+            raw["end_effectiveness"],
+            f"fault profile {connection_id!r}: end_effectiveness",
+        )
+        if not 0.0 <= end_effectiveness < 1.0:
+            raise ValueError(
+                f"fault profile {connection_id!r}: end_effectiveness must be "
+                "in [0.0, 1.0)"
+            )
+
+        seen_targets.add(connection_id)
+        profiles.append(
+            GradualPrimaryFanDegradation(
+                connection_id=connection_id,
+                start_tick=start_tick,
+                end_tick=end_tick,
+                end_effectiveness=end_effectiveness,
+            )
+        )
+    return tuple(profiles)
 
 
 def _enforce_hub_pairing(

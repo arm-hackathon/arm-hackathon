@@ -26,13 +26,13 @@ def test_initial_state_has_empty_zones_and_zero_capture(standard_scenario_path):
     assert all(actuator.actual_position == 0.0 for actuator in state.actuators.values())
 
 
-def test_path_airflow_is_max_airflow_times_health():
+def test_path_airflow_is_requested_capacity_times_measured_position():
     connection = ConnectionSpec(
         id="c", from_zone="a", to_zone="b", max_airflow=10.0, health=0.35
     )
 
-    assert path_airflow(connection) == pytest.approx(3.5)
-    assert path_airflow(connection, actuator_position=0.5) == pytest.approx(1.75)
+    assert path_airflow(connection) == pytest.approx(10.0)
+    assert path_airflow(connection, actuator_position=0.5) == pytest.approx(5.0)
 
 
 def test_one_tick_uses_concentration_and_shared_return(standard_scenario_path):

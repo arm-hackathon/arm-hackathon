@@ -32,8 +32,8 @@ def _write_trace(path) -> None:
                     connections={
                         "cabin_to_processing": {
                             "requested_airflow": 12.0,
-                            "airflow": 10.0,
-                            "health": 1.0,
+                            "delivered_airflow": 10.0,
+                            "airflow_residual": 2.0,
                         }
                     },
                     actuators={
@@ -50,7 +50,7 @@ def _write_trace(path) -> None:
                     system={
                         "shared_airflow_capacity": 10.0,
                         "total_requested_airflow": 12.0,
-                        "total_actual_airflow": 10.0,
+                        "total_delivered_airflow": 10.0,
                         "capacity_scale": 10.0 / 12.0,
                     },
                 )
@@ -68,7 +68,8 @@ def test_visualiser_writes_self_contained_html(tmp_path):
     assert result == report
     assert "ICARUS Trace Visualiser" in html
     assert "CO₂ concentration" in html
-    assert "Requested and allocated airflow" in html
+    assert "Requested and delivered airflow" in html
+    assert "Airflow residual" in html
     assert "Actuator setpoint and actual position" in html
     assert "__TRACE_DATA__" not in html
     assert "https://" not in html
@@ -102,8 +103,8 @@ def test_load_trace_reports_malformed_line_number(tmp_path):
         "connections": {
             "duct": {
                 "requested_airflow": 1.2,
-                "airflow": 1.0,
-                "health": 1.0,
+                "delivered_airflow": 1.0,
+                "airflow_residual": 0.2,
             }
         },
         "actuators": {
@@ -120,7 +121,7 @@ def test_load_trace_reports_malformed_line_number(tmp_path):
         "system": {
             "shared_airflow_capacity": 1.0,
             "total_requested_airflow": 1.2,
-            "total_actual_airflow": 1.0,
+            "total_delivered_airflow": 1.0,
             "capacity_scale": 1.0 / 1.2,
         },
     }
@@ -199,19 +200,19 @@ def test_load_trace_rejects_schema_drift(tmp_path):
         raise AssertionError("schema drift should be rejected")
 
 
-def test_load_trace_rejects_negative_airflow(tmp_path):
+def test_load_trace_rejects_negative_delivered_airflow(tmp_path):
     trace = tmp_path / "trace.jsonl"
     _write_trace(trace)
     rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
-    rows[0]["connections"]["cabin_to_processing"]["airflow"] = -0.1
+    rows[0]["connections"]["cabin_to_processing"]["delivered_airflow"] = -0.1
     trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
 
     try:
         load_trace(trace)
     except ValueError as exc:
-        assert "airflow must not be negative" in str(exc)
+        assert "delivered_airflow must not be negative" in str(exc)
     else:
-        raise AssertionError("negative airflow should be rejected")
+        raise AssertionError("negative delivered airflow should be rejected")
 
 
 def test_load_trace_rejects_connection_id_drift(tmp_path):
@@ -261,7 +262,7 @@ def test_load_trace_rejects_negative_requested_airflow(tmp_path):
         raise AssertionError("negative requested airflow should be rejected")
 
 
-def test_load_trace_rejects_out_of_range_connection_health(tmp_path):
+def test_load_trace_rejects_undeclared_connection_telemetry(tmp_path):
     trace = tmp_path / "trace.jsonl"
     _write_trace(trace)
     rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
@@ -271,6 +272,6 @@ def test_load_trace_rejects_out_of_range_connection_health(tmp_path):
     try:
         load_trace(trace)
     except ValueError as exc:
-        assert "health must be in 0.0..1.0" in str(exc)
+        assert "unexpected field 'health'" in str(exc)
     else:
-        raise AssertionError("out-of-range connection health should be rejected")
+        raise AssertionError("undeclared connection telemetry should be rejected")

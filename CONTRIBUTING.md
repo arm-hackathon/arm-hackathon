@@ -1,47 +1,62 @@
 # Contributing
 
-Thank you for being part of this project! This document lists the core contributors and guidance for working on the repo.
+## Setup
 
-## Core Contributors
+The authoritative clone URL is the configured `origin` remote:
 
-| Contributor | GitHub |
+```bash
+git clone https://github.com/akurkar07/arm-hackathon.git
+cd arm-hackathon
+uv run --extra dev python -m pytest
+```
+
+The project has no `requirements.txt`. `uv` resolves the project and the
+`dev` extra from `pyproject.toml`; `uv.lock` is committed to make that
+resolution reproducible. `uv` creates its local environment as needed.
+
+## Local workflow
+
+1. Branch from an up-to-date target branch using `name/short-description`.
+2. Keep a change scoped to one simulator, scenario, trace or documentation
+   concern.
+3. Run the full suite before commit:
+
+   ```bash
+   uv run --extra dev python -m pytest
+   ```
+
+4. For changed simulation behaviour, generate the affected replay locally and
+   inspect its visualisation:
+
+   ```bash
+   mkdir -p out
+   PYTHONPATH=src uv run python -m icarus \
+     scenarios/standard_habitat.json out/standard.jsonl
+   PYTHONPATH=src uv run python -m icarus.visualise \
+     out/standard.jsonl out/standard.html
+   ```
+
+5. Run `git diff --check`, commit with a short imperative subject, then open a
+   pull request for review. Do not push a branch or alter a remote without the
+   repository owner's approval.
+
+## Repository map
+
+| Path | Purpose |
 |---|---|
-| Alex Kurkar | [@akurkar07](https://github.com/akurkar07) |
-| Ben | [@bbeennyy860-cyber](https://github.com/bbeennyy860-cyber) |
-| MS-Mesh | [@MS-Mesh](https://github.com/MS-Mesh) |
+| `scenarios/` | Closed-schema v7 scenario inputs. |
+| `src/icarus/config.py` | Scenario parsing and validation. |
+| `src/icarus/plant.py` | Deterministic plant, airflow and CO₂ mass transfer. |
+| `src/icarus/scenario.py` | Warm-up, measured runs and fault-profile scheduling. |
+| `src/icarus/trace.py` | JSONL writer and allowlisted model-feature projection. |
+| `src/icarus/visualise.py` | Dependency-free local HTML replay visualiser. |
+| `tests/` | Unit, scenario, replay and visualisation tests. |
+| `docs/` | Current simulation and telemetry contracts. |
+| `out/` | Ignored generated local traces and reports. |
 
-## Getting Started
+## Current boundaries
 
-1. Clone the repo and install dependencies:
-   ```bash
-   git clone https://github.com/akurkar07/arm-hackathon.git
-   cd arm-hackathon
-   pip install -r requirements.txt
-   ```
-2. Create a feature branch off `main`:
-   ```bash
-   git checkout -b your-name/feature-description
-   ```
-3. Make your changes, run tests, then open a pull request into `main`.
-
-## Workflow
-
-- **Branch naming:** `name/short-description` (e.g. `alex/agent-detector`, `ben/onnx-quantization`)
-- **Commit style:** short imperative messages (e.g. `Add INT8 quantization benchmark`)
-- **PRs:** all changes go through a pull request — at least one other contributor should review before merging
-- **Tests:** run `python -m pytest tests/` before pushing; don’t merge if tests are red
-
-## Areas of Work
-
-| Area | Folder | Description |
-|---|---|---|
-| Ingestion & normalisation | `ingestion/` | Device polling, calibration, tag resolution |
-| AI agent | `agent/` | Anomaly detection, airflow graph, controller, logger |
-| Actuation | `actuation/` | Command dispatch, hard bound enforcement |
-| Storage | `storage/` | InfluxDB interface, time-series helpers |
-| Evaluation | `evaluation/` | Scenario runner, metrics, comparison reports |
-| Benchmarks | `benchmarks/` | FP32 vs INT8 Arm Performix results |
-
-## Questions
-
-Open a GitHub issue or message the team directly.
+ICARUS currently implements deterministic simulation and replay only. It does
+not include model training or inference, ONNX, quantisation, a governor,
+redundant fan, Arm measurements, a dashboard, API, database, cloud service or
+hardware integration. Do not represent future work as current behaviour.

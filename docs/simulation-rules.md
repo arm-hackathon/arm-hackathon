@@ -1,231 +1,204 @@
 # ICARUS simulation rules
 
-This document is the single source of truth for what the current simulation
-slice does, in plain English. It is a simulation of ideas, not of real
-spacecraft hardware.
+This document defines the current ICARUS simulator. It is a deterministic,
+abstract hub-layout CO₂ and airflow model, not a spacecraft or life-support
+model.
 
-## Scope
+## Scope and units
 
-NASA ECLSS material lists cabin-air circulation, CO₂ removal, atmosphere
-management, and thermal control as life-support functions. This slice models
-only **circulation** and **CO₂ removal**. Oxygen, total pressure,
-temperature, humidity, trace contaminants, lunar dust, fire, leaks, and the
-external vacuum are held constant and stay out of scope.
+The model contains circulation through one shared air-processing bay and a CO₂
+scrubber. Oxygen, pressure, temperature, humidity, contaminants, leaks, fire,
+hardware protocols and external environment are out of scope.
 
-The habitat is a **user-editable scenario graph**, not a hard-coded pair of
-rooms. The current format supports the simple hub layout only: one
-air-processing bay in the middle, every other zone connected to it by one
-directed path each way. It is not a general fluid solver.
+All values are abstract units:
 
-## Units
+- `co2_units` — amount of CO₂, not ppm or kilograms;
+- `airflow_units_per_second` — circulation amount per tick, not a real flow
+  rate;
+- actuator power — an abstract reporting value, not an electrical measurement.
 
-All values are abstract simulation units:
+## Schema v7
 
-- `co2_units` — amount of CO₂. Not ppm, not kilograms, not a safety limit.
-- `airflow_units_per_second` — air moved along a path. Not a real flow rate.
-
-No number in this repository is a real spacecraft measurement or a real
-safety threshold.
-
-## The scenario file
-
-A scenario is versioned JSON (see `scenarios/standard_habitat.json`) with
-seven top-level keys:
+A scenario is closed-schema JSON with exactly these top-level keys:
 
 | Key | Meaning |
 |---|---|
-| `version` | Format version. Only `6` is supported. |
-| `zones` | List of rooms. |
-| `connections` | List of directed air paths between rooms. |
+| `version` | Must be `7`. |
+| `zones` | Zone specifications. Exactly one must be `air_processing`. |
+| `connections` | Directed paths in the hub layout. |
 | `control` | CO₂ thresholds and actuator command bounds. |
-| `actuator` | Stroke time and abstract power characteristics. |
-| `simulation` | Seed used for deterministic source variation. |
-| `air_system` | Shared fan capacity and scrubber removal fraction. |
+| `actuator` | Full-stroke duration and abstract power values. |
+| `simulation` | Deterministic source-noise seed. |
+| `air_system` | Shared delivery capacity and scrubber removal fraction. |
+| `fault_profiles` | Explicit list of deterministic fault profiles; `[]` means healthy. |
 
-Version 6 is a closed schema. A version-5 scenario must be updated to version
-6 and contain only the documented fields before it can run.
+Every zone contains `id`, `label`, `preset`,
+`co2_generation_per_second`, `co2_generation_epsilon`,
+`co2_noise_correlation`, `occupancy_profile` and `air_volume`.
 
-Every zone has exactly these fields:
+Every connection contains `id`, `from`, `to`, `max_airflow` and `health`.
+Connection health is a hidden static physical constraint in `0.0..1.0`; it is
+not emitted in replay telemetry.
 
-| Field | Meaning |
-|---|---|
-| `id` | Unique zone id. |
-| `label` | Human-readable name. |
-| `preset` | One of `crew_cabin`, `lab`, `air_processing`, `storage`. |
-| `co2_generation_per_second` | CO₂ source added each tick (`>= 0`). |
-| `co2_generation_epsilon` | Maximum seeded variation above or below the source. |
-| `co2_noise_correlation` | Persistence of source variation from one tick to the next. |
-| `occupancy_profile` | Scheduled tick ranges that scale the baseline source. |
-| `air_volume` | Total air in the zone (`> 0`), used to size the moved share. |
-
-Every connection has exactly these fields:
-
-| Field | Meaning |
-|---|---|
-| `id` | Unique connection id. |
-| `from` | Source zone id. |
-| `to` | Target zone id. |
-| `max_airflow` | Air the path moves per tick at health 1.0 (`> 0`). |
-| `health` | Path health in `0.0..1.0`. `1.0` is fully healthy. |
-
-The control block has four fields:
-
-| Field | Meaning |
-|---|---|
-| `co2_lower_threshold` | A reading at or below this value requests the minimum command. |
-| `co2_upper_threshold` | A reading at or above this value requests the maximum command. |
-| `minimum_command` | Lowest permitted actuator command in `0.0..1.0`. |
-| `maximum_command` | Highest permitted actuator command in `0.0..1.0`. |
-
-Readings between the thresholds are mapped linearly onto the command range.
-
-The actuator block has three fields:
-
-| Field | Meaning |
-|---|---|
-| `full_stroke_seconds` | Time required to move from fully closed to fully open. |
-| `moving_power` | Abstract power reported while the actuator is travelling. |
-| `holding_power` | Abstract power reported while holding position. |
-
-The standard scenario uses seed `7`. Each tick and zone receives an
-occupancy-scaled source plus bounded, correlated variation. The same scenario
-and seed always produce the same sequence.
-
-The air-system block declares the total airflow available to all room loops
-and the scrubber's removal fraction. When total local demand exceeds shared
-capacity, every request is scaled proportionally. The standard scenario has
-24 airflow units of shared capacity.
-
-Exactly one zone must use the `air_processing` preset; it is the common
-mixing and scrubber bay.
-
-## The standard habitat
-
-`scenarios/standard_habitat.json` is the reference hub layout: two crew
-cabins, a lab with a smaller activity-driven source, and the air-processing
-bay.
+The layout is intentionally narrow:
 
 ```text
-                cabin_a (Crew Cabin A, CO₂ source)
-                    |  ^
-       max out 10.0 |  | max return 10.0
-                    v  |
-   cabin_b  <====  processing  ====>  lab
-   (Crew Cabin B,  (Air Processing   (Lab)
-    CO₂ source)     Bay, scrubber)
-   max 10.0 each way  max 8.0 each way
+non-processing zone ── outbound meter ──> processing bay
+non-processing zone <── paired return ─── processing bay
 ```
 
-Every non-processing zone has one directed path to the processing bay and
-one directed path back. All six connections start at health `1.0`. The room
-loops draw from the same 24-unit fan capacity, and their extracted air mixes
-before being scrubbed and returned. This couples all room conditions.
+Each non-processing zone requires exactly one path in each direction. No
+self-loops, bypass paths or multiple directed paths between the same zone pair
+are accepted.
 
-## One tick, in order
+## Gradual primary-fan degradation
 
-Time advances in fixed 1-second ticks. Each tick, exactly this happens:
+`fault_profiles` is required even for a healthy scenario. The only accepted
+profile currently is:
 
-1. Every zone adds its occupancy-scaled, correlated CO₂ source mass.
-2. An idealised sensor reads `CO₂ mass / air volume` after the source is added.
-3. For each non-processing zone, the controller maps that reading linearly
-   between the configured minimum and maximum actuator setpoints.
-4. Each actuator moves towards its setpoint by no more than
-   `1 / full_stroke_seconds` of its stroke per tick.
-5. Each loop requests
-   `max_airflow * health * actual_position`, limited by its weaker path.
-6. If total demand exceeds shared capacity, every loop is scaled by the same
-   allocation factor.
-7. Every zone simultaneously sends CO₂ mass into the common processing flow.
-8. The scrubber captures its configured fraction of the combined mass.
-9. Remaining CO₂ is mixed and returned to rooms in proportion to allocated
-   airflow. This allows one room's source to affect the others.
-10. The trace records sources, occupancy, mass, concentration, actuator
-    behaviour, requested and allocated airflow, and shared-capacity use.
+```json
+{
+  "type": "gradual_primary_fan_degradation",
+  "connection_id": "cabin_a_to_processing",
+  "start_tick": 20,
+  "end_tick": 80,
+  "end_effectiveness": 0.4
+}
+```
 
-A loop's return path reports the same actual airflow as its outbound path.
-The weaker leg governs the loop, so a path at health `0.0` moves no air and
-scrubs nothing.
+Rules:
 
-CO₂ is conserved: what the zones generate is always split between airborne
-CO₂ and the processing bay's captured store. Nothing appears or vanishes.
+- the target must be an existing outbound path ending at the processing bay;
+- only one profile can target a connection;
+- `start_tick` and `end_tick` are positive integers, with `end_tick > start_tick`;
+- `end_effectiveness` is finite and in `[0.0, 1.0)`;
+- profile type and fields are allowlisted; unknown fields are rejected.
 
-## The standard run
+For measured tick `t`, effectiveness is deterministic:
 
-`STANDARD_RUN` in `src/icarus/scenario.py` declares the run constants:
+```text
+t <= start_tick: 1.0
+t >= end_tick:   end_effectiveness
+otherwise:       linear interpolation from 1.0 to end_effectiveness
+```
 
-| Constant | Value | Meaning |
-|---|---|---|
-| `total_ticks` | 120 | Length of a run. |
-| `warmup_ticks` | 60 | Unrecorded pre-roll under initial occupancy conditions. |
-| `crew_cabin_co2_concentration_ceiling` | 0.30 | Declared crew-cabin concentration ceiling. |
+The profile is not accumulated into mutable state. It is calculated from the
+measured tick every replay. Warm-up has no profile injection, so `start_tick`
+always refers to the visible trace tick.
 
-The warm-up settles concentration, actuator position, source correlation and
-shared airflow before the measured trace begins. It uses a separate seeded
-noise sequence, holds each zone at its tick-1 occupancy multiplier, then resets
-the visible tick and captured-CO₂ counter. Across the subsequent scheduled
-occupancy changes, healthy cabin concentration remains below `0.30`.
+## One simulation tick
+
+Time advances in fixed one-second ticks.
+
+1. Each zone adds its occupancy-scaled, seeded and correlated CO₂ source.
+2. Sensors read `co2_mass / air_volume` after source addition.
+3. Each non-processing-zone controller maps its sensor value to a bounded
+   setpoint.
+4. Its actuator moves towards that setpoint by at most
+   `1 / full_stroke_seconds` of a stroke.
+5. Each circulation loop computes **requested airflow** from only nominal
+   physical capacity and measured actuator position:
+
+   ```text
+   requested = min(outbound.max_airflow, inbound.max_airflow) * actual_position
+   ```
+
+6. Both loop legs constrain physical delivery. ICARUS derives a hidden static
+   health factor from the two healthy path capacities:
+
+   ```text
+   static_health = min(outbound.max_airflow * outbound.health,
+                       inbound.max_airflow * inbound.health)
+                   / min(outbound.max_airflow, inbound.max_airflow)
+   ```
+
+7. The target profile, if any, provides hidden fault effectiveness. Before the
+   shared fan is considered:
+
+   ```text
+   provisional_delivered = requested * static_health * fault_effectiveness
+   ```
+
+8. If provisional delivery exceeds `shared_airflow_capacity`, all loops receive
+   the same deterministic proportional capacity scale. The final value is:
+
+   ```text
+   delivered = provisional_delivered * capacity_scale
+   airflow_residual = requested - delivered
+   ```
+
+   A loop's outbound and return paths report identical delivered airflow.
+   Delivery never exceeds request or shared capacity.
+
+9. All zones extract CO₂ from the same pre-transfer state. Extraction mixes in
+   the processing bay; the scrubber captures its configured fraction and the
+   rest returns in proportion to delivered loop airflow.
+
+CO₂ is conserved: generated mass is split only between airborne zone mass and
+the processing bay's captured store.
+
+## Standard run and determinism
+
+`STANDARD_RUN` has 120 measured ticks and a 60-tick unrecorded warm-up. The
+warm-up uses the declared source-noise seed with separate historical ticks,
+holds initial occupancy conditions, then resets visible tick and captured CO₂
+while retaining settled physical state.
+
+No wall clock or unseeded random source participates in a run. The same
+scenario file yields identical records and byte-identical JSONL output.
+
+## Trace and model projection
+
+Each trace row contains `tick`, `zones`, `connections`, `actuators` and
+`system`. Connection telemetry has exactly:
+
+```text
+requested_airflow
+delivered_airflow
+airflow_residual
+```
+
+System telemetry has exactly:
+
+```text
+shared_airflow_capacity
+total_requested_airflow
+total_delivered_airflow
+capacity_scale
+```
+
+Trace writers and the visualiser reject malformed, non-finite, negative,
+non-consecutive or undeclared telemetry. The visualiser can consume generated traces from all three shipped scenarios and plots requested/delivered airflow plus residuals.
+
+Fault state, fault effectiveness, static health, random seed and source-noise
+state are deliberately absent from trace telemetry. `model_feature_row()` has
+its own strict projection:
+
+- zone sensor CO₂ concentration;
+- actuator setpoint, actual position, tracking residual and power;
+- requested, delivered and residual airflow.
+
+Presentation needs never add model features implicitly.
 
 ## Validation
 
-`src/icarus/config.py` rejects a scenario with a clear `ValueError` (the
-CLI prints it and exits non-zero) when it has:
+`config.py` rejects scenarios with clear `ValueError`s for unsupported versions,
+unknown fields, invalid numeric values, missing hub paths, bad occupancy ranges,
+invalid connection health, invalid control/actuator settings and malformed fault
+profiles. `visualise.py` independently validates replay shape and tick sequence
+before it writes a report.
 
-- an unsupported or missing version;
-- an unexpected field at the scenario, block, zone, connection or occupancy
-  period level;
-- missing or invalid simulation seed;
-- missing or invalid shared airflow or scrubber settings;
-- missing, non-finite or inconsistent CO₂ control settings;
-- missing, non-finite or invalid actuator settings;
-- no zones, or no `air_processing` zone;
-- more than one `air_processing` zone;
-- a duplicate zone id or connection id;
-- an unsupported preset;
-- a non-positive air volume, negative CO₂ source or invalid noise setting;
-- malformed or overlapping occupancy periods;
-- a connection referencing an unknown source or target zone;
-- a connection that loops from a zone back to itself;
-- a non-positive max airflow;
-- a health outside `0.0..1.0`;
-- a non-finite number (`NaN` or `Infinity`, which Python's JSON parser
-  accepts) in any numeric field;
-- a connection that does not touch the air-processing bay (hub layout
-  only), or more than one directed path between the same zone pair;
-- a non-processing zone missing either its path to processing or its
-  return path from processing.
-
-The HTML visualiser also rejects a malformed replay trace. A trace must use
-positive, consecutive integer ticks beginning at `1`, keep the same zone,
-connection and actuator ids on every row, and contain non-negative requested
-and allocated airflow. Connection health must remain in `0.0..1.0`.
-
-## Determinism
-
-Fixed ticks, a declared seed and no wall clock. Seeded source variation is
-reproducible. Running the same scenario file twice produces identical records,
-and trace files are byte-identical between runs (floats serialise through
-`repr` with sorted JSON keys). This is what makes a trace a replay.
-
-## How to run
+## Local commands
 
 ```bash
-# tests (pytest reads src/ via pyproject.toml)
-python3 -m pytest
-
-# produce a replay trace from an explicit scenario file
-PYTHONPATH=src python3 -m icarus scenarios/standard_habitat.json traces/standard_habitat.jsonl
-
-# produce a standalone HTML visualisation
-PYTHONPATH=src python3 -m icarus.visualise traces/standard_habitat.jsonl out/standard_habitat.html
+uv run --extra dev python -m pytest
+mkdir -p out
+uv run python -m icarus scenarios/standard_habitat.json out/standard.jsonl
+uv run python -m icarus.visualise out/standard.jsonl out/standard.html
 ```
 
-Runtime code uses only the Python standard library. `pytest` is needed for
-the test suite only.
+## Deliberately absent
 
-## Deliberately not here yet
-
-- Gradual fault profiles (connection health changing over time).
-- AI/ML fault detection (ONNX model, quantisation, benchmarks).
-- Safety governor or backup fan response to detected faults.
-- Dashboard, API, MQTT, database, hardware integration, Docker, cloud.
-- Any claim about real lunar ECLSS safety or engineering accuracy.
+ICARUS currently has no model or ONNX path, quantisation, governor, redundant
+fan, recovery controller, Arm benchmark, dashboard, API, cloud service or
+hardware connection.

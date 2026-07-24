@@ -42,19 +42,19 @@ def _record(tick: int) -> TickRecord:
         connections={
             "cabin_a_to_processing": {
                 "requested_airflow": 12.0,
-                "airflow": 10.0,
-                "health": 1.0,
+                "delivered_airflow": 10.0,
+                "airflow_residual": 2.0,
             },
             "processing_to_cabin_a": {
                 "requested_airflow": 12.0,
-                "airflow": 10.0,
-                "health": 1.0,
+                "delivered_airflow": 10.0,
+                "airflow_residual": 2.0,
             },
         },
         system={
             "shared_airflow_capacity": 18.0,
             "total_requested_airflow": 20.0,
-            "total_actual_airflow": 18.0,
+            "total_delivered_airflow": 18.0,
             "capacity_scale": 0.9,
         },
         actuators={
@@ -88,7 +88,11 @@ def test_trace_output_is_valid_jsonl_with_zone_and_connection_fields(tmp_path):
         assert row["zones"]["cabin_a"]["co2_mass"] > 0.0
         assert row["zones"]["processing"]["captured_co2"] >= 0.0
         for connection in row["connections"].values():
-            assert set(connection) == {"requested_airflow", "airflow", "health"}
+            assert set(connection) == {
+                "requested_airflow",
+                "delivered_airflow",
+                "airflow_residual",
+            }
         assert row["actuators"]["cabin_a"]["actual_position"] == 0.8
         assert row["system"]["capacity_scale"] == 0.9
     assert [row["tick"] for row in rows] == [1, 2, 3, 4, 5]

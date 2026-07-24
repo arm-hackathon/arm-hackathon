@@ -69,9 +69,11 @@ def test_every_record_covers_every_zone_and_connection(standard_scenario_path):
         assert "captured_co2" in record.zones[config.processing_zone().id]
         assert set(record.connections) == connection_ids
         for entry in record.connections.values():
-            assert "requested_airflow" in entry
-            assert "airflow" in entry
-            assert "health" in entry
+            assert set(entry) == {
+                "requested_airflow",
+                "delivered_airflow",
+                "airflow_residual",
+            }
         assert set(record.actuators) == actuator_ids
         for entry in record.actuators.values():
             assert {
@@ -86,7 +88,7 @@ def test_every_record_covers_every_zone_and_connection(standard_scenario_path):
         assert set(record.system) == {
             "shared_airflow_capacity",
             "total_requested_airflow",
-            "total_actual_airflow",
+            "total_delivered_airflow",
             "capacity_scale",
         }
 
@@ -133,7 +135,10 @@ def test_trace_proves_co2_sensor_controls_actuator(standard_scenario_path):
         strongest.actuators["cabin_a"]["actual_position"]
         > early.actuators["cabin_a"]["actual_position"]
     )
-    assert strongest.connections[path]["airflow"] > early.connections[path]["airflow"]
+    assert (
+        strongest.connections[path]["delivered_airflow"]
+        > early.connections[path]["delivered_airflow"]
+    )
 
 
 def test_same_scenario_file_twice_produces_byte_identical_traces(

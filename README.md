@@ -1,108 +1,94 @@
 # ICARUS
 
-> **Closed-loop fault response for a simulated habitat ventilation system, optimised for Arm.**
->
-> Submission in progress for the [Arm Create: AI Optimization Challenge 2026](https://arm-ai-optimization-challenge.devpost.com/) · **Physical AI track**
+> Deterministic multi-zone habitat air-circulation simulation with explicit
+> requested-versus-delivered airflow and reproducible gradual fan degradation.
 
-ICARUS is a simulated multi-zone habitat ventilation controller. It ingests telemetry from a circulation plant, uses a compact AI model to detect a degrading primary fan, and applies a deterministic safety governor to issue a bounded virtual command to a healthy redundant fan.
+ICARUS is a local simulation. It models abstract CO₂ mass and airflow units in
+a hub-layout habitat; it does not model real spacecraft equipment, life-support
+limits, or a general fluid system.
 
-```text
-simulated sensors → compact AI inference → safety governor → virtual actuator command
-       ↑                                                               │
-       └──────────── changed ventilation-plant state and replay ───────┘
-```
+## Current slice
 
-This is a simulation and research prototype. It makes no claim to control real spacecraft, life-support equipment, or certified safety-critical systems.
+The repository currently contains:
 
-## The demo
-
-The first scenario is deliberately narrow:
-
-1. A deterministic two-zone habitat ventilation plant begins in a nominal state.
-2. The primary circulation fan degrades, reducing actual airflow.
-3. Telemetry records airflow, CO₂/air-quality proxy, temperature, commanded fan speed, actual fan output, and tracking residual.
-4. A compact ONNX model scores the telemetry window for a fault.
-5. The safety governor either commands a bounded boost to a healthy redundant fan or hands control back when telemetry/model output is invalid.
-6. The simulator applies that decision and writes a replay trace proving the resulting plant-state change.
-
-The point is not an animated dashboard. The point is a visible, testable loop: **fault → inference → safe decision → virtual action → recovery**.
-
-## Why Physical AI
-
-The Arm Create Physical AI track accepts systems using real or simulated sensor data that produce control signals, anomaly detection, alerting, or actuator decisions for a physical system. ICARUS uses simulated environmental and actuator telemetry, performs local fault inference, and produces a virtual ventilation command under hard safety bounds.
-
-## Arm optimisation evidence
-
-ICARUS will run inference on a declared Arm64 target. The project will publish a reproducible benchmark comparing:
-
-- FP32 ONNX inference against an INT8-quantised path
-- model artefact size
-- p50 and p95 inference latency
-- inference throughput / control-loop deadline behaviour
-- fault-detection quality and false alarms
-- target specification and exact benchmark commands
-
-No Raspberry Pi, NEON, Arm Performix, memory, latency, or sub-200 ms claim will be made until it has an attached measurement receipt from the declared target.
-
-## Planned first vertical slice
-
-The first runnable slice contains only the proof loop:
+- a validated schema-v7 scenario graph with one air-processing bay;
+- deterministic seeded CO₂ sources, occupancy profiles, proportional control
+  and rate-limited actuators;
+- shared-capacity airflow allocation with mass-conserving mixed return air;
+- a deterministic gradual primary-fan degradation profile;
+- JSONL replay traces, an allowlisted model-feature projection and a standalone
+  HTML visualiser;
+- tests for replay determinism, degradation timing, mass conservation, airflow
+  invariants and telemetry boundaries.
 
 ```text
-icarus/
-├── simulation/       # deterministic two-zone ventilation plant
-├── scenarios/        # nominal, primary fan degradation, invalid sensor
-├── model/            # synthetic-data training, FP32 ONNX export, inference
-├── control/          # safety governor and bounded virtual actuation
-├── traces/           # JSONL replay writer
-├── tests/            # scenario, safety, replay, and model-path tests
-└── benchmarks/       # added after the local loop is green
+CO₂ sources → sensor → controller → actuator position
+                                      │
+                                      v
+                    requested loop airflow
+                                      │
+        static path health + hidden degradation effectiveness
+                                      │
+                                      v
+                 delivered loop airflow → shared processing → scrubbed return
 ```
 
-It intentionally excludes a web dashboard, API, database, MQTT, hardware integration, and topology model. Those can wait until there is an actual system worth displaying.
+`requested_airflow` is derived from configured loop capacity and the measured
+actuator position. `delivered_airflow` is physical flow after static path health,
+degradation and shared-capacity allocation. `airflow_residual` is their
+non-negative difference.
 
-## Acceptance conditions for the first slice
+## Scenarios
 
-- Nominal scenario produces no fault command.
-- Primary-fan degradation is injected deterministically and detected by the ONNX model.
-- Governor commands the redundant fan within its safe range, never above 80%.
-- Invalid telemetry produces `HAND_BACK`, not an autonomous command.
-- The replay trace is deterministic for a fixed scenario seed.
-- The trace demonstrates that the command changes simulated plant state and restores airflow above the scenario floor.
+| File | Purpose |
+|---|---|
+| `scenarios/standard_habitat.json` | Healthy reference scenario. It declares no fault profiles. |
+| `scenarios/high_demand_healthy.json` | Healthy high-demand control and delivery scenario with enough shared capacity to isolate controller demand. |
+| `scenarios/primary_fan_degradation.json` | High-demand scenario with a gradual primary-fan degradation on `cabin_a_to_processing`. |
 
-## Status
+All three are schema-v7 JSON and replay deterministically from their declared
+seeds.
 
-**Simulation and control foundation.** The repository contains a configurable,
-deterministic habitat simulator, concentration-driven setpoints, rate-limited
-actuator movement, occupancy profiles, correlated per-zone CO₂ variation,
-shared fan capacity and mixed return air. It also provides JSONL replay traces,
-a 60-tick unrecorded warm-up, a standalone trace visualiser and automated
-tests. It does not yet contain fault injection, the ONNX detector, the safety
-governor, Arm benchmark results, or hardware deployment.
-
-## Intended usage
-
-The current simulator and trace visualiser can be run with:
+## Run locally
 
 ```bash
-python -m pip install -e .
-python -m pytest
-python -m icarus scenarios/standard_habitat.json traces/standard_habitat.jsonl
-python -m icarus.visualise traces/standard_habitat.jsonl out/standard_habitat.html
+# Full test suite
+uv run --extra dev python -m pytest
+
+# Generate a replay and a self-contained local report
+mkdir -p out
+PYTHONPATH=src uv run python -m icarus \
+  scenarios/primary_fan_degradation.json \
+  out/primary_fan_degradation.jsonl
+PYTHONPATH=src uv run python -m icarus.visualise \
+  out/primary_fan_degradation.jsonl \
+  out/primary_fan_degradation.html
 ```
 
-The generated HTML report is self-contained and can be opened directly in a
-browser. It plots occupancy, generated and sensed CO₂, actuator setpoints and
-actual positions, tracking residuals, power, requested and allocated airflow,
-shared capacity, connection health and cumulative captured CO₂.
+The HTML report plots generated and sensed CO₂, actuator response, requested
+and delivered airflow, airflow residual, shared capacity and captured CO₂.
+Generated traces and reports belong in `out/`, not Git.
 
-## Safety and scope
+## Replay and telemetry boundary
 
-- Simulation only. No live plant, client, or production telemetry.
-- No real actuator command is emitted.
-- The current proportional controller enforces bounded commands; the planned
-  safety governor will add a handback path.
-- This is not a certified environmental-control or safety system.
+Trace records contain observable simulation outputs only. They do not expose
+fault effectiveness, connection health, random seed or source-noise state.
+`icarus.trace.model_feature_row()` is a separate, strict allowlist for any
+future model-facing consumer; visualiser fields do not expand that model
+feature set.
+
+## Deliberately out of scope
+
+- model training, ONNX export, quantisation and inference;
+- a governor, redundant fan or automatic recovery mechanism;
+- Arm benchmarks or hardware claims;
+- dashboard, API, database, cloud, MQTT or hardware integration;
+- real-world environmental-control or safety claims.
+
+See [`docs/simulation-rules.md`](docs/simulation-rules.md) for the schema,
+physics contract and validation rules, and
+[`docs/telemetry-contract.md`](docs/telemetry-contract.md) for the observable
+telemetry boundary.
 
 ## Licence
 
