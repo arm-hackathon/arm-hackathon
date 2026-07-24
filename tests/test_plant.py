@@ -28,6 +28,14 @@ def test_path_airflow_is_max_airflow_times_health():
     assert path_airflow(connection) == pytest.approx(3.5)
 
 
+def test_path_airflow_applies_hidden_effectiveness_multiplier():
+    connection = ConnectionSpec(
+        id="c", from_zone="a", to_zone="b", max_airflow=10.0, health=0.8
+    )
+
+    assert path_airflow(connection, effectiveness=0.5) == pytest.approx(4.0)
+
+
 def test_one_tick_adds_sources_then_captures_declared_fraction(standard_scenario_path):
     config = load_scenario(standard_scenario_path)
     state, _ = step_habitat(config, initial_state(config))
@@ -75,3 +83,21 @@ def test_zero_health_path_moves_no_air_and_scrubs_nothing(standard_doc):
     assert state.zone_co2["cabin_a"] == pytest.approx(1.0)
     assert state.zone_co2["cabin_b"] == pytest.approx(0.95)
     assert state.captured_co2 == pytest.approx(0.05)
+
+
+def test_effectiveness_override_reduces_loop_airflow_and_scrubbing(
+    standard_scenario_path,
+):
+    config = load_scenario(standard_scenario_path)
+
+    state, airflows = step_habitat(
+        config,
+        initial_state(config),
+        connection_effectiveness={"cabin_a_to_processing": 0.4},
+    )
+
+    assert airflows["cabin_a_to_processing"] == pytest.approx(4.0)
+    assert airflows["processing_to_cabin_a"] == pytest.approx(4.0)
+    assert state.zone_co2["cabin_a"] == pytest.approx(0.98)
+    assert state.zone_co2["cabin_b"] == pytest.approx(0.95)
+    assert state.captured_co2 == pytest.approx(0.07)

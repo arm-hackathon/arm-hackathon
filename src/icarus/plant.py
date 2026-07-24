@@ -43,13 +43,16 @@ def initial_state(config: HabitatConfig) -> HabitatState:
     )
 
 
-def path_airflow(connection: ConnectionSpec) -> float:
+def path_airflow(connection: ConnectionSpec, effectiveness: float = 1.0) -> float:
     """Actual air a path moves this tick, in airflow_units_per_second."""
-    return connection.max_airflow * connection.health
+    return connection.max_airflow * connection.health * effectiveness
 
 
 def step_habitat(
-    config: HabitatConfig, state: HabitatState
+    config: HabitatConfig,
+    state: HabitatState,
+    *,
+    connection_effectiveness: dict[str, float] | None = None,
 ) -> tuple[HabitatState, dict[str, float]]:
     """Advance the habitat by one 1-second tick.
 
@@ -57,7 +60,7 @@ def step_habitat(
 
     1. Every zone adds its configured CO2 source.
     2. Each non-processing zone's loop airflow is computed from its path to
-       the processing bay: ``max_airflow * health``.
+       the processing bay: ``max_airflow * health * effectiveness``.
     3. The scrubber captures its declared fraction of that zone's CO2 from
        the moved air; the zone keeps the rest.
     4. The captured CO2 is added to the processing bay's cumulative counter.
@@ -67,6 +70,8 @@ def step_habitat(
     the outbound leg meters the loop, and the cleaned air comes back along
     the return leg.
     """
+    connection_effectiveness = connection_effectiveness or {}
+
     # 1. Sources.
     zone_co2 = {
         zone.id: state.zone_co2[zone.id] + zone.co2_generation_per_second
@@ -79,7 +84,9 @@ def step_habitat(
         # 2. Loop airflow from the zone's path to the processing bay.
         outbound = config.path_to_processing(zone.id)
         inbound = config.path_from_processing(zone.id)
-        airflow = path_airflow(outbound)
+        airflow = path_airflow(
+            outbound, connection_effectiveness.get(outbound.id, 1.0)
+        )
         # 3. Capture the declared fraction of this zone's CO2 from moved air.
         moved_fraction = airflow / zone.air_volume
         captured = (

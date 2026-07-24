@@ -1,8 +1,9 @@
 """Deterministic runs of a validated scenario graph.
 
 A run is a fixed number of 1-second ticks over a :class:`HabitatConfig`.
-No randomness, no wall clock, and no fault profile yet: the same scenario
-file always produces the same records and a byte-identical trace.
+No randomness and no wall clock: the same scenario file always produces the
+same records and a byte-identical trace. Optional fault profiles are evaluated
+directly from the declared tick, never by accumulating mutable fault state.
 """
 
 from contextlib import nullcontext
@@ -51,7 +52,13 @@ def run_scenario(
     )
     with writer_context as writer:
         while state.tick < run.total_ticks:
-            state, airflows = step_habitat(config, state)
+            tick = state.tick + 1
+            effectiveness = _connection_effectiveness(config, tick)
+            state, airflows = step_habitat(
+                config,
+                state,
+                connection_effectiveness=effectiveness,
+            )
             record = _tick_record(config, state, airflows)
             records.append(record)
             if writer is not None:
@@ -59,10 +66,20 @@ def run_scenario(
     return records
 
 
+def _connection_effectiveness(
+    config: HabitatConfig, tick: int
+) -> dict[str, float]:
+    """Return hidden fan-effectiveness multipliers for this tick."""
+    return {
+        profile.connection_id: profile.effectiveness_at(tick)
+        for profile in config.fault_profiles
+    }
+
+
 def _tick_record(
     config: HabitatConfig, state, airflows: dict[str, float]
 ) -> TickRecord:
-    """Snapshot every zone's CO2 and every connection's airflow and health."""
+    """Snapshot only observable zone and connection telemetry."""
     processing_id = config.processing_zone().id
     zones: dict[str, dict[str, float]] = {}
     for zone in config.zones:
@@ -71,10 +88,7 @@ def _tick_record(
             entry["captured_co2"] = state.captured_co2
         zones[zone.id] = entry
     connections = {
-        connection.id: {
-            "airflow": airflows[connection.id],
-            "health": connection.health,
-        }
+        connection.id: {"airflow": airflows[connection.id]}
         for connection in config.connections
     }
     return TickRecord(tick=state.tick, zones=zones, connections=connections)
