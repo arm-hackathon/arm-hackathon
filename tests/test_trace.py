@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from icarus.trace import TickRecord, TraceWriter
 
 
@@ -15,8 +17,8 @@ def _record(tick: int) -> TickRecord:
             "processing": {"co2": 0.0, "captured_co2": 0.5 * tick},
         },
         connections={
-            "cabin_a_to_processing": {"airflow": 10.0, "health": 1.0},
-            "processing_to_cabin_a": {"airflow": 10.0, "health": 1.0},
+            "cabin_a_to_processing": {"airflow": 10.0},
+            "processing_to_cabin_a": {"airflow": 10.0},
         },
     )
 
@@ -38,7 +40,7 @@ def test_trace_output_is_valid_jsonl_with_zone_and_connection_fields(tmp_path):
         assert row["zones"]["cabin_a"]["co2"] > 0.0
         assert row["zones"]["processing"]["captured_co2"] >= 0.0
         for connection in row["connections"].values():
-            assert set(connection) == {"airflow", "health"}
+            assert set(connection) == {"airflow"}
     assert [row["tick"] for row in rows] == [1, 2, 3, 4, 5]
 
 
@@ -60,3 +62,12 @@ def test_writer_creates_missing_parent_directories(tmp_path):
         writer.write(_record(1))
 
     assert path.exists()
+
+
+def test_writer_rejects_hidden_connection_health(tmp_path):
+    record = _record(1)
+    record.connections["cabin_a_to_processing"]["health"] = 0.5
+
+    with TraceWriter(tmp_path / "trace.jsonl") as writer:
+        with pytest.raises(ValueError, match="only observable airflow"):
+            writer.write(record)
