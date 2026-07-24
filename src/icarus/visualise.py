@@ -125,12 +125,25 @@ def _validate_row(row: Any, line_number: int) -> None:
                 f"trace line {line_number} connection {connection_id!r} "
                 "must be an object"
             )
-        for field in ("requested_airflow", "airflow", "health"):
-            if field not in readings:
+        expected_fields = {
+            "requested_airflow",
+            "delivered_airflow",
+            "airflow_residual",
+        }
+        actual_fields = set(readings)
+        if actual_fields != expected_fields:
+            unexpected = sorted(actual_fields - expected_fields)
+            if unexpected:
                 raise ValueError(
                     f"trace line {line_number} connection {connection_id!r} "
-                    f"is missing {field!r}"
+                    f"has unexpected field {unexpected[0]!r}"
                 )
+            missing = sorted(expected_fields - actual_fields)
+            raise ValueError(
+                f"trace line {line_number} connection {connection_id!r} "
+                f"is missing {missing[0]!r}"
+            )
+        for field in expected_fields:
             _finite_number(
                 readings[field],
                 f"trace line {line_number} connection {connection_id!r} {field}",
@@ -140,15 +153,26 @@ def _validate_row(row: Any, line_number: int) -> None:
                 f"trace line {line_number} connection {connection_id!r} "
                 "requested_airflow must not be negative"
             )
-        if readings["airflow"] < 0.0:
+        if readings["delivered_airflow"] < 0.0:
             raise ValueError(
                 f"trace line {line_number} connection {connection_id!r} "
-                "airflow must not be negative"
+                "delivered_airflow must not be negative"
             )
-        if not 0.0 <= readings["health"] <= 1.0:
+        if readings["airflow_residual"] < 0.0:
             raise ValueError(
                 f"trace line {line_number} connection {connection_id!r} "
-                "health must be in 0.0..1.0"
+                "airflow_residual must not be negative"
+            )
+        if readings["delivered_airflow"] > readings["requested_airflow"]:
+            raise ValueError(
+                f"trace line {line_number} connection {connection_id!r} "
+                "delivered airflow exceeds requested airflow"
+            )
+        expected_residual = readings["requested_airflow"] - readings["delivered_airflow"]
+        if not math.isclose(readings["airflow_residual"], expected_residual, abs_tol=1e-12):
+            raise ValueError(
+                f"trace line {line_number} connection {connection_id!r} "
+                "airflow_residual does not match request minus delivery"
             )
 
     actuator_fields = (
@@ -180,7 +204,7 @@ def _validate_row(row: Any, line_number: int) -> None:
     for field in (
         "shared_airflow_capacity",
         "total_requested_airflow",
-        "total_actual_airflow",
+        "total_delivered_airflow",
         "capacity_scale",
     ):
         if field not in row["system"]:
@@ -278,12 +302,12 @@ _HTML = r'''<!doctype html>
     <article class="chart wide"><h2>CO₂ generated per tick</h2><p class="subtitle">Occupancy demand plus seeded, correlated variation</p><div id="source"></div></article>
     <article class="chart wide"><h2>CO₂ concentration</h2><p class="subtitle">Room sensor values used to calculate actuator demand</p><div id="sensor"></div></article>
     <article class="chart wide"><h2>CO₂ after shared processing</h2><p class="subtitle">Final zone concentration after mixed return airflow</p><div id="co2"></div></article>
-    <article class="chart wide"><h2>Requested and allocated airflow</h2><p class="subtitle">Local demand competes for shared fan capacity</p><div id="airflow"></div></article>
-    <article class="chart wide"><h2>Shared fan capacity</h2><p class="subtitle">Total demand, allocation and system limit</p><div id="capacity"></div></article>
+    <article class="chart wide"><h2>Requested and delivered airflow</h2><p class="subtitle">Measured actuator demand and physical loop delivery</p><div id="airflow"></div></article>
+    <article class="chart wide"><h2>Airflow residual</h2><p class="subtitle">Requested airflow minus delivered airflow</p><div id="airflow-residual"></div></article>
+    <article class="chart wide"><h2>Shared fan capacity</h2><p class="subtitle">Total requested and delivered airflow against the system limit</p><div id="capacity"></div></article>
     <article class="chart wide"><h2>Actuator setpoint and actual position</h2><p class="subtitle">Rate-limited movement exposes normal tracking delay</p><div id="position"></div></article>
     <article class="chart"><h2>Tracking residual</h2><p class="subtitle">Setpoint minus actual actuator position</p><div id="residual"></div></article>
     <article class="chart"><h2>Actuator power</h2><p class="subtitle">Abstract power used while moving or holding</p><div id="power"></div></article>
-    <article class="chart"><h2>Connection health</h2><p class="subtitle">1.0 is fully healthy; 0.0 is unavailable</p><div id="health"></div></article>
     <article class="chart"><h2>Captured CO₂</h2><p class="subtitle">Cumulative amount retained by processing</p><div id="captured"></div></article>
   </section>
   <footer>Generated locally by ICARUS. Values are abstract simulation units.</footer>
@@ -357,12 +381,13 @@ renderChart('sensor',seriesFor(zoneIds,(r,id)=>Number(r.zones[id]?.sensor_co2_co
 renderChart('co2',seriesFor(zoneIds,(r,id)=>Number(r.zones[id]?.co2_concentration??NaN)),'processed CO₂ concentration');
 const airflowSeries=connectionIds.flatMap((id,i)=>[
   {name:`${id} requested`,colour:colours[(i*2)%colours.length],values:rows.map(r=>Number(r.connections[id]?.requested_airflow??NaN))},
-  {name:`${id} allocated`,colour:colours[(i*2+1)%colours.length],values:rows.map(r=>Number(r.connections[id]?.airflow??NaN))}
+  {name:`${id} delivered`,colour:colours[(i*2+1)%colours.length],values:rows.map(r=>Number(r.connections[id]?.delivered_airflow??NaN))}
 ]);
 renderChart('airflow',airflowSeries,'airflow');
+renderChart('airflow-residual',seriesFor(connectionIds,(r,id)=>Number(r.connections[id]?.airflow_residual??NaN)),'airflow residual');
 renderChart('capacity',[
   {name:'requested',colour:colours[0],values:rows.map(r=>Number(r.system.total_requested_airflow))},
-  {name:'allocated',colour:colours[1],values:rows.map(r=>Number(r.system.total_actual_airflow))},
+  {name:'delivered',colour:colours[1],values:rows.map(r=>Number(r.system.total_delivered_airflow))},
   {name:'capacity',colour:colours[2],values:rows.map(r=>Number(r.system.shared_airflow_capacity))}
 ],'shared airflow');
 const positionSeries=actuatorIds.flatMap((id,i)=>[
@@ -372,7 +397,6 @@ const positionSeries=actuatorIds.flatMap((id,i)=>[
 renderChart('position',positionSeries,'normalised position',[0,1]);
 renderChart('residual',seriesFor(actuatorIds,(r,id)=>Number(r.actuators[id]?.tracking_residual??NaN)),'tracking residual');
 renderChart('power',seriesFor(actuatorIds,(r,id)=>Number(r.actuators[id]?.power??NaN)),'power');
-renderChart('health',seriesFor(connectionIds,(r,id)=>Number(r.connections[id]?.health??NaN)),'health',[0,1]);
 renderChart('captured',seriesFor(capturedEntries,(r,id)=>Number(r.zones[id]?.captured_co2??0)),'captured CO₂');
 </script>
 </body>

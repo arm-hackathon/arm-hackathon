@@ -1,8 +1,8 @@
 """Deterministic runs of a validated scenario graph.
 
-A run is an unrecorded warm-up followed by a fixed number of measured,
-1-second ticks over a :class:`HabitatConfig`. Seeded variation, fixed inputs
-and no wall clock ensure the same scenario produces a byte-identical trace.
+A run is an unrecorded warm-up followed by fixed measured ticks. Fault
+profiles are evaluated from the measured tick, never accumulated into mutable
+state, so the same scenario and seed always reproduce the same trace.
 """
 
 from contextlib import nullcontext
@@ -71,12 +71,25 @@ def run_scenario(
     )
     with writer_context as writer:
         while state.tick < run.total_ticks:
-            state, airflows = step_habitat(config, state)
+            next_tick = state.tick + 1
+            state, airflows = step_habitat(
+                config,
+                state,
+                connection_effectiveness=_connection_effectiveness(config, next_tick),
+            )
             record = _tick_record(config, state, airflows)
             records.append(record)
             if writer is not None:
                 writer.write(record)
     return records
+
+
+def _connection_effectiveness(config: HabitatConfig, tick: int) -> dict[str, float]:
+    """Return hidden fault multipliers for one measured tick."""
+    return {
+        profile.connection_id: profile.effectiveness_at(tick)
+        for profile in config.fault_profiles
+    }
 
 
 def _tick_record(
@@ -99,8 +112,8 @@ def _tick_record(
     connections = {
         connection.id: {
             "requested_airflow": state.requested_airflows[connection.id],
-            "airflow": airflows[connection.id],
-            "health": connection.health,
+            "delivered_airflow": airflows[connection.id],
+            "airflow_residual": state.airflow_residuals[connection.id],
         }
         for connection in config.connections
     }
@@ -128,7 +141,7 @@ def _tick_record(
                 for connection in config.connections
                 if connection.to_zone == processing_id
             ),
-            "total_actual_airflow": sum(
+            "total_delivered_airflow": sum(
                 airflows[connection.id]
                 for connection in config.connections
                 if connection.to_zone == processing_id

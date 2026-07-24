@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-25 — schema-v7 simulation convergence
+
+- Converged current `main` into the advanced deterministic simulation foundation.
+- Added closed-schema v7 `fault_profiles` with a validated,
+  deterministic `gradual_primary_fan_degradation` profile.
+- Separated controller-requested airflow from physical delivered airflow and
+  recorded an explicit airflow residual. Static path health, fault
+  effectiveness and shared capacity now reduce delivery only.
+- Added healthy standard, healthy high-demand and gradual-primary-fan
+  degradation scenarios.
+- Preserved deterministic warm-up and replay behaviour, mass conservation,
+  paired loop delivery and the standalone visualiser.
+- Added strict trace/model telemetry boundaries: health and fault truth remain
+  hidden, while model-facing data uses an explicit allowlist.
+- Updated visualisation, documentation, repository ignores and regression tests
+  for the v7 trace contract.
+
 ## 2026-07-24 — scenario and replay validation hardening
 
 - Bumped the scenario format from version 5 to version 6 because unknown

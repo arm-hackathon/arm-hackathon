@@ -20,7 +20,7 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
 ):
     config = load_scenario(standard_scenario_path)
 
-    assert config.version == 6
+    assert config.version == 7
     assert len(config.zones) == 4
     assert len(config.connections) == 6
     assert {z.id for z in config.zones} == ZONE_IDS
@@ -35,12 +35,13 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
     assert config.simulation.random_seed == 7
     assert config.air_system.shared_airflow_capacity == 24.0
     assert config.air_system.scrubber_removal_fraction == 0.5
+    assert config.fault_profiles == ()
 
 
 def test_version_five_scenarios_are_rejected(standard_doc):
     standard_doc["version"] = 5
 
-    with pytest.raises(ValueError, match="unsupported version 5; expected 6"):
+    with pytest.raises(ValueError, match="unsupported version 5; expected 7"):
         parse_scenario(standard_doc)
 
 
