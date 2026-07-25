@@ -65,6 +65,12 @@ PYTHONPATH=src uv run python -m icarus.visualise \
   out/primary_fan_degradation.html
 ```
 
+On Windows PowerShell, set `PYTHONPATH` for the session before running the same commands:
+
+```powershell
+$env:PYTHONPATH = "src"
+```
+
 The HTML report plots generated and sensed CO₂, actuator response, requested
 and delivered airflow, airflow residual, shared capacity and captured CO₂.
 Generated traces and reports belong in `out/`, not Git.
