@@ -5,7 +5,7 @@
 The authoritative clone URL is the configured `origin` remote:
 
 ```bash
-git clone https://github.com/akurkar07/arm-hackathon.git
+git clone https://github.com/arm-hackathon/arm-hackathon.git
 cd arm-hackathon
 uv run --extra dev python -m pytest
 ```
