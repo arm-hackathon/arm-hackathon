@@ -145,7 +145,8 @@ holds initial occupancy conditions, then resets visible tick and captured CO₂
 while retaining settled physical state.
 
 No wall clock or unseeded random source participates in a run. The same
-scenario file yields identical records and byte-identical JSONL output.
+scenario produces byte-identical JSONL output when run with the same code,
+Python runtime and platform.
 
 ## Trace and model projection
 
@@ -167,8 +168,10 @@ total_delivered_airflow
 capacity_scale
 ```
 
-Trace writers and the visualiser reject malformed, non-finite, negative,
-non-consecutive or undeclared telemetry. The visualiser can consume generated traces from all three shipped scenarios and plots requested/delivered airflow plus residuals.
+Trace writers validate the observable allowlist before serialising a row. The
+visualiser independently rejects undeclared connection telemetry. The visualiser
+can consume generated traces from all three shipped scenarios and plots
+requested/delivered airflow plus residuals.
 
 Fault state, fault effectiveness, static health, random seed and source-noise
 state are deliberately absent from trace telemetry. `model_feature_row()` has

@@ -95,6 +95,16 @@ def test_standard_scenario_is_v7_and_declares_no_fault_profile():
     assert config.fault_profiles == ()
 
 
+def test_paired_high_demand_scenarios_differ_only_by_fault_profiles():
+    healthy = json.loads(HIGH_DEMAND_PATH.read_text(encoding="utf-8"))
+    degraded = json.loads(DEGRADATION_PATH.read_text(encoding="utf-8"))
+
+    healthy.pop("fault_profiles")
+    degraded.pop("fault_profiles")
+
+    assert healthy == degraded
+
+
 def test_same_v7_scenario_produces_byte_identical_records_and_traces(tmp_path):
     first = tmp_path / "first.jsonl"
     second = tmp_path / "second.jsonl"
