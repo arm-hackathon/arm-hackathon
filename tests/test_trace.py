@@ -1,10 +1,20 @@
 """Tests for the JSONL trace writer."""
 
 import json
+from pathlib import Path
 
 import pytest
 
+from icarus.config import load_scenario
+from icarus.scenario import STANDARD_RUN, run_scenario
 from icarus.trace import TickRecord, TraceWriter
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+STANDARD_SCENARIO_PATH = REPO_ROOT / "scenarios" / "standard_habitat.json"
+DEGRADATION_SCENARIO_PATH = REPO_ROOT / "scenarios" / "primary_fan_degradation.json"
+STANDARD_TRACE_PATH = REPO_ROOT / "traces" / "standard_habitat.jsonl"
+DEGRADATION_TRACE_PATH = REPO_ROOT / "traces" / "primary_fan_degradation.jsonl"
+TRACE_PAIRS = [(STANDARD_SCENARIO_PATH, STANDARD_TRACE_PATH), (DEGRADATION_SCENARIO_PATH, DEGRADATION_TRACE_PATH)]
 
 
 def _record(tick: int) -> TickRecord:
@@ -71,3 +81,26 @@ def test_writer_rejects_hidden_connection_health(tmp_path):
     with TraceWriter(tmp_path / "trace.jsonl") as writer:
         with pytest.raises(ValueError, match="only observable airflow"):
             writer.write(record)
+
+
+@pytest.mark.parametrize('scenario_path,trace_path', TRACE_PAIRS, ids=['standard', 'degradation'])
+def test_checked_in_trace_matches_fresh_run_and_exposes_only_observable_telemetry(scenario_path: Path, trace_path: Path, tmp_path: Path):
+    """Each checked-in trace must be byte-identical to a fresh run of its scenario and carry no hidden truth."""
+    assert trace_path.exists(), (f'missing checked-in trace: {trace_path}')
+    fresh_path = tmp_path / 'fresh.jsonl'
+    run_scenario(load_scenario(scenario_path), trace_path=fresh_path)
+    assert fresh_path.read_bytes() == trace_path.read_bytes(), (
+        f'checked-in trace {trace_path.name} is stale: does not match a fresh run of {scenario_path.name}'
+    )
+
+    rows = [json.loads(line) for line in trace_path.read_text(encoding='utf-8').splitlines()]
+    assert len(rows) == STANDARD_RUN.total_ticks
+    assert [row['tick'] for row in rows] == list(range(1, STANDARD_RUN.total_ticks + 1))
+    for row in rows:
+        assert set(row) == {'tick', 'zones', 'connections'}
+        for telemetry in row['connections'].values():
+            assert set(telemetry) == {'airflow'}, (f'checked-in trace {trace_path.name} leaks non-airflow connection telemetry')
+        serialised = json.dumps(row, sort_keys=True)
+        assert 'health' not in serialised
+        assert 'fault' not in serialised
+        assert 'effectiveness' not in serialised

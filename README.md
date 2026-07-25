@@ -64,6 +64,13 @@ uv run --extra dev python -m icarus \
 
 A successful run prints the source scenario, tick count, trace path, and final zone/captured-CO2 state. The standard scenario produces 120 trace rows.
 
+On Windows PowerShell, set `PYTHONPATH` for the session instead of inlining it:
+
+```powershell
+$env:PYTHONPATH="src"
+python -m icarus scenarios/standard_habitat.json traces/standard_habitat.jsonl
+```
+
 The gradual-degradation example uses the same command shape:
 
 ```bash
