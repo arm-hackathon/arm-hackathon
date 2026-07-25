@@ -1,10 +1,16 @@
 """Tests for the JSONL trace writer."""
 
 import json
+from pathlib import Path
 
 import pytest
 
+from icarus.scenario import STANDARD_RUN
 from icarus.trace import TickRecord, TraceWriter
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+STANDARD_TRACE_PATH = REPO_ROOT / "traces" / "standard_habitat.jsonl"
+DEGRADATION_TRACE_PATH = REPO_ROOT / "traces" / "primary_fan_degradation.jsonl"
 
 
 def _record(tick: int) -> TickRecord:
@@ -71,3 +77,26 @@ def test_writer_rejects_hidden_connection_health(tmp_path):
     with TraceWriter(tmp_path / "trace.jsonl") as writer:
         with pytest.raises(ValueError, match="only observable airflow"):
             writer.write(record)
+
+
+def _assert_checked_in_trace_clean(trace_path: Path) -> None:
+    assert trace_path.exists(), (f'missing checked-in trace: {trace_path}')
+    rows = [json.loads(line) for line in trace_path.read_text(encoding='utf-8').splitlines()]
+
+    assert len(rows) == STANDARD_RUN.total_ticks
+    assert [row['tick'] for row in rows] == list(range(1, STANDARD_RUN.total_ticks + 1))
+
+    for row in rows:
+        assert set(row) == {'tick', 'zones', 'connections'}
+        for telemetry in row['connections'].values():
+            assert set(telemetry) == {'airflow'}, (f'checked-in trace leaks non-airflow connection telemetry: {trace_path.name}')
+        serialised = json.dumps(row, sort_keys=True)
+        assert 'health' not in serialised
+        assert 'fault' not in serialised
+        assert 'effectiveness' not in serialised
+
+
+@pytest.mark.parametrize('trace_path', [STANDARD_TRACE_PATH, DEGRADATION_TRACE_PATH], ids=['standard', 'degradation'])
+def test_checked_in_trace_exposes_only_observable_telemetry(trace_path: Path):
+    """Regression guard for the disallowed 'health' field once shipped in the trace."""
+    _assert_checked_in_trace_clean(trace_path)
