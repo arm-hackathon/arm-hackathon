@@ -24,12 +24,13 @@ control of every actuator command.
 Landed and tested: the deterministic schema-v7 simulator with separated
 requested/delivered airflow and explicit residuals; five scenarios (nominal,
 healthy high-demand, gradual degradation, blocked path, frozen sensor); the
-telemetry allowlist and model-feature projection; the HTML visualiser; and
-the leakage-safe labelled window corpus.
+telemetry allowlist and model-feature projection; the HTML visualiser; the
+leakage-safe labelled window corpus; and the streaming rule baseline with its
+evaluation harness (111/115 windows on corpus v1, latencies 10/5/10 ticks).
 
-Not started: the rule baseline and temporal classifier, the scenario sweep
-that turns the corpus contract into training data, ONNX export and
-quantisation, the safety governor and redundant fan, Arm64 benchmarks, and
+Not started: the scenario sweep that turns the corpus contract into training
+data, the temporal classifier and its FP32 ONNX export, INT8 quantisation,
+the safety governor and redundant fan, Arm64 benchmarks, and
 reproducibility packaging.
 
 ## Core objectives

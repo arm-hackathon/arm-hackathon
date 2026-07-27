@@ -19,8 +19,10 @@ The repository currently contains:
   blocked path and frozen sensor;
 - JSONL replay traces, an allowlisted model-feature projection, a standalone
   HTML visualiser and a leakage-safe labelled window corpus;
+- a streaming rule-baseline fault detector and an evaluation harness that
+  grades any labeller on accuracy, confusion and detection latency;
 - tests for replay determinism, fault semantics, mass conservation, airflow
-  invariants, telemetry boundaries and corpus leakage.
+  invariants, telemetry boundaries, corpus leakage and detector behaviour.
 
 ```text
 CO₂ sources → sensor → controller → actuator position
@@ -69,6 +71,10 @@ PYTHONPATH=src uv run python -m icarus.visualise \
 
 # Generate the labelled window corpus and its manifest
 PYTHONPATH=src uv run python -m icarus.corpus out/corpus scenarios/*.json
+
+# Grade the rule baseline against the corpus
+PYTHONPATH=src uv run python -m icarus.evaluate \
+  out/corpus/corpus.jsonl scenarios/*.json
 ```
 
 On Windows PowerShell, set `PYTHONPATH` for the session before running the same commands:
