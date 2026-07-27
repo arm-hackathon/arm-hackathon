@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-07-27 — blocked-path and frozen-sensor faults plus labelled corpus
+
+- Added two schema-v7 fault profile types: `blocked_path` (a sudden step loss
+  of delivery effectiveness on an outbound loop) and `frozen_sensor` (a zone
+  sensor that holds its first frozen reading while the truth evolves).
+- Added `scenarios/blocked_path.json` and `scenarios/frozen_sensor.json`,
+  paired with the high-demand baseline habitat; the frozen-sensor scenario
+  steps lab demand down after the freeze so the held reading diverges from
+  observable reality.
+- Added `icarus.corpus`: a leakage-safe labelled window corpus over all five
+  shipped scenarios. Features are exactly the `model_feature_row()` allowlist,
+  labels come from declared fault profiles at each window's final tick, and
+  regeneration is byte-identical.
+- Documented the new fault semantics and the corpus boundary in
+  `docs/simulation-rules.md` and `docs/telemetry-contract.md`.
+
 ## 2026-07-25 — schema-v7 simulation convergence
 
 - Converged current `main` into the advanced deterministic simulation foundation.
