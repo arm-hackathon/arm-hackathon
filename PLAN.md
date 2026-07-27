@@ -19,6 +19,19 @@ isolated actuator degrades
 AI provides diagnosis and confidence. Deterministic safety logic retains
 control of every actuator command.
 
+## Status — 2026-07-27
+
+Landed and tested: the deterministic schema-v7 simulator with separated
+requested/delivered airflow and explicit residuals; five scenarios (nominal,
+healthy high-demand, gradual degradation, blocked path, frozen sensor); the
+telemetry allowlist and model-feature projection; the HTML visualiser; and
+the leakage-safe labelled window corpus.
+
+Not started: the rule baseline and temporal classifier, the scenario sweep
+that turns the corpus contract into training data, ONNX export and
+quantisation, the safety governor and redundant fan, Arm64 benchmarks, and
+reproducibility packaging.
+
 ## Core objectives
 
 1. **System awareness:** combine telemetry from independent actuators, sensors
@@ -36,32 +49,55 @@ control of every actuator command.
 
 ### 1. Actuator and plant model
 
-- Preserve local CO₂-driven controllers for each zone.
-- Separate commanded output, actual output, health, airflow and power.
+- Preserve local CO₂-driven controllers for each zone. (done)
+- Separate commanded output, actual output, health, airflow and power. (done:
+  command vs measured position vs requested/delivered airflow are separate;
+  health stays hidden by design — see §3)
 - Add shared ducts or capacity constraints so actuator behaviour has
-  system-wide consequences.
-- Add a healthy redundant fan or alternative airflow path.
+  system-wide consequences. (mechanism done and unit-tested; a contention
+  scenario arrives with the governor slice — current habitats never saturate
+  the shared bay)
+- Add a healthy redundant fan or alternative airflow path. (pending — changes
+  scenario geometry; lands with the governor slice)
 
 ### 2. Deterministic scenarios
 
-- Nominal operation.
-- Gradual primary-fan degradation.
-- Blocked airflow path.
-- Invalid or frozen sensor.
-- Identical fault runs with orchestration enabled and disabled.
+- Nominal operation. (done: `standard_habitat`, `high_demand_healthy`)
+- Gradual primary-fan degradation. (done: `primary_fan_degradation`)
+- Blocked airflow path. (done: `blocked_path`)
+- Invalid or frozen sensor. (done: `frozen_sensor`, with a lab demand step so
+  the held reading diverges from reality — a frozen sensor at saturated
+  steady state is otherwise invisible)
+- Shared-capacity contention. (pending — governor slice)
+- Identical fault runs with orchestration enabled and disabled. (pending —
+  requires the governor)
 
 ### 3. Telemetry and topology
 
-- Record CO₂, actuator command, output, airflow, power, health and validity.
-- Derive command-tracking residuals and rolling trends.
-- Map each actuator to the ducts and zones it affects.
-- Keep every run seeded, replayable and testable.
+- Record CO₂, actuator command and position, requested/delivered/residual
+  airflow and power. (done) Health and fault truth are deliberately NOT
+  recorded: they stay behind the telemetry boundary so model-facing data
+  contains only what honest deployment telemetry would show. Sensor validity
+  is handled as a fault class (`frozen_sensor`) and later as a governor
+  `HAND_BACK` condition, not as a telemetry field.
+- Airflow is recorded as metered duct flow. Declaring flow sensing is a
+  deliberate abstraction, kept because the requested/delivered residual is
+  the primary fault observable; a deployment-facing version would need
+  declared flow sensors or inferred flow.
+- Derive command-tracking residuals and rolling trends. (residuals done;
+  rolling trends belong to the model lane)
+- Map each actuator to the ducts and zones it affects. (done — the validated
+  scenario graph is the topology)
+- Keep every run seeded, replayable and testable. (done — byte-identical
+  replay under test)
 
 ### 4. AI diagnosis
 
-- Generate labelled telemetry windows from the simulator.
+- Generate labelled telemetry windows from the simulator. (done — corpus v1
+  with leakage-safe features and declared-fault labels; a deterministic
+  scenario sweep is still needed for training volume)
 - Train a compact temporal classifier and compare it with rule-based and
-  threshold baselines.
+  threshold baselines. Split train/validation/test by run, never by window.
 - Export FP32 and INT8 ONNX models.
 - Report fault class, confidence, detection latency and false alarms.
 

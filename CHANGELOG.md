@@ -15,6 +15,10 @@
   regeneration is byte-identical.
 - Documented the new fault semantics and the corpus boundary in
   `docs/simulation-rules.md` and `docs/telemetry-contract.md`.
+- Aligned `PLAN.md` with the converged design: health and fault truth are
+  deliberately hidden rather than recorded, metered airflow is a declared
+  abstraction, and capacity-contention and orchestration-pair scenarios are
+  explicitly deferred to the governor slice.
 
 ## 2026-07-25 — schema-v7 simulation convergence
 
