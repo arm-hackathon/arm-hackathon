@@ -123,8 +123,11 @@ changes, measured improvement on Arm, and why it matters. The plan for that:
   baseline; the INT8 quantised model is the optimisation. Report model size,
   latency, throughput, memory and detection-quality delta between them on a
   declared Arm64 target.
-- **Declared Arm64 target:** must be procured and documented before the
-  benchmark slice starts. No Arm64 target means no optimisation evidence.
+- **Declared Arm64 target:** an Azure Arm64 VM (Ampere Altra, Dps v5 series,
+  Ubuntu) funded by existing Azure credits; the exact VM size is fixed at
+  provisioning time. Provision early to flush out quota limits. Record the
+  target identity (VM size, CPU, OS, runtime versions) alongside the raw
+  results so the numbers are reproducible by anyone with the same image.
 - **Reusable artifacts, not claims:** a reusable benchmark runner script,
   raw benchmark results committed to the repo, and migration/optimisation
   notes another developer could follow. Tooling and lessons are scored.
