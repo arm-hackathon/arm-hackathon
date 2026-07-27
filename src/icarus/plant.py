@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Mapping
 
@@ -37,6 +38,7 @@ class HabitatState:
     delivered_airflows: dict[str, float] = field(default_factory=dict)
     airflow_residuals: dict[str, float] = field(default_factory=dict)
     capacity_scale: float = 1.0
+    frozen_sensor_readings: dict[str, float] = field(default_factory=dict)
 
 
 def initial_state(config: HabitatConfig) -> HabitatState:
@@ -138,6 +140,7 @@ def step_habitat(
     state: HabitatState,
     *,
     connection_effectiveness: Mapping[str, float] | None = None,
+    frozen_zones: Collection[str] | None = None,
     source_tick: int | None = None,
     occupancy_tick: int | None = None,
 ) -> tuple[HabitatState, dict[str, float]]:
@@ -148,8 +151,19 @@ def step_habitat(
     reduce physical delivery later; shared capacity then allocates the resulting
     provisional delivery proportionally. The distinction makes demand and
     degraded delivery observable without exposing hidden fault truth.
+
+    A zone in ``frozen_zones`` keeps the sensor reading it showed on its first
+    frozen tick; the true concentration keeps evolving underneath. The frozen
+    reading is all the controller can see.
     """
     connection_effectiveness = connection_effectiveness or {}
+    frozen_zones = frozenset(frozen_zones or ())
+    valid_frozen = {zone.id for zone in config.non_processing_zones()}
+    unknown_frozen = sorted(frozen_zones - valid_frozen)
+    if unknown_frozen:
+        raise ValueError(
+            f"frozen sensor targets unknown or processing zone {unknown_frozen[0]!r}"
+        )
 
     # 1. Occupancy-scaled, replayable CO₂ sources.
     source_co2_mass: dict[str, float] = {}
@@ -180,6 +194,13 @@ def step_habitat(
         zone.id: zone_co2_mass[zone.id] / zone.air_volume
         for zone in config.zones
     }
+    # A frozen sensor holds the reading it showed on its first frozen tick.
+    # The true concentration keeps evolving; only the reading is held.
+    frozen_sensor_readings = dict(state.frozen_sensor_readings)
+    for zone_id in sorted(frozen_zones):
+        if zone_id not in frozen_sensor_readings:
+            frozen_sensor_readings[zone_id] = sensor_co2_concentration[zone_id]
+        sensor_co2_concentration[zone_id] = frozen_sensor_readings[zone_id]
     controller = ProportionalCO2Controller(config.control)
     actuator_model = RateLimitedActuator(config.actuator)
     actuators: dict[str, ActuatorState] = {}
@@ -271,5 +292,6 @@ def step_habitat(
         delivered_airflows=delivered_airflows,
         airflow_residuals=airflow_residuals,
         capacity_scale=capacity_scale,
+        frozen_sensor_readings=frozen_sensor_readings,
     )
     return new_state, delivered_airflows
