@@ -101,6 +101,17 @@ labels come from declared fault profiles, never from telemetry, so the corpus
 carries no hidden fault truth. Corpus output is a generated artifact and
 belongs in `out/`, not Git.
 
+## Results so far
+
+Every claimed number below is reproducible from the commands in this README.
+
+| Date | Result | Evidence |
+|---|---|---|
+| 2026-07-27 | Rule baseline on corpus v1: **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | `icarus.corpus` + `icarus.evaluate` output |
+
+The temporal classifier will be graded by the same harness on the same
+metrics, against this row as the bar.
+
 ## Deliberately out of scope
 
 - model training, ONNX export, quantisation and inference;
