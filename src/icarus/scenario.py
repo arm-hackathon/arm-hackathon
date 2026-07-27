@@ -76,6 +76,7 @@ def run_scenario(
                 config,
                 state,
                 connection_effectiveness=_connection_effectiveness(config, next_tick),
+                frozen_zones=_frozen_sensor_zones(config, next_tick),
             )
             record = _tick_record(config, state, airflows)
             records.append(record)
@@ -88,8 +89,17 @@ def _connection_effectiveness(config: HabitatConfig, tick: int) -> dict[str, flo
     """Return hidden fault multipliers for one measured tick."""
     return {
         profile.connection_id: profile.effectiveness_at(tick)
-        for profile in config.fault_profiles
+        for profile in config.connection_faults()
     }
+
+
+def _frozen_sensor_zones(config: HabitatConfig, tick: int) -> frozenset[str]:
+    """Return zone ids whose sensors are frozen at one measured tick."""
+    return frozenset(
+        profile.zone_id
+        for profile in config.sensor_faults()
+        if profile.is_frozen_at(tick)
+    )
 
 
 def _tick_record(
