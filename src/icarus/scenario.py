@@ -1,13 +1,12 @@
 """Deterministic runs of a validated scenario graph.
 
-A run is a fixed number of 1-second ticks over a :class:`HabitatConfig`.
-No randomness and no wall clock: the same scenario file always produces the
-same records and a byte-identical trace. Optional fault profiles are evaluated
-directly from the declared tick, never by accumulating mutable fault state.
+A run is an unrecorded warm-up followed by fixed measured ticks. Fault
+profiles are evaluated from the measured tick, never accumulated into mutable
+state, so the same scenario and seed always reproduce the same trace.
 """
 
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from icarus.config import HabitatConfig
 from icarus.plant import initial_state, step_habitat
@@ -16,20 +15,27 @@ from icarus.trace import TickRecord, TraceWriter
 
 @dataclass(frozen=True)
 class RunSpec:
-    """Declared constants of a run: length, warm-up window, cabin ceiling."""
+    """Declared constants of a run: length, warm-up and cabin concentration."""
 
     total_ticks: int
     warmup_ticks: int
-    crew_cabin_co2_ceiling: float
+    crew_cabin_co2_concentration_ceiling: float
+
+    def __post_init__(self) -> None:
+        if self.total_ticks < 1:
+            raise ValueError("total_ticks must be positive")
+        if self.warmup_ticks < 0:
+            raise ValueError("warmup_ticks must not be negative")
+        if self.crew_cabin_co2_concentration_ceiling <= 0.0:
+            raise ValueError("crew-cabin CO2 ceiling must be positive")
 
 
 # Declared run constants for the standard habitat. The ceiling is the
-# scenario's declared crew-cabin CO2 ceiling, checked after the warm-up
-# window; healthy cabins settle well below it.
+# declared crew-cabin concentration ceiling for the measured run.
 STANDARD_RUN = RunSpec(
     total_ticks=120,
     warmup_ticks=60,
-    crew_cabin_co2_ceiling=30.0,
+    crew_cabin_co2_concentration_ceiling=0.30,
 )
 
 
@@ -45,6 +51,19 @@ def run_scenario(
     as one JSONL row, immediately after its tick is computed.
     """
     state = initial_state(config)
+    # Warm up under the first declared occupancy conditions. Negative source
+    # ticks give the pre-roll its own deterministic noise sequence, while the
+    # measured run still begins with scenario tick 1.
+    for warmup_index in range(run.warmup_ticks):
+        state, _ = step_habitat(
+            config,
+            state,
+            source_tick=warmup_index - run.warmup_ticks,
+            occupancy_tick=1,
+        )
+    # The warm-up establishes physical state but is not part of measured time
+    # or captured-CO2 accounting in the replay.
+    state = replace(state, tick=0, captured_co2=0.0)
     records: list[TickRecord] = []
 
     writer_context = (
@@ -52,12 +71,11 @@ def run_scenario(
     )
     with writer_context as writer:
         while state.tick < run.total_ticks:
-            tick = state.tick + 1
-            effectiveness = _connection_effectiveness(config, tick)
+            next_tick = state.tick + 1
             state, airflows = step_habitat(
                 config,
                 state,
-                connection_effectiveness=effectiveness,
+                connection_effectiveness=_connection_effectiveness(config, next_tick),
             )
             record = _tick_record(config, state, airflows)
             records.append(record)
@@ -66,10 +84,8 @@ def run_scenario(
     return records
 
 
-def _connection_effectiveness(
-    config: HabitatConfig, tick: int
-) -> dict[str, float]:
-    """Return hidden fan-effectiveness multipliers for this tick."""
+def _connection_effectiveness(config: HabitatConfig, tick: int) -> dict[str, float]:
+    """Return hidden fault multipliers for one measured tick."""
     return {
         profile.connection_id: profile.effectiveness_at(tick)
         for profile in config.fault_profiles
@@ -79,16 +95,57 @@ def _connection_effectiveness(
 def _tick_record(
     config: HabitatConfig, state, airflows: dict[str, float]
 ) -> TickRecord:
-    """Snapshot only observable zone and connection telemetry."""
+    """Snapshot sensor, plant and actuator telemetry for every zone and path."""
     processing_id = config.processing_zone().id
     zones: dict[str, dict[str, float]] = {}
     for zone in config.zones:
-        entry = {"co2": state.zone_co2[zone.id]}
+        entry = {
+            "co2_mass": state.zone_co2_mass[zone.id],
+            "co2_concentration": state.zone_co2_mass[zone.id] / zone.air_volume,
+            "sensor_co2_concentration": state.sensor_co2_concentration[zone.id],
+            "source_co2_mass": state.source_co2_mass[zone.id],
+            "occupancy_multiplier": state.occupancy_multiplier[zone.id],
+        }
         if zone.id == processing_id:
             entry["captured_co2"] = state.captured_co2
         zones[zone.id] = entry
     connections = {
-        connection.id: {"airflow": airflows[connection.id]}
+        connection.id: {
+            "requested_airflow": state.requested_airflows[connection.id],
+            "delivered_airflow": airflows[connection.id],
+            "airflow_residual": state.airflow_residuals[connection.id],
+        }
         for connection in config.connections
     }
-    return TickRecord(tick=state.tick, zones=zones, connections=connections)
+    actuators = {
+        zone_id: {
+            "setpoint": actuator.setpoint,
+            "actual_position": actuator.actual_position,
+            "tracking_residual": actuator.tracking_residual,
+            "moving": float(actuator.moving),
+            "movement_seconds": actuator.movement_seconds,
+            "power": actuator.power,
+            "direction": float(actuator.direction),
+        }
+        for zone_id, actuator in state.actuators.items()
+    }
+    return TickRecord(
+        tick=state.tick,
+        zones=zones,
+        connections=connections,
+        actuators=actuators,
+        system={
+            "shared_airflow_capacity": config.air_system.shared_airflow_capacity,
+            "total_requested_airflow": sum(
+                state.requested_airflows[connection.id]
+                for connection in config.connections
+                if connection.to_zone == processing_id
+            ),
+            "total_delivered_airflow": sum(
+                airflows[connection.id]
+                for connection in config.connections
+                if connection.to_zone == processing_id
+            ),
+            "capacity_scale": state.capacity_scale,
+        },
+    )
