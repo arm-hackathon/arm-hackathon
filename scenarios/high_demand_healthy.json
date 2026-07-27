@@ -7,15 +7,7 @@
     "shared_airflow_capacity": 40.0,
     "scrubber_removal_fraction": 0.5
   },
-  "fault_profiles": [
-    {
-      "type": "gradual_primary_fan_degradation",
-      "connection_id": "cabin_a_to_processing",
-      "start_tick": 20,
-      "end_tick": 80,
-      "end_effectiveness": 0.4
-    }
-  ],
+  "fault_profiles": [],
   "control": {
     "co2_lower_threshold": 0.0,
     "co2_upper_threshold": 0.2,

@@ -20,12 +20,29 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
 ):
     config = load_scenario(standard_scenario_path)
 
-    assert config.version == 1
+    assert config.version == 7
     assert len(config.zones) == 4
     assert len(config.connections) == 6
     assert {z.id for z in config.zones} == ZONE_IDS
     assert {c.id for c in config.connections} == CONNECTION_IDS
+    assert config.control.lower_threshold == 0.0
+    assert config.control.upper_threshold == 0.2
+    assert config.control.minimum_command == 0.1
+    assert config.control.maximum_command == 1.0
+    assert config.actuator.full_stroke_seconds == 30.0
+    assert config.actuator.moving_power == 1.0
+    assert config.actuator.holding_power == 0.05
+    assert config.simulation.random_seed == 7
+    assert config.air_system.shared_airflow_capacity == 24.0
+    assert config.air_system.scrubber_removal_fraction == 0.5
     assert config.fault_profiles == ()
+
+
+def test_version_five_scenarios_are_rejected(standard_doc):
+    standard_doc["version"] = 5
+
+    with pytest.raises(ValueError, match="unsupported version 5; expected 7"):
+        parse_scenario(standard_doc)
 
 
 def test_standard_habitat_zone_fields(standard_scenario_path):
@@ -38,12 +55,17 @@ def test_standard_habitat_zone_fields(standard_scenario_path):
     assert by_id["lab"].preset == "lab"
     assert by_id["processing"].preset == "air_processing"
 
-    # Crew cabins carry a positive CO2 source; lab and processing start at zero.
+    # Occupied zones carry a positive source; processing remains at zero.
     assert by_id["cabin_a"].co2_generation_per_second > 0.0
     assert by_id["cabin_b"].co2_generation_per_second > 0.0
-    assert by_id["lab"].co2_generation_per_second == 0.0
+    assert by_id["lab"].co2_generation_per_second == 0.15
     assert by_id["processing"].co2_generation_per_second == 0.0
     assert all(z.air_volume > 0.0 for z in config.zones)
+    assert by_id["cabin_a"].co2_generation_epsilon == 0.18
+    assert by_id["cabin_b"].co2_generation_epsilon == 0.18
+    assert by_id["lab"].co2_generation_epsilon == 0.04
+    assert by_id["cabin_a"].co2_noise_correlation == 0.85
+    assert len(by_id["cabin_a"].occupancy_profile) == 3
 
 
 def test_standard_habitat_hub_paths_are_healthy_and_paired(standard_scenario_path):
@@ -59,91 +81,6 @@ def test_standard_habitat_hub_paths_are_healthy_and_paired(standard_scenario_pat
         assert outbound.to_zone == "processing"
         assert inbound.from_zone == "processing"
         assert inbound.to_zone == zone.id
-
-
-def test_gradual_primary_fan_profile_is_loaded_and_interpolated(
-    degradation_scenario_path,
-):
-    config = load_scenario(degradation_scenario_path)
-
-    assert len(config.fault_profiles) == 1
-    profile = config.fault_profiles[0]
-    assert profile.connection_id == "cabin_a_to_processing"
-    assert profile.start_tick == 20
-    assert profile.end_tick == 80
-    assert profile.end_effectiveness == pytest.approx(0.4)
-    assert profile.effectiveness_at(19) == pytest.approx(1.0)
-    assert profile.effectiveness_at(20) == pytest.approx(1.0)
-    assert profile.effectiveness_at(50) == pytest.approx(0.7)
-    assert profile.effectiveness_at(80) == pytest.approx(0.4)
-    assert profile.effectiveness_at(120) == pytest.approx(0.4)
-
-
-def _fault_profile(**overrides):
-    profile = {
-        "type": "gradual_primary_fan_degradation",
-        "connection_id": "cabin_a_to_processing",
-        "start_tick": 20,
-        "end_tick": 80,
-        "end_effectiveness": 0.4,
-    }
-    profile.update(overrides)
-    return profile
-
-
-@pytest.mark.parametrize(
-    "fault_profiles,match",
-    [
-        pytest.param({}, "must be a list", id="fault_profiles_not_list"),
-        pytest.param(
-            [{"type": "gradual_primary_fan_degradation"}],
-            "missing required field",
-            id="missing_fault_field",
-        ),
-        pytest.param(
-            [_fault_profile(type="instant_failure")],
-            "unsupported fault profile type",
-            id="unsupported_fault_type",
-        ),
-        pytest.param(
-            [_fault_profile(connection_id="missing")],
-            "unknown connection",
-            id="unknown_fault_connection",
-        ),
-        pytest.param(
-            [_fault_profile(connection_id="processing_to_cabin_a")],
-            "not a primary fan",
-            id="return_path_is_not_primary_fan",
-        ),
-        pytest.param(
-            [_fault_profile(start_tick=0)],
-            "start_tick.*positive",
-            id="non_positive_start_tick",
-        ),
-        pytest.param(
-            [_fault_profile(end_tick=20)],
-            "end_tick must be after start_tick",
-            id="non_gradual_tick_range",
-        ),
-        pytest.param(
-            [_fault_profile(end_effectiveness=1.0)],
-            "end_effectiveness",
-            id="profile_must_reduce_effectiveness",
-        ),
-        pytest.param(
-            [_fault_profile(), _fault_profile(end_effectiveness=0.2)],
-            "more than one fault profile",
-            id="duplicate_fault_target",
-        ),
-    ],
-)
-def test_invalid_fault_profile_is_rejected_clearly(
-    standard_doc, fault_profiles, match
-):
-    standard_doc["fault_profiles"] = fault_profiles
-
-    with pytest.raises(ValueError, match=match):
-        parse_scenario(standard_doc)
 
 
 def _mutate(doc, fn):
@@ -165,6 +102,51 @@ INVALID_CASES = [
         lambda d: d.pop("version"),
         "version",
         id="missing_version",
+    ),
+    pytest.param(
+        lambda d: d.pop("control"),
+        "control",
+        id="missing_control",
+    ),
+    pytest.param(
+        lambda d: d.pop("actuator"),
+        "actuator",
+        id="missing_actuator",
+    ),
+    pytest.param(
+        lambda d: d.pop("simulation"),
+        "simulation",
+        id="missing_simulation",
+    ),
+    pytest.param(
+        lambda d: d.pop("air_system"),
+        "air_system",
+        id="missing_air_system",
+    ),
+    pytest.param(
+        lambda d: d["air_system"].update(shared_airflow_capacity=0.0),
+        "shared_airflow_capacity",
+        id="invalid_shared_capacity",
+    ),
+    pytest.param(
+        lambda d: d["simulation"].update(random_seed=True),
+        "random_seed",
+        id="invalid_random_seed",
+    ),
+    pytest.param(
+        lambda d: d["actuator"].update(full_stroke_seconds=0.0),
+        "full stroke",
+        id="invalid_actuator_stroke_time",
+    ),
+    pytest.param(
+        lambda d: d["control"].update(co2_upper_threshold=0.0),
+        "upper threshold",
+        id="invalid_control_thresholds",
+    ),
+    pytest.param(
+        lambda d: d["control"].update(maximum_command=1.5),
+        "maximum actuator command",
+        id="invalid_maximum_command",
     ),
     pytest.param(
         lambda d: d.update(zones=[]),
@@ -227,6 +209,31 @@ INVALID_CASES = [
         ],
         "co2_generation_per_second",
         id="negative_co2_source",
+    ),
+    pytest.param(
+        lambda d: [
+            z.update(co2_generation_epsilon=-0.1)
+            for z in d["zones"]
+            if z["id"] == "cabin_a"
+        ],
+        "co2_generation_epsilon",
+        id="negative_co2_epsilon",
+    ),
+    pytest.param(
+        lambda d: [
+            z.update(co2_noise_correlation=1.1)
+            for z in d["zones"]
+            if z["id"] == "cabin_a"
+        ],
+        "co2_noise_correlation",
+        id="invalid_noise_correlation",
+    ),
+    pytest.param(
+        lambda d: d["zones"][0]["occupancy_profile"].append(
+            {"start_tick": 20, "end_tick": 45, "multiplier": 1.0}
+        ),
+        "must not overlap",
+        id="overlapping_occupancy_periods",
     ),
     pytest.param(
         lambda d: [
@@ -448,3 +455,24 @@ def test_load_scenario_rejects_non_object_document(tmp_path):
 
     with pytest.raises(ValueError, match="object"):
         load_scenario(path)
+
+
+def test_rejects_unknown_top_level_field(standard_doc):
+    standard_doc["simulaton"] = {"random_seed": 7}
+
+    with pytest.raises(ValueError, match="unexpected field 'simulaton'"):
+        parse_scenario(standard_doc)
+
+
+def test_rejects_unknown_zone_field(standard_doc):
+    standard_doc["zones"][0]["co2_generation_epslion"] = 0.1
+
+    with pytest.raises(ValueError, match="unexpected field 'co2_generation_epslion'"):
+        parse_scenario(standard_doc)
+
+
+def test_rejects_unknown_connection_field(standard_doc):
+    standard_doc["connections"][0]["max_airfow"] = 10.0
+
+    with pytest.raises(ValueError, match="unexpected field 'max_airfow'"):
+        parse_scenario(standard_doc)

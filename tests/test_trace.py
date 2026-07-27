@@ -1,34 +1,72 @@
 """Tests for the JSONL trace writer."""
 
 import json
-from pathlib import Path
 
-import pytest
-
-from icarus.config import load_scenario
-from icarus.scenario import STANDARD_RUN, run_scenario
 from icarus.trace import TickRecord, TraceWriter
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-STANDARD_SCENARIO_PATH = REPO_ROOT / "scenarios" / "standard_habitat.json"
-DEGRADATION_SCENARIO_PATH = REPO_ROOT / "scenarios" / "primary_fan_degradation.json"
-STANDARD_TRACE_PATH = REPO_ROOT / "traces" / "standard_habitat.jsonl"
-DEGRADATION_TRACE_PATH = REPO_ROOT / "traces" / "primary_fan_degradation.jsonl"
-TRACE_PAIRS = [(STANDARD_SCENARIO_PATH, STANDARD_TRACE_PATH), (DEGRADATION_SCENARIO_PATH, DEGRADATION_TRACE_PATH)]
 
 
 def _record(tick: int) -> TickRecord:
     return TickRecord(
         tick=tick,
         zones={
-            "cabin_a": {"co2": 10.0 + tick},
-            "cabin_b": {"co2": 9.0 + tick},
-            "lab": {"co2": 0.0},
-            "processing": {"co2": 0.0, "captured_co2": 0.5 * tick},
+            "cabin_a": {
+                "co2_mass": 10.0 + tick,
+                "co2_concentration": 0.10 + tick / 100.0,
+                "sensor_co2_concentration": 0.11 + tick / 100.0,
+                "source_co2_mass": 1.01,
+                "occupancy_multiplier": 1.0,
+            },
+            "cabin_b": {
+                "co2_mass": 9.0 + tick,
+                "co2_concentration": 0.09 + tick / 100.0,
+                "sensor_co2_concentration": 0.10 + tick / 100.0,
+                "source_co2_mass": 0.99,
+                "occupancy_multiplier": 1.0,
+            },
+            "lab": {
+                "co2_mass": 0.0,
+                "co2_concentration": 0.0,
+                "sensor_co2_concentration": 0.0,
+                "source_co2_mass": 0.0,
+                "occupancy_multiplier": 0.0,
+            },
+            "processing": {
+                "co2_mass": 0.0,
+                "co2_concentration": 0.0,
+                "sensor_co2_concentration": 0.0,
+                "source_co2_mass": 0.0,
+                "occupancy_multiplier": 1.0,
+                "captured_co2": 0.5 * tick,
+            },
         },
         connections={
-            "cabin_a_to_processing": {"airflow": 10.0},
-            "processing_to_cabin_a": {"airflow": 10.0},
+            "cabin_a_to_processing": {
+                "requested_airflow": 12.0,
+                "delivered_airflow": 10.0,
+                "airflow_residual": 2.0,
+            },
+            "processing_to_cabin_a": {
+                "requested_airflow": 12.0,
+                "delivered_airflow": 10.0,
+                "airflow_residual": 2.0,
+            },
+        },
+        system={
+            "shared_airflow_capacity": 18.0,
+            "total_requested_airflow": 20.0,
+            "total_delivered_airflow": 18.0,
+            "capacity_scale": 0.9,
+        },
+        actuators={
+            "cabin_a": {
+                "setpoint": 1.0,
+                "actual_position": 0.8,
+                "tracking_residual": 0.2,
+                "moving": 1.0,
+                "movement_seconds": float(tick),
+                "power": 1.0,
+                "direction": 1.0,
+            }
         },
     )
 
@@ -46,11 +84,17 @@ def test_trace_output_is_valid_jsonl_with_zone_and_connection_fields(tmp_path):
 
     rows = [json.loads(line) for line in lines]  # raises if any line is not valid JSON
     for row in rows:
-        assert set(row) == {"tick", "zones", "connections"}
-        assert row["zones"]["cabin_a"]["co2"] > 0.0
+        assert set(row) == {"tick", "zones", "connections", "actuators", "system"}
+        assert row["zones"]["cabin_a"]["co2_mass"] > 0.0
         assert row["zones"]["processing"]["captured_co2"] >= 0.0
         for connection in row["connections"].values():
-            assert set(connection) == {"airflow"}
+            assert set(connection) == {
+                "requested_airflow",
+                "delivered_airflow",
+                "airflow_residual",
+            }
+        assert row["actuators"]["cabin_a"]["actual_position"] == 0.8
+        assert row["system"]["capacity_scale"] == 0.9
     assert [row["tick"] for row in rows] == [1, 2, 3, 4, 5]
 
 
@@ -72,35 +116,3 @@ def test_writer_creates_missing_parent_directories(tmp_path):
         writer.write(_record(1))
 
     assert path.exists()
-
-
-def test_writer_rejects_hidden_connection_health(tmp_path):
-    record = _record(1)
-    record.connections["cabin_a_to_processing"]["health"] = 0.5
-
-    with TraceWriter(tmp_path / "trace.jsonl") as writer:
-        with pytest.raises(ValueError, match="only observable airflow"):
-            writer.write(record)
-
-
-@pytest.mark.parametrize('scenario_path,trace_path', TRACE_PAIRS, ids=['standard', 'degradation'])
-def test_checked_in_trace_matches_fresh_run_and_exposes_only_observable_telemetry(scenario_path: Path, trace_path: Path, tmp_path: Path):
-    """Each checked-in trace must be byte-identical to a fresh run of its scenario and carry no hidden truth."""
-    assert trace_path.exists(), (f'missing checked-in trace: {trace_path}')
-    fresh_path = tmp_path / 'fresh.jsonl'
-    run_scenario(load_scenario(scenario_path), trace_path=fresh_path)
-    assert fresh_path.read_bytes() == trace_path.read_bytes(), (
-        f'checked-in trace {trace_path.name} is stale: does not match a fresh run of {scenario_path.name}'
-    )
-
-    rows = [json.loads(line) for line in trace_path.read_text(encoding='utf-8').splitlines()]
-    assert len(rows) == STANDARD_RUN.total_ticks
-    assert [row['tick'] for row in rows] == list(range(1, STANDARD_RUN.total_ticks + 1))
-    for row in rows:
-        assert set(row) == {'tick', 'zones', 'connections'}
-        for telemetry in row['connections'].values():
-            assert set(telemetry) == {'airflow'}, (f'checked-in trace {trace_path.name} leaks non-airflow connection telemetry')
-        serialised = json.dumps(row, sort_keys=True)
-        assert 'health' not in serialised
-        assert 'fault' not in serialised
-        assert 'effectiveness' not in serialised

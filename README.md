@@ -1,118 +1,101 @@
 # ICARUS
 
-> **Deterministic habitat air-circulation simulation with replayable traces, built for the Arm Create: AI Optimization Challenge 2026 Physical AI track.**
+> Deterministic multi-zone habitat air-circulation simulation with explicit
+> requested-versus-delivered airflow and reproducible gradual fan degradation.
 
-ICARUS is a simulation and research prototype. It models circulation and CO2 removal in an abstract habitat layout, then writes a deterministic JSONL trace for every run.
+ICARUS is a local simulation. It models abstract CO₂ mass and airflow units in
+a hub-layout habitat; it does not model real spacecraft equipment, life-support
+limits, or a general fluid system.
 
-It does **not** control spacecraft, life-support equipment, or any safety-critical hardware.
+## Current slice
 
-## Current simulation slice
+The repository currently contains:
 
-The current implementation is a user-editable scenario graph, not a hard-coded two-room demo.
+- a validated schema-v7 scenario graph with one air-processing bay;
+- deterministic seeded CO₂ sources, occupancy profiles, proportional control
+  and rate-limited actuators;
+- shared-capacity airflow allocation with mass-conserving mixed return air;
+- a deterministic gradual primary-fan degradation profile;
+- JSONL replay traces, an allowlisted model-feature projection and a standalone
+  HTML visualiser;
+- tests for replay determinism, degradation timing, mass conservation, airflow
+  invariants and telemetry boundaries.
 
 ```text
-scenario JSON → validation → fixed-tick habitat plant → JSONL replay trace
+CO₂ sources → sensor → controller → actuator position
+                                      │
+                                      v
+                    requested loop airflow
+                                      │
+        static path health + hidden degradation effectiveness
+                                      │
+                                      v
+                 delivered loop airflow → shared processing → scrubbed return
 ```
 
-The reference scenario contains:
+`requested_airflow` is derived from configured loop capacity and the measured
+actuator position. `delivered_airflow` is physical flow after static path health,
+degradation and shared-capacity allocation. `airflow_residual` is their
+non-negative difference.
 
-- two crew cabins with CO2 generation
-- a laboratory with no CO2 generation
-- one air-processing bay that captures CO2
-- paired, directed circulation paths between each zone and the processing bay
+## Scenarios
 
-The current graph supports this hub layout only. It is not a general fluid solver.
+| File | Purpose |
+|---|---|
+| `scenarios/standard_habitat.json` | Healthy reference scenario. It declares no fault profiles. |
+| `scenarios/high_demand_healthy.json` | Healthy high-demand control and delivery scenario with enough shared capacity to isolate controller demand. |
+| `scenarios/primary_fan_degradation.json` | High-demand scenario with a gradual primary-fan degradation on `cabin_a_to_processing`. |
 
-## What it does
+All three are schema-v7 JSON and replay deterministically from their declared
+seeds.
 
-- Loads and validates versioned JSON scenario files.
-- Runs a fixed, deterministic 120-tick simulation.
-- Calculates airflow from each path's configured maximum airflow and health.
-- Optionally applies a deterministic gradual primary-fan degradation profile
-  over declared ticks.
-- Models CO2 generation in zones and removal in the air-processing bay.
-- Writes one JSONL trace row per tick with observable zone CO2, captured CO2,
-  and connection airflow.
-- Keeps fault labels and hidden health/effectiveness values out of the trace.
-- Produces byte-identical records and traces for repeated runs of the same scenario.
-- Rejects invalid scenario graphs with clear errors.
-
-All values are abstract simulation units. They are not real spacecraft measurements, flow rates, or safety thresholds.
-
-## Run it
-
-Python 3.10+ is required. The runtime has no third-party dependencies. `pytest` is needed only for tests.
+## Run locally
 
 ```bash
-# Run the test suite
-python -m pytest
-
-# Run the reference habitat scenario and write a replay trace
-PYTHONPATH=src python -m icarus \
-  scenarios/standard_habitat.json \
-  traces/standard_habitat.jsonl
-```
-
-With `uv`, the equivalent is:
-
-```bash
+# Full test suite
 uv run --extra dev python -m pytest
-uv run --extra dev python -m icarus \
-  scenarios/standard_habitat.json \
-  traces/standard_habitat.jsonl
+
+# Generate a replay and a self-contained local report
+mkdir -p out
+PYTHONPATH=src uv run python -m icarus \
+  scenarios/primary_fan_degradation.json \
+  out/primary_fan_degradation.jsonl
+PYTHONPATH=src uv run python -m icarus.visualise \
+  out/primary_fan_degradation.jsonl \
+  out/primary_fan_degradation.html
 ```
 
-A successful run prints the source scenario, tick count, trace path, and final zone/captured-CO2 state. The standard scenario produces 120 trace rows.
-
-On Windows PowerShell, set `PYTHONPATH` for the session instead of inlining it:
+On Windows PowerShell, set `PYTHONPATH` for the session before running the same commands:
 
 ```powershell
-$env:PYTHONPATH="src"
-python -m icarus scenarios/standard_habitat.json traces/standard_habitat.jsonl
+$env:PYTHONPATH = "src"
 ```
 
-The gradual-degradation example uses the same command shape:
+The HTML report plots generated and sensed CO₂, actuator response, requested
+and delivered airflow, airflow residual, shared capacity and captured CO₂.
+Generated traces and reports belong in `out/`, not Git.
 
-```bash
-PYTHONPATH=src python -m icarus \
-  scenarios/primary_fan_degradation.json \
-  traces/primary_fan_degradation.jsonl
-```
+## Replay and telemetry boundary
 
-## Repository layout
+Trace records contain observable simulation outputs only. They do not expose
+fault effectiveness, connection health, random seed or source-noise state.
+`icarus.trace.model_feature_row()` is a separate, strict allowlist for any
+future model-facing consumer; visualiser fields do not expand that model
+feature set.
 
-```text
-src/icarus/
-├── config.py       # scenario graph parsing and validation
-├── plant.py        # one fixed-tick circulation and CO2-removal step
-├── scenario.py     # deterministic scenario runner
-├── trace.py        # JSONL trace writer
-└── __main__.py     # command-line entry point
+## Deliberately out of scope
 
-scenarios/          # versioned scenario files
-tests/              # config, plant, scenario, and trace coverage
-docs/               # simulation rules and scope
-traces/             # generated or checked-in replay traces
-```
+- model training, ONNX export, quantisation and inference;
+- a governor, redundant fan or automatic recovery mechanism;
+- Arm benchmarks or hardware claims;
+- dashboard, API, database, cloud, MQTT or hardware integration;
+- real-world environmental-control or safety claims.
 
-## Scope and constraints
+See [`docs/simulation-rules.md`](docs/simulation-rules.md) for the schema,
+physics contract and validation rules, and
+[`docs/telemetry-contract.md`](docs/telemetry-contract.md) for the observable
+telemetry boundary.
 
-The simulation models circulation and CO2 removal only. Oxygen, pressure, temperature, humidity, trace contaminants, fire, leaks, external vacuum, hardware integration, and real telemetry are out of scope.
-
-The implementation deliberately does not yet contain:
-
-- AI or ML fault detection
-- model training or model-labelled trace features
-- ONNX inference, quantization, or Arm benchmarking
-- a safety governor, redundant fan, or automatic actuator command
-- a dashboard, API, MQTT, database, Docker deployment, or cloud service
-
-Those are future slices, not present-tense claims.
-
-## Further detail
-
-[`docs/simulation-rules.md`](docs/simulation-rules.md) is the source of truth for the graph format, tick order, validation rules, determinism guarantees, and deliberate exclusions.
-
-## License
+## Licence
 
 [MIT](LICENSE)
