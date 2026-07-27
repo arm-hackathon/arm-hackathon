@@ -98,6 +98,9 @@ reproducibility packaging.
   scenario sweep is still needed for training volume)
 - Train a compact temporal classifier and compare it with rule-based and
   threshold baselines. Split train/validation/test by run, never by window.
+- Choose the architecture with quantisation in mind: prefer operations that
+  survive INT8 cleanly over exotic layers, so quantisation is a design
+  input, not an afterthought.
 - Export FP32 and INT8 ONNX models.
 - Report fault class, confidence, detection latency and false alarms.
 
@@ -110,14 +113,27 @@ reproducibility packaging.
   healthy capacity.
 - Record the reason for every decision.
 
-### 6. Evidence and presentation
+### 6. Evidence, optimisation story and presentation
 
+The judges weight technical implementation most heavily, and the challenge
+brief demands an explicit optimisation narrative: baseline, technical
+changes, measured improvement on Arm, and why it matters. The plan for that:
+
+- **Baseline vs optimised:** the FP32 ONNX classifier is the declared
+  baseline; the INT8 quantised model is the optimisation. Report model size,
+  latency, throughput, memory and detection-quality delta between them on a
+  declared Arm64 target.
+- **Declared Arm64 target:** must be procured and documented before the
+  benchmark slice starts. No Arm64 target means no optimisation evidence.
+- **Reusable artifacts, not claims:** a reusable benchmark runner script,
+  raw benchmark results committed to the repo, and migration/optimisation
+  notes another developer could follow. Tooling and lessons are scored.
+- **README optimisation section:** baseline, changes made, results, and why
+  they matter, written for a judge who reads the repo before the pitch.
 - Plot fault injection, detection, commands, airflow and CO₂ recovery together.
 - Measure recovery time and CO₂ exposure with and without orchestration.
-- Benchmark FP32 versus INT8 model size, latency, throughput, memory and
-  detection quality on a declared Arm64 target.
-- Provide one-command reproduction, raw benchmark results and a demonstration
-  video under three minutes.
+- Provide one-command reproduction and a demonstration video under three
+  minutes.
 
 ## Completion criteria
 
