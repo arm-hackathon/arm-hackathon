@@ -50,14 +50,27 @@ _ACTUATOR_FIELDS = ("full_stroke_seconds", "moving_power", "holding_power")
 _SIMULATION_FIELDS = ("random_seed",)
 _AIR_SYSTEM_FIELDS = ("shared_airflow_capacity", "scrubber_removal_fraction")
 _OCCUPANCY_FIELDS = ("start_tick", "end_tick", "multiplier")
-_FAULT_PROFILE_FIELDS = (
+_GRADUAL_FAULT_FIELDS = (
     "type",
     "connection_id",
     "start_tick",
     "end_tick",
     "end_effectiveness",
 )
+_BLOCKED_PATH_FIELDS = (
+    "type",
+    "connection_id",
+    "start_tick",
+    "blocked_effectiveness",
+)
+_FROZEN_SENSOR_FIELDS = (
+    "type",
+    "zone_id",
+    "start_tick",
+)
 _GRADUAL_PRIMARY_FAN_DEGRADATION = "gradual_primary_fan_degradation"
+_BLOCKED_PATH = "blocked_path"
+_FROZEN_SENSOR = "frozen_sensor"
 _TOP_LEVEL_FIELDS = (
     "version",
     "zones",
@@ -139,6 +152,36 @@ class GradualPrimaryFanDegradation:
 
 
 @dataclass(frozen=True)
+class BlockedPath:
+    """A deterministic sudden loss of delivery effectiveness for one loop."""
+
+    connection_id: str
+    start_tick: int
+    blocked_effectiveness: float
+
+    def effectiveness_at(self, tick: int) -> float:
+        """Return 1.0 before the blockage tick, then the blocked multiplier."""
+        if tick < self.start_tick:
+            return 1.0
+        return self.blocked_effectiveness
+
+
+@dataclass(frozen=True)
+class FrozenSensor:
+    """A zone sensor that holds its reading from one measured tick onward."""
+
+    zone_id: str
+    start_tick: int
+
+    def is_frozen_at(self, tick: int) -> bool:
+        """Return whether the zone's sensor is frozen at one measured tick."""
+        return tick >= self.start_tick
+
+
+FaultProfile = GradualPrimaryFanDegradation | BlockedPath | FrozenSensor
+
+
+@dataclass(frozen=True)
 class HabitatConfig:
     """A validated scenario graph: zones plus directed hub connections."""
 
@@ -149,7 +192,7 @@ class HabitatConfig:
     actuator: ActuatorSettings
     simulation: SimulationSettings
     air_system: AirSystemSettings
-    fault_profiles: tuple[GradualPrimaryFanDegradation, ...]
+    fault_profiles: tuple[FaultProfile, ...]
 
     def processing_zone(self) -> ZoneSpec:
         """The single air_processing zone (validation guarantees exactly one)."""
@@ -157,6 +200,20 @@ class HabitatConfig:
             if zone.preset == "air_processing":
                 return zone
         raise LookupError("no air_processing zone")  # unreachable post-validation
+
+    def connection_faults(self) -> tuple[GradualPrimaryFanDegradation | BlockedPath, ...]:
+        """Fault profiles that reduce a connection's delivery effectiveness."""
+        return tuple(
+            profile
+            for profile in self.fault_profiles
+            if isinstance(profile, (GradualPrimaryFanDegradation, BlockedPath))
+        )
+
+    def sensor_faults(self) -> tuple[FrozenSensor, ...]:
+        """Fault profiles that freeze a zone's sensor reading."""
+        return tuple(
+            profile for profile in self.fault_profiles if isinstance(profile, FrozenSensor)
+        )
 
     def non_processing_zones(self) -> tuple[ZoneSpec, ...]:
         """Every zone that is not the air_processing bay, in file order."""
@@ -223,9 +280,15 @@ def parse_scenario(data: Any) -> HabitatConfig:
     actuator = _parse_actuator(data)
     simulation = _parse_simulation(data)
     air_system = _parse_air_system(data)
-    fault_profiles = _parse_fault_profiles(data, connections, processing_id=next(
-        zone.id for zone in zones if zone.preset == "air_processing"
-    ))
+    fault_profiles = _parse_fault_profiles(
+        data,
+        connections,
+        processing_id=next(zone.id for zone in zones if zone.preset == "air_processing"),
+        zone_ids={zone.id for zone in zones},
+        non_processing_zone_ids={
+            zone.id for zone in zones if zone.preset != "air_processing"
+        },
+    )
     return HabitatConfig(
         version=version,
         zones=zones,
@@ -577,7 +640,9 @@ def _parse_fault_profiles(
     connections: tuple[ConnectionSpec, ...],
     *,
     processing_id: str,
-) -> tuple[GradualPrimaryFanDegradation, ...]:
+    zone_ids: set[str],
+    non_processing_zone_ids: set[str],
+) -> tuple[FaultProfile, ...]:
     if "fault_profiles" not in data:
         raise ValueError("scenario must define 'fault_profiles'")
     raw_profiles = data["fault_profiles"]
@@ -585,71 +650,152 @@ def _parse_fault_profiles(
         raise ValueError("'fault_profiles' must be a list")
 
     by_id = {connection.id: connection for connection in connections}
-    profiles: list[GradualPrimaryFanDegradation] = []
-    seen_targets: set[str] = set()
+    profiles: list[FaultProfile] = []
+    seen_connection_targets: set[str] = set()
+    seen_sensor_targets: set[str] = set()
     for raw in raw_profiles:
         if not isinstance(raw, dict):
             raise ValueError(f"fault profile entry must be an object, got {raw!r}")
-        _reject_unknown_fields(raw, _FAULT_PROFILE_FIELDS, "fault profile")
-        for field_name in _FAULT_PROFILE_FIELDS:
+        if "type" not in raw:
+            raise ValueError("fault profile is missing required field 'type'")
+        fault_type = raw["type"]
+        if fault_type == _GRADUAL_PRIMARY_FAN_DEGRADATION:
+            required_fields = _GRADUAL_FAULT_FIELDS
+        elif fault_type == _BLOCKED_PATH:
+            required_fields = _BLOCKED_PATH_FIELDS
+        elif fault_type == _FROZEN_SENSOR:
+            required_fields = _FROZEN_SENSOR_FIELDS
+        else:
+            raise ValueError(f"unsupported fault profile type {fault_type!r}")
+        _reject_unknown_fields(raw, required_fields, "fault profile")
+        for field_name in required_fields:
             if field_name not in raw:
                 raise ValueError(
                     f"fault profile is missing required field {field_name!r}"
                 )
-        if raw["type"] != _GRADUAL_PRIMARY_FAN_DEGRADATION:
-            raise ValueError(f"unsupported fault profile type {raw['type']!r}")
-
-        connection_id = raw["connection_id"]
-        if not isinstance(connection_id, str) or not connection_id:
-            raise ValueError(
-                "fault profile connection_id must be a non-empty string, "
-                f"got {connection_id!r}"
+        if fault_type == _FROZEN_SENSOR:
+            profiles.append(
+                _parse_frozen_sensor(
+                    raw, zone_ids, non_processing_zone_ids, seen_sensor_targets
+                )
             )
-        connection = by_id.get(connection_id)
-        if connection is None:
-            raise ValueError(
-                f"fault profile references unknown connection {connection_id!r}"
+        else:
+            connection = _parse_connection_fault_target(
+                raw, by_id, processing_id, seen_connection_targets
             )
-        if connection.to_zone != processing_id:
-            raise ValueError(
-                f"fault profile connection {connection_id!r} is not an outbound "
-                "loop metering path to the air_processing bay"
-            )
-        if connection_id in seen_targets:
-            raise ValueError(
-                f"more than one fault profile targets connection {connection_id!r}"
-            )
-
-        start_tick = _require_positive_int(
-            raw["start_tick"], f"fault profile {connection_id!r}: start_tick"
-        )
-        end_tick = _require_positive_int(
-            raw["end_tick"], f"fault profile {connection_id!r}: end_tick"
-        )
-        if end_tick <= start_tick:
-            raise ValueError(
-                f"fault profile {connection_id!r}: end_tick must be after start_tick"
-            )
-        end_effectiveness = _require_number(
-            raw["end_effectiveness"],
-            f"fault profile {connection_id!r}: end_effectiveness",
-        )
-        if not 0.0 <= end_effectiveness < 1.0:
-            raise ValueError(
-                f"fault profile {connection_id!r}: end_effectiveness must be "
-                "in [0.0, 1.0)"
-            )
-
-        seen_targets.add(connection_id)
-        profiles.append(
-            GradualPrimaryFanDegradation(
-                connection_id=connection_id,
-                start_tick=start_tick,
-                end_tick=end_tick,
-                end_effectiveness=end_effectiveness,
-            )
-        )
+            if fault_type == _GRADUAL_PRIMARY_FAN_DEGRADATION:
+                profiles.append(_parse_gradual_degradation(raw, connection.id))
+            else:
+                profiles.append(_parse_blocked_path(raw, connection.id))
     return tuple(profiles)
+
+
+def _parse_connection_fault_target(
+    raw: dict,
+    by_id: dict[str, ConnectionSpec],
+    processing_id: str,
+    seen_targets: set[str],
+) -> ConnectionSpec:
+    connection_id = raw["connection_id"]
+    if not isinstance(connection_id, str) or not connection_id:
+        raise ValueError(
+            "fault profile connection_id must be a non-empty string, "
+            f"got {connection_id!r}"
+        )
+    connection = by_id.get(connection_id)
+    if connection is None:
+        raise ValueError(
+            f"fault profile references unknown connection {connection_id!r}"
+        )
+    if connection.to_zone != processing_id:
+        raise ValueError(
+            f"fault profile connection {connection_id!r} is not an outbound "
+            "loop metering path to the air_processing bay"
+        )
+    if connection_id in seen_targets:
+        raise ValueError(
+            f"more than one fault profile targets connection {connection_id!r}"
+        )
+    seen_targets.add(connection_id)
+    return connection
+
+
+def _parse_gradual_degradation(raw: dict, connection_id: str) -> GradualPrimaryFanDegradation:
+    start_tick = _require_positive_int(
+        raw["start_tick"], f"fault profile {connection_id!r}: start_tick"
+    )
+    end_tick = _require_positive_int(
+        raw["end_tick"], f"fault profile {connection_id!r}: end_tick"
+    )
+    if end_tick <= start_tick:
+        raise ValueError(
+            f"fault profile {connection_id!r}: end_tick must be after start_tick"
+        )
+    end_effectiveness = _require_number(
+        raw["end_effectiveness"],
+        f"fault profile {connection_id!r}: end_effectiveness",
+    )
+    if not 0.0 <= end_effectiveness < 1.0:
+        raise ValueError(
+            f"fault profile {connection_id!r}: end_effectiveness must be "
+            "in [0.0, 1.0)"
+        )
+    return GradualPrimaryFanDegradation(
+        connection_id=connection_id,
+        start_tick=start_tick,
+        end_tick=end_tick,
+        end_effectiveness=end_effectiveness,
+    )
+
+
+def _parse_blocked_path(raw: dict, connection_id: str) -> BlockedPath:
+    start_tick = _require_positive_int(
+        raw["start_tick"], f"fault profile {connection_id!r}: start_tick"
+    )
+    blocked_effectiveness = _require_number(
+        raw["blocked_effectiveness"],
+        f"fault profile {connection_id!r}: blocked_effectiveness",
+    )
+    if not 0.0 <= blocked_effectiveness < 1.0:
+        raise ValueError(
+            f"fault profile {connection_id!r}: blocked_effectiveness must be "
+            "in [0.0, 1.0)"
+        )
+    return BlockedPath(
+        connection_id=connection_id,
+        start_tick=start_tick,
+        blocked_effectiveness=blocked_effectiveness,
+    )
+
+
+def _parse_frozen_sensor(
+    raw: dict,
+    zone_ids: set[str],
+    non_processing_zone_ids: set[str],
+    seen_targets: set[str],
+) -> FrozenSensor:
+    zone_id = raw["zone_id"]
+    if not isinstance(zone_id, str) or not zone_id:
+        raise ValueError(
+            "fault profile zone_id must be a non-empty string, "
+            f"got {zone_id!r}"
+        )
+    if zone_id not in zone_ids:
+        raise ValueError(f"fault profile references unknown zone {zone_id!r}")
+    if zone_id not in non_processing_zone_ids:
+        raise ValueError(
+            f"fault profile zone {zone_id!r} must be a non-processing zone; "
+            "the air_processing bay has no sensor loop to freeze"
+        )
+    if zone_id in seen_targets:
+        raise ValueError(
+            f"more than one fault profile targets zone {zone_id!r}"
+        )
+    seen_targets.add(zone_id)
+    start_tick = _require_positive_int(
+        raw["start_tick"], f"fault profile {zone_id!r}: start_tick"
+    )
+    return FrozenSensor(zone_id=zone_id, start_tick=start_tick)
 
 
 def _enforce_hub_pairing(

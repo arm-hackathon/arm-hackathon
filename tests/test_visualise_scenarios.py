@@ -17,6 +17,8 @@ SCENARIO_NAMES = (
     "standard_habitat.json",
     "high_demand_healthy.json",
     "primary_fan_degradation.json",
+    "blocked_path.json",
+    "frozen_sensor.json",
 )
 
 
