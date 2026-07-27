@@ -237,10 +237,13 @@ mkdir -p out
 uv run python -m icarus scenarios/standard_habitat.json out/standard.jsonl
 uv run python -m icarus.visualise out/standard.jsonl out/standard.html
 uv run python -m icarus.corpus out/corpus scenarios/*.json
+uv run python -m icarus.evaluate out/corpus/corpus.jsonl scenarios/*.json
 ```
 
 `icarus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a
-`manifest.json` into the given output directory. See
+`manifest.json` into the given output directory. `icarus.evaluate` grades the
+rule baseline against that corpus and prints accuracy, confusion and
+detection-latency metrics as JSON. See
 `docs/telemetry-contract.md` for the corpus leakage boundary.
 
 ## Deliberately absent
