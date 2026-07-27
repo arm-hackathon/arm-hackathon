@@ -51,10 +51,13 @@ Each non-processing zone requires exactly one path in each direction. No
 self-loops, bypass paths or multiple directed paths between the same zone pair
 are accepted.
 
-## Gradual primary-fan degradation
+## Fault profiles
 
-`fault_profiles` is required even for a healthy scenario. The only accepted
-profile currently is:
+`fault_profiles` is required even for a healthy scenario (`[]`). Three
+deterministic profile types are accepted. Profile type and fields are
+allowlisted per type; unknown fields are rejected.
+
+### `gradual_primary_fan_degradation`
 
 ```json
 {
@@ -66,14 +69,6 @@ profile currently is:
 }
 ```
 
-Rules:
-
-- the target must be an existing outbound path ending at the processing bay;
-- only one profile can target a connection;
-- `start_tick` and `end_tick` are positive integers, with `end_tick > start_tick`;
-- `end_effectiveness` is finite and in `[0.0, 1.0)`;
-- profile type and fields are allowlisted; unknown fields are rejected.
-
 For measured tick `t`, effectiveness is deterministic:
 
 ```text
@@ -82,16 +77,59 @@ t >= end_tick:   end_effectiveness
 otherwise:       linear interpolation from 1.0 to end_effectiveness
 ```
 
-The profile is not accumulated into mutable state. It is calculated from the
-measured tick every replay. Warm-up has no profile injection, so `start_tick`
-always refers to the visible trace tick.
+### `blocked_path`
+
+```json
+{
+  "type": "blocked_path",
+  "connection_id": "cabin_b_to_processing",
+  "start_tick": 30,
+  "blocked_effectiveness": 0.05
+}
+```
+
+A sudden blockage: effectiveness is `1.0` before `start_tick` and
+`blocked_effectiveness` (finite, in `[0.0, 1.0)`) from `start_tick` onward.
+
+### `frozen_sensor`
+
+```json
+{
+  "type": "frozen_sensor",
+  "zone_id": "lab",
+  "start_tick": 30
+}
+```
+
+From `start_tick` onward the target zone's sensor holds the reading it showed
+on the first frozen tick. The true concentration keeps evolving underneath;
+the held reading is all the controller can see, and it remains ordinary
+observable telemetry. The target must be an existing non-processing zone.
+
+Shared rules:
+
+- connection faults (`gradual_primary_fan_degradation`, `blocked_path`) must
+  target an existing outbound path ending at the processing bay; only one
+  connection fault can target a connection;
+- only one sensor fault can target a zone;
+- tick fields are positive integers; for the degradation profile
+  `end_tick > start_tick`;
+- profile type and fields are allowlisted per type; unknown fields are
+  rejected.
+
+Profiles are not accumulated into mutable state. Connection effectiveness and
+sensor-freeze membership are calculated from the measured tick every replay.
+Warm-up has no profile injection, so `start_tick` always refers to the
+visible trace tick.
 
 ## One simulation tick
 
 Time advances in fixed one-second ticks.
 
 1. Each zone adds its occupancy-scaled, seeded and correlated CO₂ source.
-2. Sensors read `co2_mass / air_volume` after source addition.
+2. Sensors read `co2_mass / air_volume` after source addition. A zone with an
+   active `frozen_sensor` profile instead holds the reading it showed on its
+   first frozen tick; the true concentration keeps evolving underneath.
 3. Each non-processing-zone controller maps its sensor value to a bounded
    setpoint.
 4. Its actuator moves towards that setpoint by at most
@@ -170,7 +208,7 @@ capacity_scale
 
 Trace writers validate the observable allowlist before serialising a row. The
 visualiser independently rejects undeclared connection telemetry. The visualiser
-can consume generated traces from all three shipped scenarios and plots
+can consume generated traces from all five shipped scenarios and plots
 requested/delivered airflow plus residuals.
 
 Fault state, fault effectiveness, static health, random seed and source-noise
@@ -198,7 +236,12 @@ uv run --extra dev python -m pytest
 mkdir -p out
 uv run python -m icarus scenarios/standard_habitat.json out/standard.jsonl
 uv run python -m icarus.visualise out/standard.jsonl out/standard.html
+uv run python -m icarus.corpus out/corpus scenarios/*.json
 ```
+
+`icarus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a
+`manifest.json` into the given output directory. See
+`docs/telemetry-contract.md` for the corpus leakage boundary.
 
 ## Deliberately absent
 

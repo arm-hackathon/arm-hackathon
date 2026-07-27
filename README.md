@@ -15,11 +15,12 @@ The repository currently contains:
 - deterministic seeded CO₂ sources, occupancy profiles, proportional control
   and rate-limited actuators;
 - shared-capacity airflow allocation with mass-conserving mixed return air;
-- a deterministic gradual primary-fan degradation profile;
-- JSONL replay traces, an allowlisted model-feature projection and a standalone
-  HTML visualiser;
-- tests for replay determinism, degradation timing, mass conservation, airflow
-  invariants and telemetry boundaries.
+- deterministic fault profiles: gradual primary-fan degradation, sudden
+  blocked path and frozen sensor;
+- JSONL replay traces, an allowlisted model-feature projection, a standalone
+  HTML visualiser and a leakage-safe labelled window corpus;
+- tests for replay determinism, fault semantics, mass conservation, airflow
+  invariants, telemetry boundaries and corpus leakage.
 
 ```text
 CO₂ sources → sensor → controller → actuator position
@@ -45,8 +46,10 @@ non-negative difference.
 | `scenarios/standard_habitat.json` | Healthy reference scenario. It declares no fault profiles. |
 | `scenarios/high_demand_healthy.json` | Healthy high-demand control and delivery scenario with enough shared capacity to isolate controller demand. |
 | `scenarios/primary_fan_degradation.json` | High-demand scenario with a gradual primary-fan degradation on `cabin_a_to_processing`. |
+| `scenarios/blocked_path.json` | The same high-demand habitat with a sudden blockage on `cabin_b_to_processing` from tick 30. |
+| `scenarios/frozen_sensor.json` | The same habitat with the lab sensor frozen from tick 30 while lab demand steps down at tick 41. |
 
-All three are schema-v7 JSON and replay deterministically from their declared
+All five are schema-v7 JSON and replay deterministically from their declared
 seeds.
 
 ## Run locally
@@ -63,6 +66,9 @@ PYTHONPATH=src uv run python -m icarus \
 PYTHONPATH=src uv run python -m icarus.visualise \
   out/primary_fan_degradation.jsonl \
   out/primary_fan_degradation.html
+
+# Generate the labelled window corpus and its manifest
+PYTHONPATH=src uv run python -m icarus.corpus out/corpus scenarios/*.json
 ```
 
 On Windows PowerShell, set `PYTHONPATH` for the session before running the same commands:
@@ -75,13 +81,19 @@ The HTML report plots generated and sensed CO₂, actuator response, requested
 and delivered airflow, airflow residual, shared capacity and captured CO₂.
 Generated traces and reports belong in `out/`, not Git.
 
-## Replay and telemetry boundary
+## Replay, telemetry and corpus boundary
 
 Trace records contain observable simulation outputs only. They do not expose
 fault effectiveness, connection health, random seed or source-noise state.
 `icarus.trace.model_feature_row()` is a separate, strict allowlist for any
 future model-facing consumer; visualiser fields do not expand that model
 feature set.
+
+`icarus.corpus` builds the labelled window corpus for the future fault
+classifier. Every feature row is exactly `model_feature_row()` output and
+labels come from declared fault profiles, never from telemetry, so the corpus
+carries no hidden fault truth. Corpus output is a generated artifact and
+belongs in `out/`, not Git.
 
 ## Deliberately out of scope
 
