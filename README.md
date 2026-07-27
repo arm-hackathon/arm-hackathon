@@ -105,12 +105,35 @@ belongs in `out/`, not Git.
 
 Every claimed number below is reproducible from the commands in this README.
 
-| Date | Result | Evidence |
-|---|---|---|
-| 2026-07-27 | Rule baseline on corpus v1: **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | `icarus.corpus` + `icarus.evaluate` output |
+| Date | What was measured | Result | What it represents |
+|---|---|---|---|
+| 2026-07-27 | Fault-detection quality of the rule baseline on corpus v1 (115 windows from 5 scenario runs) | **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | The performance floor for fault detection in ICARUS: what the simplest hand-written rules achieve on the first, small corpus. It is the bar the learned classifier must beat — not a model result and not a deployment claim. |
 
-The temporal classifier will be graded by the same harness on the same
-metrics, against this row as the bar.
+Read the latency column with the accuracy: the baseline is accurate but
+structurally slow, because a rule cannot fire until a fault fills its
+persistence window. Beating this baseline means *matching* its accuracy
+while firing *sooner*.
+
+### Next steps
+
+Each upcoming slice adds its own row to this table, measured by the same
+harness and discipline:
+
+1. **Scenario sweep** — generate training volume: the same five scenario
+   types across seeds, fault starts, fault strengths and targets, with
+   demand shapes varied across every class so labels cannot be inferred
+   from occupancy patterns.
+2. **Temporal classifier** — trained on swept runs and graded on runs it
+   never saw (train/validation/test split by run, never by window).
+   Success = baseline-matching accuracy with lower detection latency.
+3. **FP32 ONNX + INT8 quantisation on Arm64** — model size, latency,
+   throughput and accuracy delta, FP32 versus INT8, on the declared Azure
+   Arm64 target. This is the core optimisation evidence.
+4. **Safety governor + redundant fan** — orchestrated versus untreated
+   fault runs: recovery time and CO₂ exposure with and without
+   intervention.
+5. **Reproducibility packaging** — one-command reproduction of every row
+   in this table, plus the demonstration video.
 
 ## Deliberately out of scope
 
