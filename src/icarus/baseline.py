@@ -52,6 +52,12 @@ class RuleBaseline:
             (config.path_to_processing(zone.id).id, config.path_from_processing(zone.id).id)
             for zone in config.non_processing_zones()
         )
+        self._connection_ids = tuple(
+            connection_id
+            for outbound_id, return_id in self._loop_connection_pairs
+            for connection_id in (outbound_id, return_id)
+        )
+        self._expected_connection_ids = frozenset(self._connection_ids)
         self.reset()
 
     def reset(self) -> None:
@@ -62,9 +68,10 @@ class RuleBaseline:
         """Label one window: nominal, frozen_sensor, blocked_path or degradation."""
         if not features:
             raise ValueError("a window must contain at least one tick")
+        self._validate_window_topology(features)
         ratios_by_connection = {
             connection_id: [_residual_ratio(tick, connection_id) for tick in features]
-            for connection_id in features[0]["connections"]
+            for connection_id in self._connection_ids
         }
         for connection_id, ratios in ratios_by_connection.items():
             jumps = [later - earlier for earlier, later in zip(ratios, ratios[1:])]
@@ -85,23 +92,29 @@ class RuleBaseline:
         self, ratios_by_connection: dict[str, list[float]]
     ) -> dict[str, list[float]]:
         """Select graph-paired outbound legs after checking topology compatibility."""
-        expected = {
-            connection_id
-            for outbound_id, return_id in self._loop_connection_pairs
-            for connection_id in (outbound_id, return_id)
-        }
-        actual = set(ratios_by_connection)
-        if actual != expected:
-            missing = sorted(expected - actual)
-            unexpected = sorted(actual - expected)
-            raise ValueError(
-                "feature window topology does not match RuleBaseline config: "
-                f"missing={missing!r}, unexpected={unexpected!r}"
-            )
+        self._validate_connection_ids(set(ratios_by_connection), "ratio collection")
         return {
             outbound_id: ratios_by_connection[outbound_id]
             for outbound_id, _ in self._loop_connection_pairs
         }
+
+    def _validate_window_topology(self, features: list[dict]) -> None:
+        for tick_number, tick in enumerate(features, start=1):
+            if not isinstance(tick, dict) or not isinstance(tick.get("connections"), dict):
+                raise ValueError(
+                    f"feature tick {tick_number} connections must be an object"
+                )
+            self._validate_connection_ids(set(tick["connections"]), f"tick {tick_number}")
+
+    def _validate_connection_ids(self, actual: set[object], context: str) -> None:
+        if actual == self._expected_connection_ids:
+            return
+        missing = sorted(self._expected_connection_ids - actual)
+        unexpected = sorted(actual - self._expected_connection_ids, key=repr)
+        raise ValueError(
+            "feature window topology does not match RuleBaseline config "
+            f"at {context}: missing={missing!r}, unexpected={unexpected!r}"
+        )
 
     def _isolated_faulty_connection(
         self, ratios_by_connection: dict[str, list[float]]

@@ -20,6 +20,11 @@ MODEL_INPUT_SHAPE = (24,)
 _ARTIFACT_METADATA_KEYS = frozenset(
     {"model_input_version", "selector_sha256", "topology_sha256"}
 )
+_TOPOLOGY_KEYS = frozenset(
+    {"schema_version", "processing_zone_id", "non_processing_zone_ids", "primary_loops"}
+)
+_LOOP_KEYS = frozenset({"zone_id", "outbound", "return"})
+_EDGE_KEYS = frozenset({"id", "from_zone", "to_zone"})
 
 
 @dataclass(frozen=True)
@@ -87,9 +92,12 @@ def model_input_v1(
         ]
     except (KeyError, TypeError) as exc:
         raise ValueError("record does not satisfy the model-input contract") from exc
-    tensor = np.asarray(values, dtype=np.float32)
+    with np.errstate(over="ignore", invalid="ignore"):
+        tensor = np.asarray(values, dtype=np.float32)
     if tensor.shape != MODEL_INPUT_SHAPE:
         raise ValueError("model input has an unexpected shape")
+    if not np.isfinite(tensor).all():
+        raise ValueError("model input contains non-finite float32 values")
     return tensor
 
 
@@ -169,37 +177,73 @@ def _validate_contract(contract: ModelInputContract) -> None:
 
 def _fields_from_topology(topology: Mapping[str, Any]) -> tuple[SelectorField, ...]:
     try:
+        if set(topology) != _TOPOLOGY_KEYS:
+            raise ValueError
         processing_id = topology["processing_zone_id"]
         zone_ids = topology["non_processing_zone_ids"]
         loops = topology["primary_loops"]
         if (
             topology["schema_version"] != TOPOLOGY_VERSION
-            or not isinstance(processing_id, str)
+            or not _is_non_empty_id(processing_id)
             or not isinstance(zone_ids, list)
             or not isinstance(loops, list)
             or len(zone_ids) != len(loops)
-            or not all(isinstance(zone_id, str) for zone_id in zone_ids)
+            or not all(_is_non_empty_id(zone_id) for zone_id in zone_ids)
+            or processing_id in zone_ids
+            or len(set(zone_ids)) != len(zone_ids)
         ):
             raise ValueError
         outbound_ids: list[str] = []
+        return_ids: list[str] = []
         for zone_id, loop in zip(zone_ids, loops):
-            if not isinstance(loop, Mapping) or loop.get("zone_id") != zone_id:
+            if (
+                not isinstance(loop, Mapping)
+                or set(loop) != _LOOP_KEYS
+                or loop["zone_id"] != zone_id
+            ):
                 raise ValueError
-            outbound = loop.get("outbound")
-            inbound = loop.get("return")
-            if not isinstance(outbound, Mapping) or not isinstance(inbound, Mapping):
+            outbound = loop["outbound"]
+            inbound = loop["return"]
+            if (
+                not isinstance(outbound, Mapping)
+                or set(outbound) != _EDGE_KEYS
+                or not isinstance(inbound, Mapping)
+                or set(inbound) != _EDGE_KEYS
+            ):
                 raise ValueError
-            outbound_id = outbound.get("id")
-            if not isinstance(outbound_id, str) or (
-                outbound.get("from_zone"), outbound.get("to_zone")
-            ) != (zone_id, processing_id):
+            outbound_id = outbound["id"]
+            return_id = inbound["id"]
+            if not all(
+                _is_non_empty_id(identifier)
+                for identifier in (
+                    outbound_id,
+                    return_id,
+                    outbound["from_zone"],
+                    outbound["to_zone"],
+                    inbound["from_zone"],
+                    inbound["to_zone"],
+                )
+            ):
                 raise ValueError
-            if (inbound.get("from_zone"), inbound.get("to_zone")) != (
+            if (outbound["from_zone"], outbound["to_zone"]) != (
+                zone_id,
+                processing_id,
+            ):
+                raise ValueError
+            if (inbound["from_zone"], inbound["to_zone"]) != (
                 processing_id,
                 zone_id,
             ):
                 raise ValueError
             outbound_ids.append(outbound_id)
+            return_ids.append(return_id)
+        edge_ids = outbound_ids + return_ids
+        if (
+            len(set(outbound_ids)) != len(outbound_ids)
+            or len(set(return_ids)) != len(return_ids)
+            or len(set(edge_ids)) != len(edge_ids)
+        ):
+            raise ValueError
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("model input contract topology is malformed") from exc
 
@@ -222,6 +266,10 @@ def _fields_from_topology(topology: Mapping[str, Any]) -> tuple[SelectorField, .
             )
         )
     return tuple(fields)
+
+
+def _is_non_empty_id(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def _topology_representation(config: HabitatConfig) -> dict[str, Any]:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from icarus.baseline import RuleBaseline
 from icarus.config import load_scenario, parse_scenario
 
@@ -177,3 +179,41 @@ def test_graph_derived_pairing_survives_renamed_connection_ids():
 
     assert RuleBaseline(standard).label_window(standard_window) == "gradual_primary_fan_degradation"
     assert RuleBaseline(renamed).label_window(renamed_window) == "gradual_primary_fan_degradation"
+
+
+@pytest.mark.parametrize("mutation", ("missing", "unexpected"))
+def test_every_tick_must_match_configured_connection_topology(mutation: str):
+    window = [_tick(sensor=0.1 + 0.001 * tick) for tick in range(10)]
+    later_connections = window[5]["connections"]
+    if mutation == "missing":
+        later_connections.pop("lab_to_processing")
+    else:
+        later_connections["late_extra_connection"] = {
+            "requested_airflow": 10.0,
+            "delivered_airflow": 10.0,
+            "airflow_residual": 0.0,
+        }
+
+    with pytest.raises(ValueError, match=rf"tick 6.*{mutation}"):
+        _baseline().label_window(window)
+
+
+def test_unexpected_mixed_type_connection_ids_raise_controlled_value_error():
+    window = [_tick(sensor=0.1 + 0.001 * tick) for tick in range(10)]
+    window[5]["connections"].update(
+        {
+            "late_extra_connection": {
+                "requested_airflow": 10.0,
+                "delivered_airflow": 10.0,
+                "airflow_residual": 0.0,
+            },
+            7: {
+                "requested_airflow": 10.0,
+                "delivered_airflow": 10.0,
+                "airflow_residual": 0.0,
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match=r"tick 6.*unexpected"):
+        _baseline().label_window(window)

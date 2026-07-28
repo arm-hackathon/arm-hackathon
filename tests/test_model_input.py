@@ -25,6 +25,28 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 STANDARD_SCENARIO = REPO_ROOT / "scenarios" / "standard_habitat.json"
 
 
+def _with_rehashed_topology(contract, topology: dict, *, fields=None):
+    selected_fields = contract.fields if fields is None else fields
+    topology_json = json.dumps(
+        topology, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+    topology_hash = hashlib.sha256(topology_json.encode()).hexdigest()
+    selector = json.loads(contract.selector_json)
+    selector["fields"] = [field.as_dict() for field in selected_fields]
+    selector["topology_hash"] = topology_hash
+    selector_json = json.dumps(
+        selector, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+    return replace(
+        contract,
+        fields=selected_fields,
+        selector_json=selector_json,
+        selector_hash=hashlib.sha256(selector_json.encode()).hexdigest(),
+        topology_json=topology_json,
+        topology_hash=topology_hash,
+    )
+
+
 def test_model_input_v1_has_r2_order_shape_and_float32_dtype():
     config = load_scenario(STANDARD_SCENARIO)
     record = run_scenario(config)[0]
@@ -117,6 +139,94 @@ def test_model_artifact_contract_mismatches_fail_closed():
     ):
         with pytest.raises(ValueError):
             assert_model_contract_compatible(malformed, contract)
+
+
+def test_model_input_v1_rejects_finite_values_that_overflow_float32():
+    config = load_scenario(STANDARD_SCENARIO)
+    record = run_scenario(config)[0]
+    record.zones["cabin_a"]["sensor_co2_concentration"] = 1e40
+
+    with pytest.raises(ValueError, match="non-finite float32"):
+        model_input_v1(record, build_model_input_contract(config))
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "missing_topology_key",
+        "extra_topology_key",
+        "missing_loop_key",
+        "extra_loop_key",
+        "missing_edge_key",
+        "extra_edge_key",
+        "empty_zone_id",
+        "empty_return_id",
+        "null_return_id",
+        "processing_zone_collision",
+        "outbound_endpoint_mismatch",
+        "return_endpoint_mismatch",
+        "duplicate_zone_id",
+        "duplicate_outbound_id",
+        "duplicate_return_id",
+        "cross_direction_duplicate_edge_id",
+    ),
+)
+def test_model_input_contract_rejects_malformed_topology_structure(mutation: str):
+    contract = build_model_input_contract(load_scenario(STANDARD_SCENARIO))
+    topology = json.loads(contract.topology_json)
+    first_loop = topology["primary_loops"][0]
+    fields = contract.fields
+
+    if mutation == "missing_topology_key":
+        topology.pop("processing_zone_id")
+    elif mutation == "extra_topology_key":
+        topology["unexpected"] = "value"
+    elif mutation == "missing_loop_key":
+        first_loop.pop("return")
+    elif mutation == "extra_loop_key":
+        first_loop["unexpected"] = "value"
+    elif mutation == "missing_edge_key":
+        first_loop["outbound"].pop("id")
+    elif mutation == "extra_edge_key":
+        first_loop["outbound"]["unexpected"] = "value"
+    elif mutation == "empty_zone_id":
+        topology["non_processing_zone_ids"][0] = ""
+        first_loop["zone_id"] = ""
+        first_loop["outbound"]["from_zone"] = ""
+        first_loop["return"]["to_zone"] = ""
+    elif mutation == "empty_return_id":
+        first_loop["return"]["id"] = ""
+    elif mutation == "null_return_id":
+        first_loop["return"]["id"] = None
+    elif mutation == "processing_zone_collision":
+        original_zone_id = topology["non_processing_zone_ids"][0]
+        processing_id = topology["processing_zone_id"]
+        topology["non_processing_zone_ids"][0] = processing_id
+        first_loop["zone_id"] = processing_id
+        first_loop["outbound"]["from_zone"] = processing_id
+        first_loop["return"]["to_zone"] = processing_id
+        fields = tuple(
+            replace(field, entity_id=processing_id)
+            if field.entity_id == original_zone_id and field.group in {"zones", "actuators"}
+            else field
+            for field in contract.fields
+        )
+    elif mutation == "outbound_endpoint_mismatch":
+        first_loop["outbound"]["to_zone"] = "lab"
+    elif mutation == "return_endpoint_mismatch":
+        first_loop["return"]["from_zone"] = "lab"
+    elif mutation == "duplicate_zone_id":
+        topology["non_processing_zone_ids"][1] = topology["non_processing_zone_ids"][0]
+        topology["primary_loops"][1]["zone_id"] = topology["primary_loops"][0]["zone_id"]
+    elif mutation == "duplicate_outbound_id":
+        topology["primary_loops"][1]["outbound"]["id"] = first_loop["outbound"]["id"]
+    elif mutation == "duplicate_return_id":
+        topology["primary_loops"][1]["return"]["id"] = first_loop["return"]["id"]
+    elif mutation == "cross_direction_duplicate_edge_id":
+        first_loop["return"]["id"] = first_loop["outbound"]["id"]
+
+    with pytest.raises(ValueError, match="topology is malformed"):
+        model_artifact_metadata(_with_rehashed_topology(contract, topology, fields=fields))
 
 
 def test_model_input_v1_excludes_processing_sensor_and_return_leg_values():
