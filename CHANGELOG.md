@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-27 — rule baseline and evaluation harness
+
+- Added `icarus.baseline.RuleBaseline`: a streaming rule detector over
+  model-feature windows. Zero-variance sensor runs mark frozen sensors;
+  isolated residual loss (one loop above its sisters, persistent) marks a
+  delivery fault; a remembered onset jump separates blockage from gradual
+  degradation. Shared-capacity contention does not false-fire because faults
+  must be isolated, not merely elevated.
+- Added `icarus.evaluate`: one harness grades any window labeller (rules
+  today, the classifier later) on accuracy, per-class support, confusion and
+  detection latency against declared fault starts.
+- On corpus v1 the baseline scores 111/115 windows (all four misses are
+  onset-boundary windows) with detection latencies of 10/5/10 ticks for
+  degradation/blocked/frozen — the bar the classifier must beat.
+
 ## 2026-07-27 — blocked-path and frozen-sensor faults plus labelled corpus
 
 - Added two schema-v7 fault profile types: `blocked_path` (a sudden step loss
