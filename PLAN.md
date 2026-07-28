@@ -19,19 +19,30 @@ isolated actuator degrades
 AI provides diagnosis and confidence. Deterministic safety logic retains
 control of every actuator command.
 
-## Status — 2026-07-27
+## Status — Gate 0 accepted; Gate 1 implemented
 
-Landed and tested: the deterministic schema-v7 simulator with separated
-requested/delivered airflow and explicit residuals; five scenarios (nominal,
-healthy high-demand, gradual degradation, blocked path, frozen sensor); the
-telemetry allowlist and model-feature projection; the HTML visualiser; the
-leakage-safe labelled window corpus; and the streaming rule baseline with its
-evaluation harness (111/115 windows on corpus v1, latencies 10/5/10 ticks).
+Landed: the deterministic schema-v7 simulator with separated requested/delivered
+airflow and explicit residuals; five scenarios (nominal, healthy high-demand,
+gradual degradation, blocked path, frozen sensor); the telemetry allowlist and
+model-feature projection; the HTML visualiser; the leakage-safe labelled window
+corpus; and the streaming rule baseline with its evaluation harness (111/115
+windows on corpus v1, latencies 10/5/10 ticks).
 
-Not started: the scenario sweep that turns the corpus contract into training
-data, the temporal classifier and its FP32 ONNX export, INT8 quantisation,
-the safety governor and redundant fan, Arm64 benchmarks, and
-reproducibility packaging.
+Gate 0 accepts the R2 semantic contract. Gate 1 adds graph-derived
+outbound/return loop pairing, the exact topology-bound `model_input_v1`
+float32[24] selector, canonical selector/topology hashes, and fail-closed
+artifact metadata validation. It does not add training data, a classifier,
+ONNX, a governor, backup geometry, or cloud resources.
+
+Gate 2 remains the prerequisite for corpus v2: the family manifest,
+paired-reference observable-onset contract, and observable-label rules. No
+classifier, governor, or corpus-v2 implementation starts before Gates 0-2 are
+accepted.
+
+Not started: the scenario sweep that turns the accepted corpus contract into
+training data, temporal classifier and FP32 ONNX export, INT8 quantisation,
+the safety governor and redundant fan, Arm64 benchmarks, and reproducibility
+packaging.
 
 ## Core objectives
 
@@ -94,11 +105,12 @@ reproducibility packaging.
 
 ### 4. AI diagnosis
 
-- Generate labelled telemetry windows from the simulator. (done — corpus v1
-  with leakage-safe features and declared-fault labels; a deterministic
-  scenario sweep is still needed for training volume)
-- Train a compact temporal classifier and compare it with rule-based and
-  threshold baselines. Split train/validation/test by run, never by window.
+- Generate labelled telemetry windows from the simulator. (done for corpus v1;
+  corpus v2 is blocked on Gate 2 and must persist the frozen
+  `model_input_v1` selector/topology hashes alongside its family manifest)
+- After Gates 0-2, train a compact temporal classifier and compare it with
+  rule-based and threshold baselines. Split train/validation/test by family,
+  never by window.
 - Choose the architecture with quantisation in mind: prefer operations that
   survive INT8 cleanly over exotic layers, so quantisation is a design
   input, not an afterthought.
@@ -124,11 +136,11 @@ changes, measured improvement on Arm, and why it matters. The plan for that:
   baseline; the INT8 quantised model is the optimisation. Report model size,
   latency, throughput, memory and detection-quality delta between them on a
   declared Arm64 target.
-- **Declared Arm64 target:** an Azure Arm64 VM (Ampere Altra, Dps v5 series,
-  Ubuntu) funded by existing Azure credits; the exact VM size is fixed at
-  provisioning time. Provision early to flush out quota limits. Record the
-  target identity (VM size, CPU, OS, runtime versions) alongside the raw
-  results so the numbers are reproducible by anyone with the same image.
+- **Declared Arm64 target (later):** Azure Arm64 (Ampere Altra, Dps v5 series,
+  Ubuntu) remains the intended benchmark class. No Azure resource is provisioned
+  during Gates 0-2 or without Ben's explicit approval. After a frozen model and
+  benchmark harness exist, record the selected VM size, CPU, OS and runtime
+  versions beside raw results so the numbers are reproducible.
 - **Reusable artifacts, not claims:** a reusable benchmark runner script,
   raw benchmark results committed to the repo, and migration/optimisation
   notes another developer could follow. Tooling and lessons are scored.

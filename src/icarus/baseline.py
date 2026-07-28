@@ -24,6 +24,8 @@ both are handled explicitly:
 
 from __future__ import annotations
 
+from icarus.config import HabitatConfig
+
 DELIVERY_RESIDUAL_RATIO = 0.05
 """Relative residual (residual / requested) above which a loop is losing delivery."""
 
@@ -45,7 +47,11 @@ _REQUESTED_EPSILON = 1e-9
 class RuleBaseline:
     """Streaming rule detector over consecutive windows of one scenario run."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: HabitatConfig) -> None:
+        self._loop_connection_pairs = tuple(
+            (config.path_to_processing(zone.id).id, config.path_from_processing(zone.id).id)
+            for zone in config.non_processing_zones()
+        )
         self.reset()
 
     def reset(self) -> None:
@@ -78,25 +84,24 @@ class RuleBaseline:
     def _loop_groups(
         self, ratios_by_connection: dict[str, list[float]]
     ) -> dict[str, list[float]]:
-        """Group connections into loops via the hub naming convention.
-
-        Every zone has an outbound ``<zone>_to_processing`` leg and a paired
-        ``processing_to_<zone>`` return leg reporting identical airflow. The
-        outbound leg represents the loop. Legs are paired by name, never by
-        series equality — loops in identical states (healthy, or jointly
-        contended) must stay separate so isolation keeps a reference.
-        """
-        loops: dict[str, list[float]] = {}
-        inbound_mates: set[str] = set()
-        for connection_id in sorted(ratios_by_connection):
-            if connection_id in inbound_mates:
-                continue
-            if connection_id.endswith("_to_processing"):
-                mate = "processing_to_" + connection_id[: -len("_to_processing")]
-                if mate in ratios_by_connection:
-                    inbound_mates.add(mate)
-            loops[connection_id] = ratios_by_connection[connection_id]
-        return loops
+        """Select graph-paired outbound legs after checking topology compatibility."""
+        expected = {
+            connection_id
+            for outbound_id, return_id in self._loop_connection_pairs
+            for connection_id in (outbound_id, return_id)
+        }
+        actual = set(ratios_by_connection)
+        if actual != expected:
+            missing = sorted(expected - actual)
+            unexpected = sorted(actual - expected)
+            raise ValueError(
+                "feature window topology does not match RuleBaseline config: "
+                f"missing={missing!r}, unexpected={unexpected!r}"
+            )
+        return {
+            outbound_id: ratios_by_connection[outbound_id]
+            for outbound_id, _ in self._loop_connection_pairs
+        }
 
     def _isolated_faulty_connection(
         self, ratios_by_connection: dict[str, list[float]]
