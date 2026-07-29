@@ -34,7 +34,8 @@ LABEL_SET = (
 
 USAGE = (
     "Usage: PYTHONPATH=src python3 -m aeolus.corpus <out-dir> "
-    "<scenario.json> [scenario.json ...]"
+    "<scenario.json> [scenario.json ...]\n"
+    "   or: PYTHONPATH=src python3 -m aeolus.corpus --v2 <out-dir> <families.json>"
 )
 
 
@@ -257,12 +258,18 @@ def _v2_label(
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 2:
+    v2 = argv[:1] == ["--v2"]
+    arguments = argv[1:] if v2 else argv
+    if len(arguments) < 2 or (v2 and len(arguments) != 2):
         print(USAGE, file=sys.stderr)
         return 2
-    out_dir, *scenario_paths = argv
+    out_dir, *scenario_paths = arguments
     try:
-        manifest = generate_corpus(scenario_paths, out_dir)
+        manifest = (
+            generate_corpus_v2(scenario_paths[0], out_dir)
+            if v2
+            else generate_corpus(scenario_paths, out_dir)
+        )
     except ValueError as exc:
         print(f"invalid corpus input: {exc}", file=sys.stderr)
         return 2

@@ -228,6 +228,18 @@ def test_corpus_cli_rejects_missing_arguments():
     assert main(["only-out-dir"]) == 2
 
 
+def test_corpus_cli_generates_corpus_v2(tmp_path, capsys):
+    out_dir = tmp_path / "corpus-v2"
+
+    exit_code = main(["--v2", str(out_dir), str(SCENARIOS / "families.json")])
+
+    assert exit_code == 0
+    printed = capsys.readouterr().out
+    assert "windows=138" in printed
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["corpus_version"] == 2
+
+
 def test_generate_corpus_v2_uses_observable_family_labels(tmp_path):
     manifest = generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
     rows = [
