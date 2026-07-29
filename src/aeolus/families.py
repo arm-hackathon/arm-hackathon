@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+import numpy as np
+
 from icarus.config import (
     BlockedPath,
     FrozenSensor,
@@ -18,7 +20,9 @@ from icarus.config import (
 from icarus.model_input import (
     build_model_input_contract,
     model_artifact_metadata,
+    model_input_v1,
 )
+from icarus.scenario import run_scenario
 
 
 FAMILY_MANIFEST_VERSION = "icarus_family_manifest_v1"
@@ -146,6 +150,54 @@ def parse_family_manifest(document: object, *, base_dir: Path) -> FamilyManifest
         canonical_json=canonical_json,
         manifest_sha256=_sha256(canonical_json),
     )
+
+
+@dataclass(frozen=True)
+class ObservableOnset:
+    """Auditable first divergence of a fault replay from its paired reference."""
+
+    family_id: str
+    tick: int
+    contract_metadata: dict[str, str]
+    reference_scenario_sha256: str
+    fault_scenario_sha256: str
+
+
+def observable_onset(
+    family: ScenarioFamily, contract_metadata: Mapping[str, str]
+) -> ObservableOnset:
+    """Return the first paired tick whose ``model_input_v1`` vector differs."""
+    reference_config = load_scenario(family.reference_path)
+    fault_config = load_scenario(family.fault_path)
+    contract = build_model_input_contract(reference_config)
+    expected_metadata = model_artifact_metadata(contract)
+    if dict(contract_metadata) != expected_metadata:
+        raise ValueError("observable onset contract metadata does not match reference")
+    if model_artifact_metadata(build_model_input_contract(fault_config)) != expected_metadata:
+        raise ValueError("observable onset scenarios do not share one model input contract")
+
+    reference_records = run_scenario(reference_config)
+    fault_records = run_scenario(fault_config)
+    if len(reference_records) != len(fault_records):
+        raise ValueError("observable onset scenarios have different trace lengths")
+    for reference_record, fault_record in zip(reference_records, fault_records):
+        if reference_record.tick != fault_record.tick:
+            raise ValueError("observable onset scenarios have different tick numbering")
+        reference_input = model_input_v1(reference_record, contract)
+        fault_input = model_input_v1(fault_record, contract)
+        if not np.array_equal(reference_input, fault_input):
+            return ObservableOnset(
+                family_id=family.family_id,
+                tick=reference_record.tick,
+                contract_metadata=expected_metadata,
+                reference_scenario_sha256=hashlib.sha256(
+                    family.reference_path.read_bytes()
+                ).hexdigest(),
+                fault_scenario_sha256=hashlib.sha256(
+                    family.fault_path.read_bytes()
+                ).hexdigest(),
+            )
+    raise ValueError(f"family {family.family_id!r} never becomes model-input observable")
 
 
 def _parse_family(raw_family: object, *, base_dir: Path) -> ScenarioFamily:
