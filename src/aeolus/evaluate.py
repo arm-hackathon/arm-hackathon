@@ -144,12 +144,12 @@ def evaluate_v2(
             reset = getattr(labeller, "reset", None)
             if callable(reset):
                 reset()
+        predicted = labeller.label_window(row["features"])
         if row["label"] == EXCLUDED_TRANSITION_LABEL:
             excluded_total += 1
             continue
 
         true_label = row["label"]
-        predicted = labeller.label_window(row["features"])
         scored_total += 1
         is_correct = predicted == true_label
         correct += int(is_correct)
