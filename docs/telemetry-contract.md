@@ -128,7 +128,7 @@ window's zone, actuator or connection IDs do not match that topology. Renaming
 connection IDs therefore preserves loop behavior when the graph and telemetry
 agree.
 
-## Scenario-family manifest (Gate 2, partial)
+## Scenario-family manifest (Gate 2 accepted)
 
 `scenarios/families.json` defines the unit that future training and evaluation
 splits must keep independent. Each family names one fault-free reference
@@ -151,8 +151,15 @@ not alter the contract.
 first equal-tick difference between their `model_input_v1` float32 vectors. It
 fails closed for metadata/topology mismatch, unequal trace lengths, inconsistent
 tick numbering, or a pair that never differs. It persists the scenario hashes
-and frozen contract metadata with the resulting tick. Corpus-v2 row labels and
-scored-transition rules are not implemented yet.
+and frozen contract metadata with the resulting tick.
+
+Corpus v2 emits one healthy-reference stream and one fault stream per family.
+Healthy and pre-onset fault windows are `nominal`; fully observable post-onset
+windows receive the family fault class; an onset-straddling window is
+`excluded_transition`. Evaluators feed every window to stateful labellers, but
+exclude transition windows from training and from scored accuracy, confusion,
+class support, and latency totals. They reject mixed, missing, or stale
+model-input contract metadata.
 
 ## Forbidden hidden truth
 
@@ -180,13 +187,14 @@ forbidden fields.
 classifier. Its leakage rules are strict:
 
 - corpus v1 feature rows remain exactly `model_feature_row()` output for each
-  tick; corpus v2 is out of scope for Gate 1 and must use exact
-  `model_input_v1()` float32 values plus persisted selector/topology hashes;
-- labels come from the scenario's declared fault profiles evaluated at the
-  window's final measured tick (configuration truth), never from telemetry;
-- a window with no active fault is labelled `nominal`; a window where more
-  than one fault is active is rejected, because corpus v1 ships single-fault
-  scenarios only;
+  tick; corpus v2 uses exact `model_input_v1()` float32 values plus persisted
+  selector/topology hashes;
+- corpus-v2 labels derive from paired observable onset, never from a declared
+  fault-profile start tick; healthy and pre-onset rows are `nominal`,
+  onset-straddling rows are `excluded_transition`, and only fully observable
+  rows receive the single family fault class;
+- a window where more than one fault is active is rejected; multi-fault
+  taxonomy remains out of scope;
 - corpus output (`corpus.jsonl`, `manifest.json`) is a generated artifact and
   belongs under `out/`, not in git;
 - regenerating from the same scenarios, window and stride is byte-identical.

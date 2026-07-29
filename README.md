@@ -21,8 +21,8 @@ The repository currently contains:
   blocked path and frozen sensor;
 - JSONL replay traces, an allowlisted model-feature projection, a standalone
   HTML visualiser and a leakage-safe labelled window corpus;
-- a streaming rule-baseline fault detector and an evaluation harness that
-  grades any labeller on accuracy, confusion and detection latency;
+- a family-bound corpus-v2 contract with paired observable-onset labels and
+  transition-aware evaluation, alongside the streaming rule baseline;
 - tests for replay determinism, fault semantics, mass conservation, airflow
   invariants, telemetry boundaries, corpus leakage and detector behaviour.
 
@@ -112,7 +112,8 @@ Every claimed number below is reproducible from the commands in this README.
 
 | Date | What was measured | Result | What it represents |
 |---|---|---|---|
-| 2026-07-27 | Fault-detection quality of the rule baseline on corpus v1 (115 windows from 5 scenario runs) | **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | The performance floor for fault detection in AEOLUS: what the simplest hand-written rules achieve on the first, small corpus. It is the bar the learned classifier must beat — not a model result and not a deployment claim. |
+| 2026-07-27 | Fault-detection quality of the rule baseline on corpus v1 (115 windows from 5 scenario runs) | **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | Historical corpus-v1 baseline only; its labels use declared starts and are not comparable to corpus-v2 scoring. |
+| 2026-07-29 | Gate-2 corpus-v2 contract fixture (3 paired families, 138 windows) | **134/134 scored correct**, 4 transition-excluded; observable onset 21 / 30 / 31 ticks; latency 10 / 9 / 9 ticks (blocked / frozen / degradation). | A contract-validation fixture, not a model-performance or generalisation claim. It proves family splits, observable labels, and transition-aware scoring before the scenario sweep. |
 
 Read the latency column with the accuracy: the baseline is accurate but
 structurally slow, because a rule cannot fire until a fault fills its
@@ -128,8 +129,8 @@ harness and discipline:
    types across seeds, fault starts, fault strengths and targets, with
    demand shapes varied across every class so labels cannot be inferred
    from occupancy patterns.
-2. **Temporal classifier** — trained on swept runs and graded on runs it
-   never saw (train/validation/test split by run, never by window).
+2. **Temporal classifier** — trained on swept families and graded on families
+   it never saw (train/validation/test split by family, never by window).
    Success = baseline-matching accuracy with lower detection latency.
 3. **FP32 ONNX + INT8 quantisation on Arm64** — model size, latency,
    throughput and accuracy delta, FP32 versus INT8, on the declared Azure

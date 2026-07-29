@@ -19,7 +19,7 @@ isolated actuator degrades
 AI provides diagnosis and confidence. Deterministic safety logic retains
 control of every actuator command.
 
-## Status — Gate 0 accepted; Gate 1 implemented; Gate 2 in progress
+## Status — Gates 0–2 accepted
 
 Landed: the deterministic schema-v7 simulator with separated requested/delivered
 airflow and explicit residuals; five scenarios (nominal, healthy high-demand,
@@ -34,13 +34,14 @@ float32[24] selector, canonical selector/topology hashes, and fail-closed
 artifact metadata validation. It does not add training data, a classifier,
 ONNX, a governor, backup geometry, or cloud resources.
 
-Gate 2 remains the prerequisite for corpus v2. Its strict, topology-bound
-family manifest is now implemented: it binds a healthy/fault pair to one split
-and rejects any pair that differs outside `fault_profiles`. It now resolves a
-paired-reference observable onset from the first divergent `model_input_v1`
-tensor; observable-label rules and corpus-v2 generation remain to be
-implemented. No classifier, governor, or corpus-v2 implementation starts before
-Gate 2 is accepted.
+Gate 2 is accepted. Its strict, topology-bound family manifest binds each
+healthy/fault pair to one split and rejects pairs that differ outside
+`fault_profiles`. Corpus v2 persists the frozen model-input contract and labels
+windows from the first divergent paired `model_input_v1` tensor. Windows that
+straddle that observable onset update stateful detectors but are excluded from
+training and scored metrics. The three current families are contract fixtures,
+not a training corpus; the scenario sweep is the next prerequisite for model
+work.
 
 Not started: the scenario sweep that turns the accepted corpus contract into
 training data, temporal classifier and FP32 ONNX export, INT8 quantisation,
