@@ -128,6 +128,26 @@ window's zone, actuator or connection IDs do not match that topology. Renaming
 connection IDs therefore preserves loop behavior when the graph and telemetry
 agree.
 
+## Scenario-family manifest (Gate 2, partial)
+
+`scenarios/families.json` defines the unit that future training and evaluation
+splits must keep independent. Each family names one fault-free reference
+scenario, one exactly-one-fault scenario, a declared class, and exactly one of
+`train`, `validation`, or `test`. The current three families are test-only
+contract fixtures; they do not claim to be a usable training corpus.
+
+`load_family_manifest()` rejects unknown fields, duplicate family IDs, stale or
+malformed Gate-1 metadata, fault-bearing references, multi-fault paired runs,
+class mismatches, and any reference/fault pair that differs outside
+`fault_profiles`. The latter rule requires a true counterfactual: the
+`frozen_sensor_healthy.json` control preserves the lab demand transition from
+`frozen_sensor.json` and removes only the freeze profile.
+
+The manifest is canonical sorted-key compact JSON with a SHA-256 identity. Its
+family list is ordered by `family_id` for hashing, so source-file ordering does
+not alter the contract. Observable-onset and corpus-v2 labels are not
+implemented yet.
+
 ## Forbidden hidden truth
 
 The following must not enter model features or replay telemetry:

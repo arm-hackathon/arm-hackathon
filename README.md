@@ -51,10 +51,13 @@ non-negative difference.
 | `scenarios/high_demand_healthy.json` | Healthy high-demand control and delivery scenario with enough shared capacity to isolate controller demand. |
 | `scenarios/primary_fan_degradation.json` | High-demand scenario with a gradual primary-fan degradation on `cabin_a_to_processing`. |
 | `scenarios/blocked_path.json` | The same high-demand habitat with a sudden blockage on `cabin_b_to_processing` from tick 30. |
+| `scenarios/frozen_sensor_healthy.json` | Fault-free paired reference for the frozen-sensor demand transition. It differs from `frozen_sensor.json` only in `fault_profiles`. |
 | `scenarios/frozen_sensor.json` | The same habitat with the lab sensor frozen from tick 30 while lab demand steps down at tick 41. |
+| `scenarios/families.json` | Gate-2 family manifest. It binds paired references to the frozen `model_input_v1` topology/selector hashes and one evaluation split. |
 
-All five are schema-v7 JSON and replay deterministically from their declared
-seeds.
+All scenario files are schema-v7 JSON and replay deterministically from their
+declared seeds. The current three Gate-2 families are test-only fixtures: they
+prove the contract but are not a train/validation/test corpus.
 
 ## Run locally
 
