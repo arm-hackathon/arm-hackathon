@@ -24,6 +24,8 @@ both are handled explicitly:
 
 from __future__ import annotations
 
+from icarus.config import HabitatConfig
+
 DELIVERY_RESIDUAL_RATIO = 0.05
 """Relative residual (residual / requested) above which a loop is losing delivery."""
 
@@ -45,7 +47,21 @@ _REQUESTED_EPSILON = 1e-9
 class RuleBaseline:
     """Streaming rule detector over consecutive windows of one scenario run."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: HabitatConfig) -> None:
+        self._loop_connection_pairs = tuple(
+            (config.path_to_processing(zone.id).id, config.path_from_processing(zone.id).id)
+            for zone in config.non_processing_zones()
+        )
+        self._connection_ids = tuple(
+            connection_id
+            for outbound_id, return_id in self._loop_connection_pairs
+            for connection_id in (outbound_id, return_id)
+        )
+        self._expected_connection_ids = frozenset(self._connection_ids)
+        self._expected_zone_ids = frozenset(zone.id for zone in config.zones)
+        self._expected_actuator_ids = frozenset(
+            zone.id for zone in config.non_processing_zones()
+        )
         self.reset()
 
     def reset(self) -> None:
@@ -56,9 +72,10 @@ class RuleBaseline:
         """Label one window: nominal, frozen_sensor, blocked_path or degradation."""
         if not features:
             raise ValueError("a window must contain at least one tick")
+        self._validate_window_topology(features)
         ratios_by_connection = {
             connection_id: [_residual_ratio(tick, connection_id) for tick in features]
-            for connection_id in features[0]["connections"]
+            for connection_id in self._connection_ids
         }
         for connection_id, ratios in ratios_by_connection.items():
             jumps = [later - earlier for earlier, later in zip(ratios, ratios[1:])]
@@ -78,25 +95,48 @@ class RuleBaseline:
     def _loop_groups(
         self, ratios_by_connection: dict[str, list[float]]
     ) -> dict[str, list[float]]:
-        """Group connections into loops via the hub naming convention.
+        """Select graph-paired outbound legs after checking topology compatibility."""
+        self._validate_connection_ids(set(ratios_by_connection), "ratio collection")
+        return {
+            outbound_id: ratios_by_connection[outbound_id]
+            for outbound_id, _ in self._loop_connection_pairs
+        }
 
-        Every zone has an outbound ``<zone>_to_processing`` leg and a paired
-        ``processing_to_<zone>`` return leg reporting identical airflow. The
-        outbound leg represents the loop. Legs are paired by name, never by
-        series equality — loops in identical states (healthy, or jointly
-        contended) must stay separate so isolation keeps a reference.
-        """
-        loops: dict[str, list[float]] = {}
-        inbound_mates: set[str] = set()
-        for connection_id in sorted(ratios_by_connection):
-            if connection_id in inbound_mates:
-                continue
-            if connection_id.endswith("_to_processing"):
-                mate = "processing_to_" + connection_id[: -len("_to_processing")]
-                if mate in ratios_by_connection:
-                    inbound_mates.add(mate)
-            loops[connection_id] = ratios_by_connection[connection_id]
-        return loops
+    def _validate_window_topology(self, features: list[dict]) -> None:
+        for tick_number, tick in enumerate(features, start=1):
+            if not isinstance(tick, dict):
+                raise ValueError(f"feature tick {tick_number} must be an object")
+            context = f"tick {tick_number}"
+            for group, expected in (
+                ("zones", self._expected_zone_ids),
+                ("actuators", self._expected_actuator_ids),
+                ("connections", self._expected_connection_ids),
+            ):
+                values = tick.get(group)
+                if not isinstance(values, dict):
+                    raise ValueError(f"feature {context} {group} must be an object")
+                self._validate_entity_ids(set(values), expected, group, context)
+
+    def _validate_connection_ids(self, actual: set[object], context: str) -> None:
+        self._validate_entity_ids(
+            actual, self._expected_connection_ids, "connections", context
+        )
+
+    def _validate_entity_ids(
+        self,
+        actual: set[object],
+        expected: frozenset[str],
+        group: str,
+        context: str,
+    ) -> None:
+        if actual == expected:
+            return
+        missing = sorted(expected - actual)
+        unexpected = sorted(actual - expected, key=repr)
+        raise ValueError(
+            "feature window topology does not match RuleBaseline config "
+            f"at {context} for {group}: missing={missing!r}, unexpected={unexpected!r}"
+        )
 
     def _isolated_faulty_connection(
         self, ratios_by_connection: dict[str, list[float]]

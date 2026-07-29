@@ -52,7 +52,11 @@ def test_fault_start_tick_reads_declared_profiles():
 def test_rule_baseline_scores_against_corpus_v1(tmp_path):
     rows = _corpus_rows(tmp_path)
 
-    result = evaluate(rows, RuleBaseline(), fault_starts=_fault_starts())
+    result = evaluate(
+        rows,
+        RuleBaseline(load_scenario(SCENARIOS / "standard_habitat.json")),
+        fault_starts=_fault_starts(),
+    )
 
     assert result["total"] == 115
     assert result["correct"] == 111
