@@ -7,7 +7,7 @@ from pathlib import Path
 
 from aeolus.baseline import RuleBaseline
 from aeolus.config import load_scenario
-from aeolus.corpus import generate_corpus
+from aeolus.corpus import generate_corpus, generate_corpus_v2
 from aeolus.evaluate import evaluate, evaluate_v2, fault_start_tick, main
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -202,3 +202,19 @@ def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
     evaluate_v2(rows, labeller)
 
     assert labeller.seen == ["transition", "scored"]
+
+
+def test_rule_baseline_scores_generated_corpus_v2_from_frozen_vectors(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    result = evaluate_v2(
+        rows,
+        RuleBaseline(load_scenario(SCENARIOS / "high_demand_healthy.json")),
+    )
+
+    assert result["scored_total"] == 134
+    assert result["correct"] == 134

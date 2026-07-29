@@ -15,6 +15,7 @@ from pathlib import Path
 
 from aeolus.config import GradualPrimaryFanDegradation, HabitatConfig, load_scenario
 from aeolus.families import load_family_manifest, observable_onset
+from aeolus.model_input import build_model_input_contract, model_input_v1
 from aeolus.scenario import run_scenario
 from aeolus.trace import model_feature_row
 
@@ -173,9 +174,17 @@ def generate_corpus_v2(
 
     all_rows: list[dict] = []
     onsets: dict[str, int] = {}
+    family_evidence: dict[str, dict[str, object]] = {}
     for family in families.families:
         onset = observable_onset(family, families.contract_metadata)
         onsets[family.family_id] = onset.tick
+        family_evidence[family.family_id] = {
+            "fault_scenario_sha256": onset.fault_scenario_sha256,
+            "observable_onset_tick": onset.tick,
+            "reference_scenario_sha256": onset.reference_scenario_sha256,
+            "split": family.split,
+        }
+        contract = build_model_input_contract(load_scenario(family.reference_path))
         for role, path in (("reference", family.reference_path), ("fault", family.fault_path)):
             config = load_scenario(path)
             records = run_scenario(config)
@@ -203,7 +212,10 @@ def generate_corpus_v2(
                         "model_input_version": families.contract_metadata["model_input_version"],
                         "selector_sha256": families.contract_metadata["selector_sha256"],
                         "topology_sha256": families.contract_metadata["topology_sha256"],
-                        "features": [model_feature_row(record) for record in window_records],
+                        "features": [
+                            model_input_v1(record, contract).tolist()
+                            for record in window_records
+                        ],
                     }
                 )
 
@@ -219,6 +231,7 @@ def generate_corpus_v2(
         "corpus_version": CORPUS_V2_VERSION,
         **families.contract_metadata,
         "family_manifest_sha256": families.manifest_sha256,
+        "families": family_evidence,
         "window_ticks": window,
         "stride_ticks": stride,
         "total_windows": len(all_rows),
