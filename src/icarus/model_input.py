@@ -83,8 +83,9 @@ def model_input_v1(
     record: TickRecord, contract: ModelInputContract
 ) -> NDArray[np.float32]:
     """Return the exact ordered float32 v1 tensor from observable telemetry."""
-    _validate_contract(contract)
+    topology = _validate_contract(contract)
     features = model_feature_row(record)
+    _validate_record_topology(features, topology)
     try:
         values = [
             features[field.group][field.entity_id][field.field]
@@ -143,7 +144,7 @@ def _selector_fields(config: HabitatConfig) -> tuple[SelectorField, ...]:
     return tuple(fields)
 
 
-def _validate_contract(contract: ModelInputContract) -> None:
+def _validate_contract(contract: ModelInputContract) -> dict[str, Any]:
     if not isinstance(contract, ModelInputContract):
         raise ValueError("model input requires a ModelInputContract")
     if len(contract.fields) != MODEL_INPUT_SHAPE[0]:
@@ -173,6 +174,33 @@ def _validate_contract(contract: ModelInputContract) -> None:
         raise ValueError("model input contract selector representation does not match its fields")
     if _sha256(contract.selector_json) != contract.selector_hash:
         raise ValueError("model input contract selector hash does not match its JSON")
+    return topology
+
+
+def _validate_record_topology(
+    features: Mapping[str, Mapping[str, Mapping[str, float]]],
+    topology: Mapping[str, Any],
+) -> None:
+    non_processing_zone_ids = set(topology["non_processing_zone_ids"])
+    expected_by_group = {
+        "zones": non_processing_zone_ids | {topology["processing_zone_id"]},
+        "actuators": non_processing_zone_ids,
+        "connections": {
+        edge["id"]
+        for loop in topology["primary_loops"]
+        for edge in (loop["outbound"], loop["return"])
+        },
+    }
+    for group, expected in expected_by_group.items():
+        actual = set(features[group])
+        if actual == expected:
+            continue
+        missing = sorted(expected - actual)
+        unexpected = sorted(actual - expected, key=repr)
+        raise ValueError(
+            f"record topology does not match model input contract at {group}: "
+            f"missing={missing!r}, unexpected={unexpected!r}"
+        )
 
 
 def _fields_from_topology(topology: Mapping[str, Any]) -> tuple[SelectorField, ...]:

@@ -39,19 +39,23 @@ def _tick(
         }
         connections[f"{zone}_to_processing"] = dict(entry)
         connections[f"processing_to_{zone}"] = dict(entry)
+    zones = {
+        zone: {"sensor_co2_concentration": sensor}
+        for zone in LOOPS
+    }
+    zones["processing"] = {"sensor_co2_concentration": 0.0}
+    actuators = {
+        zone: {
+            "setpoint": 1.0,
+            "actual_position": 1.0,
+            "tracking_residual": 0.0,
+            "power": 0.05,
+        }
+        for zone in LOOPS
+    }
     return {
-        "zones": {
-            "cabin_a": {"sensor_co2_concentration": sensor},
-            "processing": {"sensor_co2_concentration": 0.0},
-        },
-        "actuators": {
-            "cabin_a": {
-                "setpoint": 1.0,
-                "actual_position": 1.0,
-                "tracking_residual": 0.0,
-                "power": 0.05,
-            }
-        },
+        "zones": zones,
+        "actuators": actuators,
         "connections": connections,
     }
 
@@ -216,4 +220,34 @@ def test_unexpected_mixed_type_connection_ids_raise_controlled_value_error():
     )
 
     with pytest.raises(ValueError, match=r"tick 6.*unexpected"):
+        _baseline().label_window(window)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "group", "reason"),
+    (
+        ("rogue_constant_sensor_loop", "zones", "unexpected"),
+        ("missing_zone", "zones", "missing"),
+        ("extra_actuator", "actuators", "unexpected"),
+        ("missing_actuator", "actuators", "missing"),
+    ),
+)
+def test_every_tick_must_match_configured_zone_and_actuator_topology(
+    mutation: str,
+    group: str,
+    reason: str,
+):
+    window = [_tick(sensor=0.1 + 0.001 * tick) for tick in range(10)]
+    if mutation == "rogue_constant_sensor_loop":
+        for tick in window:
+            tick["zones"]["rogue"] = {"sensor_co2_concentration": 0.5}
+            tick["actuators"]["rogue"] = dict(tick["actuators"]["cabin_a"])
+    elif mutation == "missing_zone":
+        window[5]["zones"].pop("lab")
+    elif mutation == "extra_actuator":
+        window[5]["actuators"]["rogue"] = dict(window[5]["actuators"]["cabin_a"])
+    else:
+        window[5]["actuators"].pop("lab")
+
+    with pytest.raises(ValueError, match=rf"tick [16].*{group}.*{reason}"):
         _baseline().label_window(window)

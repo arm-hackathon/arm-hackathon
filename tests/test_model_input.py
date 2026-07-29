@@ -150,6 +150,53 @@ def test_model_input_v1_rejects_finite_values_that_overflow_float32():
         model_input_v1(record, build_model_input_contract(config))
 
 
+@pytest.mark.parametrize("mutation", ("extra", "missing_return"))
+def test_model_input_v1_rejects_connection_ids_outside_contract_topology(
+    mutation: str,
+):
+    config = load_scenario(STANDARD_SCENARIO)
+    record = copy.deepcopy(run_scenario(config)[0])
+
+    if mutation == "extra":
+        record.connections["uncontracted_connection"] = dict(
+            record.connections["processing_to_cabin_a"]
+        )
+    else:
+        record.connections.pop("processing_to_cabin_a")
+
+    with pytest.raises(ValueError, match=r"record topology.*connections"):
+        model_input_v1(record, build_model_input_contract(config))
+
+
+@pytest.mark.parametrize(
+    ("mutation", "group"),
+    (
+        ("extra_zone", "zones"),
+        ("missing_processing_zone", "zones"),
+        ("extra_actuator", "actuators"),
+        ("missing_actuator", "actuators"),
+    ),
+)
+def test_model_input_v1_rejects_zone_or_actuator_ids_outside_contract_topology(
+    mutation: str,
+    group: str,
+):
+    config = load_scenario(STANDARD_SCENARIO)
+    record = copy.deepcopy(run_scenario(config)[0])
+
+    if mutation == "extra_zone":
+        record.zones["uncontracted_zone"] = dict(record.zones["cabin_a"])
+    elif mutation == "missing_processing_zone":
+        record.zones.pop("processing")
+    elif mutation == "extra_actuator":
+        record.actuators["uncontracted_actuator"] = dict(record.actuators["cabin_a"])
+    else:
+        record.actuators.pop("cabin_a")
+
+    with pytest.raises(ValueError, match=rf"record topology.*{group}"):
+        model_input_v1(record, build_model_input_contract(config))
+
+
 @pytest.mark.parametrize(
     "mutation",
     (
@@ -306,5 +353,5 @@ def test_model_input_v1_rejects_malformed_or_incompatible_contracts():
     renamed_scenario = json.loads(STANDARD_SCENARIO.read_text(encoding="utf-8"))
     renamed_scenario["connections"][0]["id"] = "different_outbound_meter"
     incompatible = build_model_input_contract(parse_scenario(renamed_scenario))
-    with pytest.raises(ValueError, match="does not satisfy"):
+    with pytest.raises(ValueError, match=r"record topology.*connections"):
         model_input_v1(record, incompatible)

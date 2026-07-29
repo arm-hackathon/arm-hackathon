@@ -64,6 +64,11 @@ record through that projection and returns an exact `numpy.float32` tensor with
 shape `(24,)`. It does not accept fault labels, schedules, target metadata,
 health, seeds, or any presentation/debug field.
 
+Before selecting any scalar, `model_input_v1()` requires the record's exact
+zone, actuator and connection ID sets to match the topology embedded in its
+contract. Extra or missing entities, including unselected processing-zone and
+return-leg telemetry, are rejected rather than silently ignored.
+
 For the accepted three-zone habitat, the ordered values are:
 
 ```text
@@ -119,8 +124,9 @@ self-validates its canonical JSON and hashes before a tensor is built.
 
 `RuleBaseline` receives the validated `HabitatConfig` at construction and
 pairs outbound/return legs from graph direction. It fails closed when a feature
-window's connection IDs do not match that topology. Renaming connection IDs
-therefore preserves loop behavior when the graph and telemetry agree.
+window's zone, actuator or connection IDs do not match that topology. Renaming
+connection IDs therefore preserves loop behavior when the graph and telemetry
+agree.
 
 ## Forbidden hidden truth
 

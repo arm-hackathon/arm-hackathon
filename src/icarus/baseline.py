@@ -58,6 +58,10 @@ class RuleBaseline:
             for connection_id in (outbound_id, return_id)
         )
         self._expected_connection_ids = frozenset(self._connection_ids)
+        self._expected_zone_ids = frozenset(zone.id for zone in config.zones)
+        self._expected_actuator_ids = frozenset(
+            zone.id for zone in config.non_processing_zones()
+        )
         self.reset()
 
     def reset(self) -> None:
@@ -100,20 +104,38 @@ class RuleBaseline:
 
     def _validate_window_topology(self, features: list[dict]) -> None:
         for tick_number, tick in enumerate(features, start=1):
-            if not isinstance(tick, dict) or not isinstance(tick.get("connections"), dict):
-                raise ValueError(
-                    f"feature tick {tick_number} connections must be an object"
-                )
-            self._validate_connection_ids(set(tick["connections"]), f"tick {tick_number}")
+            if not isinstance(tick, dict):
+                raise ValueError(f"feature tick {tick_number} must be an object")
+            context = f"tick {tick_number}"
+            for group, expected in (
+                ("zones", self._expected_zone_ids),
+                ("actuators", self._expected_actuator_ids),
+                ("connections", self._expected_connection_ids),
+            ):
+                values = tick.get(group)
+                if not isinstance(values, dict):
+                    raise ValueError(f"feature {context} {group} must be an object")
+                self._validate_entity_ids(set(values), expected, group, context)
 
     def _validate_connection_ids(self, actual: set[object], context: str) -> None:
-        if actual == self._expected_connection_ids:
+        self._validate_entity_ids(
+            actual, self._expected_connection_ids, "connections", context
+        )
+
+    def _validate_entity_ids(
+        self,
+        actual: set[object],
+        expected: frozenset[str],
+        group: str,
+        context: str,
+    ) -> None:
+        if actual == expected:
             return
-        missing = sorted(self._expected_connection_ids - actual)
-        unexpected = sorted(actual - self._expected_connection_ids, key=repr)
+        missing = sorted(expected - actual)
+        unexpected = sorted(actual - expected, key=repr)
         raise ValueError(
             "feature window topology does not match RuleBaseline config "
-            f"at {context}: missing={missing!r}, unexpected={unexpected!r}"
+            f"at {context} for {group}: missing={missing!r}, unexpected={unexpected!r}"
         )
 
     def _isolated_faulty_connection(
