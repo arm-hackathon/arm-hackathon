@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from aeolus.config import parse_scenario
+from aeolus.config import load_scenario, parse_scenario
+from aeolus.model_input import build_model_input_contract, model_input_v1
 from aeolus.corpus import (
     DEFAULT_STRIDE_TICKS,
     DEFAULT_WINDOW_TICKS,
@@ -245,6 +246,33 @@ def test_generate_corpus_v2_uses_observable_family_labels(tmp_path):
     assert {row["split"] for row in rows} == {"test"}
     assert all(row["model_input_version"] == "model_input_v1" for row in rows)
     assert all(len(row["selector_sha256"]) == 64 for row in rows)
+    assert set(manifest["families"]) == {
+        "blocked-path-v1",
+        "degradation-primary-fan-v1",
+        "frozen-sensor-v1",
+    }
+
+    degradation_config = load_scenario(SCENARIOS / "primary_fan_degradation.json")
+    degradation_contract = build_model_input_contract(degradation_config)
+    expected_first_vector = model_input_v1(
+        run_scenario(degradation_config)[0], degradation_contract
+    ).tolist()
+    degradation_first_row = next(
+        row
+        for row in rows
+        if row["family_id"] == "degradation-primary-fan-v1"
+        and row["scenario_role"] == "fault"
+        and row["window_index"] == 0
+    )
+    assert degradation_first_row["features"][0] == expected_first_vector
+    assert len(degradation_first_row["features"][0]) == 24
+    evidence = manifest["families"]["degradation-primary-fan-v1"]
+    assert evidence["fault_scenario_sha256"] == __import__("hashlib").sha256(
+        (SCENARIOS / "primary_fan_degradation.json").read_bytes()
+    ).hexdigest()
+    assert evidence["reference_scenario_sha256"] == __import__("hashlib").sha256(
+        (SCENARIOS / "high_demand_healthy.json").read_bytes()
+    ).hexdigest()
 
     degradation_fault_rows = [
         row
