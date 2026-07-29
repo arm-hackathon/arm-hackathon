@@ -20,6 +20,10 @@ USAGE = (
     "Usage: PYTHONPATH=src python3 -m aeolus.evaluate <corpus.jsonl> "
     "<scenario.json> [scenario.json ...]"
 )
+EXCLUDED_TRANSITION_LABEL = "excluded_transition"
+_V2_CONTRACT_KEYS = frozenset(
+    {"model_input_version", "selector_sha256", "topology_sha256"}
+)
 
 
 @runtime_checkable
@@ -110,6 +114,103 @@ def evaluate(
             for label, values in sorted(latencies.items())
         },
     }
+
+
+def evaluate_v2(
+    rows: list[dict], labeller: Callable[[list[dict]], str] | _WindowLabeller
+) -> dict:
+    """Score corpus-v2 rows from persisted observable-onset evidence."""
+    _validate_v2_contract(rows)
+    if not isinstance(labeller, _WindowLabeller):
+        labeller = _FunctionLabeller(labeller)
+
+    ordered = sorted(
+        rows,
+        key=lambda row: (row["family_id"], row["scenario_role"], row["end_tick"]),
+    )
+    current_stream: tuple[str, str] | None = None
+    correct = 0
+    scored_total = 0
+    excluded_total = 0
+    per_class: dict[str, dict[str, int]] = {}
+    confusion: dict[str, dict[str, int]] = {}
+    latencies: dict[str, list[int]] = {}
+    detected: set[tuple[str, str]] = set()
+
+    for row in ordered:
+        stream = (row["family_id"], row["scenario_role"])
+        if stream != current_stream:
+            current_stream = stream
+            reset = getattr(labeller, "reset", None)
+            if callable(reset):
+                reset()
+        if row["label"] == EXCLUDED_TRANSITION_LABEL:
+            excluded_total += 1
+            continue
+
+        true_label = row["label"]
+        predicted = labeller.label_window(row["features"])
+        scored_total += 1
+        is_correct = predicted == true_label
+        correct += int(is_correct)
+        support = per_class.setdefault(true_label, {"support": 0, "correct": 0})
+        support["support"] += 1
+        support["correct"] += int(is_correct)
+        confusion.setdefault(true_label, {})[predicted] = (
+            confusion.setdefault(true_label, {}).get(predicted, 0) + 1
+        )
+        detection_key = (row["family_id"], true_label)
+        if (
+            true_label != "nominal"
+            and is_correct
+            and detection_key not in detected
+        ):
+            latencies.setdefault(true_label, []).append(
+                row["end_tick"] - row["observable_onset_tick"]
+            )
+            detected.add(detection_key)
+
+    return {
+        "scored_total": scored_total,
+        "excluded_transition_total": excluded_total,
+        "correct": correct,
+        "accuracy": (correct / scored_total) if scored_total else 0.0,
+        "per_class": per_class,
+        "confusion": confusion,
+        "detection_latency_ticks": {
+            label: sum(values) / len(values)
+            for label, values in sorted(latencies.items())
+        },
+    }
+
+
+def _validate_v2_contract(rows: list[dict]) -> None:
+    if not rows:
+        raise ValueError("corpus v2 evaluation requires at least one row")
+    first = rows[0]
+    try:
+        expected = {key: first[key] for key in _V2_CONTRACT_KEYS}
+    except KeyError as exc:
+        raise ValueError("corpus v2 row is missing contract metadata") from exc
+    if any(not isinstance(value, str) for value in expected.values()):
+        raise ValueError("corpus v2 contract metadata must be strings")
+    for row in rows:
+        try:
+            actual = {key: row[key] for key in _V2_CONTRACT_KEYS}
+            if actual != expected:
+                raise ValueError("corpus v2 rows do not share one model contract")
+            if not isinstance(row["observable_onset_tick"], int):
+                raise ValueError("corpus v2 observable onset must be an integer")
+            if row["label"] != EXCLUDED_TRANSITION_LABEL and not isinstance(
+                row["features"], list
+            ):
+                raise ValueError("corpus v2 features must be a list")
+            if not isinstance(row["family_id"], str) or not isinstance(
+                row["scenario_role"], str
+            ):
+                raise ValueError("corpus v2 row identity is malformed")
+        except KeyError as exc:
+            raise ValueError("corpus v2 row is missing required fields") from exc
 
 
 def main(argv: list[str]) -> int:

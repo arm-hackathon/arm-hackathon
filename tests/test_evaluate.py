@@ -8,7 +8,7 @@ from pathlib import Path
 from aeolus.baseline import RuleBaseline
 from aeolus.config import load_scenario
 from aeolus.corpus import generate_corpus
-from aeolus.evaluate import evaluate, fault_start_tick, main
+from aeolus.evaluate import evaluate, evaluate_v2, fault_start_tick, main
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = REPO_ROOT / "scenarios"
@@ -132,3 +132,52 @@ def test_evaluate_cli_prints_metrics_json(tmp_path, capsys):
 def test_evaluate_cli_rejects_missing_arguments():
     assert main([]) == 2
     assert main(["only-corpus"]) == 2
+
+
+def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
+    metadata = {
+        "model_input_version": "model_input_v1",
+        "selector_sha256": "a" * 64,
+        "topology_sha256": "b" * 64,
+    }
+    common = {
+        **metadata,
+        "family_id": "blocked-path-v1",
+        "split": "test",
+        "observable_onset_tick": 30,
+    }
+    rows = [
+        {
+            **common,
+            "scenario_role": "reference",
+            "start_tick": 1,
+            "end_tick": 10,
+            "label": "nominal",
+            "features": [{"prediction": "nominal"}],
+        },
+        {
+            **common,
+            "scenario_role": "fault",
+            "start_tick": 26,
+            "end_tick": 35,
+            "label": "excluded_transition",
+            "features": [{"prediction": "blocked_path"}],
+        },
+        {
+            **common,
+            "scenario_role": "fault",
+            "start_tick": 31,
+            "end_tick": 40,
+            "label": "blocked_path",
+            "features": [{"prediction": "blocked_path"}],
+        },
+    ]
+
+    result = evaluate_v2(rows, lambda features: features[0]["prediction"])
+
+    assert result["scored_total"] == 2
+    assert result["excluded_transition_total"] == 1
+    assert result["correct"] == 2
+    assert result["accuracy"] == 1.0
+    assert result["confusion"] == {"blocked_path": {"blocked_path": 1}, "nominal": {"nominal": 1}}
+    assert result["detection_latency_ticks"] == {"blocked_path": 10.0}
