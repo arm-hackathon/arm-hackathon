@@ -13,6 +13,7 @@ from aeolus.corpus import (
     DEFAULT_WINDOW_TICKS,
     build_corpus_rows,
     generate_corpus,
+    generate_corpus_v2,
     label_for_window,
     main,
 )
@@ -224,3 +225,42 @@ def test_corpus_cli_writes_corpus_and_manifest(tmp_path):
 def test_corpus_cli_rejects_missing_arguments():
     assert main([]) == 2
     assert main(["only-out-dir"]) == 2
+
+
+def test_generate_corpus_v2_uses_observable_family_labels(tmp_path):
+    manifest = generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert manifest["corpus_version"] == 2
+    assert manifest["total_windows"] == 138
+    assert manifest["scored_windows"] + manifest["excluded_transition_windows"] == 138
+    assert manifest["observable_onsets"] == {
+        "blocked-path-v1": 30,
+        "degradation-primary-fan-v1": 21,
+        "frozen-sensor-v1": 31,
+    }
+    assert {row["split"] for row in rows} == {"test"}
+    assert all(row["model_input_version"] == "model_input_v1" for row in rows)
+    assert all(len(row["selector_sha256"]) == 64 for row in rows)
+
+    degradation_fault_rows = [
+        row
+        for row in rows
+        if row["family_id"] == "degradation-primary-fan-v1"
+        and row["scenario_role"] == "fault"
+    ]
+    assert next(row for row in degradation_fault_rows if row["end_tick"] == 20)[
+        "label"
+    ] == "nominal"
+    assert next(row for row in degradation_fault_rows if row["end_tick"] == 25)[
+        "label"
+    ] == "excluded_transition"
+    assert next(row for row in degradation_fault_rows if row["start_tick"] == 21)[
+        "label"
+    ] == "gradual_primary_fan_degradation"
+    assert all(
+        row["label"] == "nominal" for row in rows if row["scenario_role"] == "reference"
+    )

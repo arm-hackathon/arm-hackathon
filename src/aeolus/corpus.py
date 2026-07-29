@@ -14,13 +14,16 @@ import sys
 from pathlib import Path
 
 from aeolus.config import GradualPrimaryFanDegradation, HabitatConfig, load_scenario
+from aeolus.families import load_family_manifest, observable_onset
 from aeolus.scenario import run_scenario
 from aeolus.trace import model_feature_row
 
 CORPUS_VERSION = 1
+CORPUS_V2_VERSION = 2
 DEFAULT_WINDOW_TICKS = 10
 DEFAULT_STRIDE_TICKS = 5
 NOMINAL_LABEL = "nominal"
+EXCLUDED_TRANSITION_LABEL = "excluded_transition"
 LABEL_SET = (
     "blocked_path",
     "frozen_sensor",
@@ -150,6 +153,94 @@ def generate_corpus(
         encoding="utf-8",
     )
     return manifest
+
+
+def generate_corpus_v2(
+    family_manifest_path,
+    out_dir,
+    *,
+    window: int = DEFAULT_WINDOW_TICKS,
+    stride: int = DEFAULT_STRIDE_TICKS,
+) -> dict:
+    """Generate observable-labelled corpus-v2 rows from strict scenario families."""
+    if window < 1:
+        raise ValueError("window must be a positive number of ticks")
+    if stride < 1:
+        raise ValueError("stride must be a positive number of ticks")
+    families = load_family_manifest(Path(family_manifest_path))
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    all_rows: list[dict] = []
+    onsets: dict[str, int] = {}
+    for family in families.families:
+        onset = observable_onset(family, families.contract_metadata)
+        onsets[family.family_id] = onset.tick
+        for role, path in (("reference", family.reference_path), ("fault", family.fault_path)):
+            config = load_scenario(path)
+            records = run_scenario(config)
+            for index, start in enumerate(range(0, len(records) - window + 1, stride)):
+                window_records = records[start : start + window]
+                start_tick = window_records[0].tick
+                end_tick = window_records[-1].tick
+                label = _v2_label(
+                    role=role,
+                    fault_class=family.fault_class,
+                    start_tick=start_tick,
+                    end_tick=end_tick,
+                    onset_tick=onset.tick,
+                )
+                all_rows.append(
+                    {
+                        "family_id": family.family_id,
+                        "split": family.split,
+                        "scenario_role": role,
+                        "window_index": index,
+                        "start_tick": start_tick,
+                        "end_tick": end_tick,
+                        "observable_onset_tick": onset.tick,
+                        "label": label,
+                        "model_input_version": families.contract_metadata["model_input_version"],
+                        "selector_sha256": families.contract_metadata["selector_sha256"],
+                        "topology_sha256": families.contract_metadata["topology_sha256"],
+                        "features": [model_feature_row(record) for record in window_records],
+                    }
+                )
+
+    all_rows.sort(key=lambda row: (row["family_id"], row["scenario_role"], row["end_tick"]))
+    with (out_dir / "corpus.jsonl").open("w", encoding="utf-8") as handle:
+        for row in all_rows:
+            handle.write(json.dumps(row, sort_keys=True, allow_nan=False) + "\n")
+
+    label_counts: dict[str, int] = {}
+    for row in all_rows:
+        label_counts[row["label"]] = label_counts.get(row["label"], 0) + 1
+    manifest = {
+        "corpus_version": CORPUS_V2_VERSION,
+        **families.contract_metadata,
+        "family_manifest_sha256": families.manifest_sha256,
+        "window_ticks": window,
+        "stride_ticks": stride,
+        "total_windows": len(all_rows),
+        "scored_windows": len(all_rows) - label_counts.get(EXCLUDED_TRANSITION_LABEL, 0),
+        "excluded_transition_windows": label_counts.get(EXCLUDED_TRANSITION_LABEL, 0),
+        "label_counts": label_counts,
+        "observable_onsets": onsets,
+    }
+    (out_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return manifest
+
+
+def _v2_label(
+    *, role: str, fault_class: str, start_tick: int, end_tick: int, onset_tick: int
+) -> str:
+    if role == "reference" or end_tick < onset_tick:
+        return NOMINAL_LABEL
+    if start_tick < onset_tick <= end_tick:
+        return EXCLUDED_TRANSITION_LABEL
+    return fault_class
 
 
 def main(argv: list[str]) -> int:
