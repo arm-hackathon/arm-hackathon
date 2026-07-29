@@ -100,11 +100,12 @@ fault effectiveness, connection health, random seed or source-noise state.
 future model-facing consumer; visualiser fields do not expand that model
 feature set.
 
-`aeolus.corpus` builds the labelled window corpus for the future fault
-classifier. Every feature row is exactly `model_feature_row()` output and
-labels come from declared fault profiles, never from telemetry, so the corpus
-carries no hidden fault truth. Corpus output is a generated artifact and
-belongs in `out/`, not Git.
+`aeolus.corpus` builds labelled windows for the future fault classifier. Corpus
+v1 feature rows are exactly `model_feature_row()` output and retain their
+historical declared-profile labels. Corpus v2 instead uses paired
+`model_input_v1` traces to label first observable onset, persists the frozen
+selector/topology metadata, and excludes onset-straddling windows from scored
+metrics. Corpus output is a generated artifact and belongs in `out/`, not Git.
 
 ## Results so far
 
