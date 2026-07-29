@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from icarus.config import load_scenario
-from icarus.families import load_family_manifest, parse_family_manifest
+from icarus.families import (
+    load_family_manifest,
+    observable_onset,
+    parse_family_manifest,
+)
 from icarus.model_input import build_model_input_contract, model_artifact_metadata
 
 
@@ -100,3 +104,26 @@ def test_family_manifest_rejects_fault_class_that_disagrees_with_pair():
 
     with pytest.raises(ValueError, match="fault_class does not match"):
         parse_family_manifest(document, base_dir=SCENARIOS)
+
+
+@pytest.mark.parametrize(
+    ("family_id", "expected_tick"),
+    (
+        ("degradation-primary-fan-v1", 21),
+        ("blocked-path-v1", 30),
+        ("frozen-sensor-v1", 31),
+    ),
+)
+def test_observable_onset_uses_only_paired_model_input_v1(
+    family_id: str, expected_tick: int
+):
+    manifest = load_family_manifest(FAMILY_MANIFEST_PATH)
+    family = next(item for item in manifest.families if item.family_id == family_id)
+
+    onset = observable_onset(family, manifest.contract_metadata)
+
+    assert onset.family_id == family_id
+    assert onset.tick == expected_tick
+    assert onset.contract_metadata == manifest.contract_metadata
+    assert len(onset.reference_scenario_sha256) == 64
+    assert len(onset.fault_scenario_sha256) == 64

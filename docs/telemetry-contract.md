@@ -145,8 +145,14 @@ class mismatches, and any reference/fault pair that differs outside
 
 The manifest is canonical sorted-key compact JSON with a SHA-256 identity. Its
 family list is ordered by `family_id` for hashing, so source-file ordering does
-not alter the contract. Observable-onset and corpus-v2 labels are not
-implemented yet.
+not alter the contract.
+
+`observable_onset(family, metadata)` replays the validated pair and finds the
+first equal-tick difference between their `model_input_v1` float32 vectors. It
+fails closed for metadata/topology mismatch, unequal trace lengths, inconsistent
+tick numbering, or a pair that never differs. It persists the scenario hashes
+and frozen contract metadata with the resulting tick. Corpus-v2 row labels and
+scored-transition rules are not implemented yet.
 
 ## Forbidden hidden truth
 

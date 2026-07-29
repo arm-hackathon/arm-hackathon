@@ -36,10 +36,11 @@ ONNX, a governor, backup geometry, or cloud resources.
 
 Gate 2 remains the prerequisite for corpus v2. Its strict, topology-bound
 family manifest is now implemented: it binds a healthy/fault pair to one split
-and rejects any pair that differs outside `fault_profiles`. The paired-reference
-observable-onset contract and observable-label rules remain to be implemented.
-No classifier, governor, or corpus-v2 implementation starts before Gate 2 is
-accepted.
+and rejects any pair that differs outside `fault_profiles`. It now resolves a
+paired-reference observable onset from the first divergent `model_input_v1`
+tensor; observable-label rules and corpus-v2 generation remain to be
+implemented. No classifier, governor, or corpus-v2 implementation starts before
+Gate 2 is accepted.
 
 Not started: the scenario sweep that turns the accepted corpus contract into
 training data, temporal classifier and FP32 ONNX export, INT8 quantisation,
