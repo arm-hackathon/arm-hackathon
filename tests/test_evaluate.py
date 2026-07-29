@@ -181,3 +181,24 @@ def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
     assert result["accuracy"] == 1.0
     assert result["confusion"] == {"blocked_path": {"blocked_path": 1}, "nominal": {"nominal": 1}}
     assert result["detection_latency_ticks"] == {"blocked_path": 10.0}
+
+
+def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
+    class StatefulLabeller:
+        def __init__(self):
+            self.seen: list[str] = []
+
+        def label_window(self, features):
+            self.seen.append(features[0]["marker"])
+            return "nominal"
+
+    metadata = {"model_input_version": "model_input_v1", "selector_sha256": "a" * 64, "topology_sha256": "b" * 64}
+    rows = [
+        {**metadata, "family_id": "f", "scenario_role": "fault", "observable_onset_tick": 2, "start_tick": 1, "end_tick": 2, "label": "excluded_transition", "features": [{"marker": "transition"}]},
+        {**metadata, "family_id": "f", "scenario_role": "fault", "observable_onset_tick": 2, "start_tick": 3, "end_tick": 4, "label": "blocked_path", "features": [{"marker": "scored"}]},
+    ]
+    labeller = StatefulLabeller()
+
+    evaluate_v2(rows, labeller)
+
+    assert labeller.seen == ["transition", "scored"]
