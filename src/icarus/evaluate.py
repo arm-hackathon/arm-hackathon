@@ -123,17 +123,28 @@ def main(argv: list[str]) -> int:
             for line in Path(corpus_path).read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
+        configs = [load_scenario(scenario_path) for scenario_path in scenario_paths]
+        baseline_pairs = _loop_connection_pairs(configs[0])
+        if any(_loop_connection_pairs(config) != baseline_pairs for config in configs[1:]):
+            raise ValueError("evaluation scenarios do not share one validated topology")
         fault_starts = {}
-        for scenario_path in scenario_paths:
-            start = fault_start_tick(load_scenario(scenario_path))
+        for scenario_path, config in zip(scenario_paths, configs):
+            start = fault_start_tick(config)
             if start is not None:
                 fault_starts[Path(scenario_path).stem] = start
-        result = evaluate(rows, RuleBaseline(), fault_starts=fault_starts)
+        result = evaluate(rows, RuleBaseline(configs[0]), fault_starts=fault_starts)
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         print(f"cannot evaluate: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
     return 0
+
+
+def _loop_connection_pairs(config: HabitatConfig) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (config.path_to_processing(zone.id).id, config.path_from_processing(zone.id).id)
+        for zone in config.non_processing_zones()
+    )
 
 
 if __name__ == "__main__":
