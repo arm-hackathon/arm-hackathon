@@ -1,0 +1,29 @@
+{
+  "families": [
+    {
+      "family_id": "blocked-path-v1",
+      "fault_class": "blocked_path",
+      "fault_scenario": "blocked_path.json",
+      "reference_scenario": "high_demand_healthy.json",
+      "split": "test"
+    },
+    {
+      "family_id": "degradation-primary-fan-v1",
+      "fault_class": "gradual_primary_fan_degradation",
+      "fault_scenario": "primary_fan_degradation.json",
+      "reference_scenario": "high_demand_healthy.json",
+      "split": "test"
+    },
+    {
+      "family_id": "frozen-sensor-v1",
+      "fault_class": "frozen_sensor",
+      "fault_scenario": "frozen_sensor.json",
+      "reference_scenario": "frozen_sensor_healthy.json",
+      "split": "test"
+    }
+  ],
+  "model_input_version": "model_input_v1",
+  "schema_version": "icarus_family_manifest_v1",
+  "selector_sha256": "39357b4aec4af58d09f6d1be0359d0ca8e510b54e92ad56b80b469fb2d767323",
+  "topology_sha256": "b204c59fc2e155e39c2b1b5dffcb6905cd6e23f6d9b6a45807cd227020f43f83"
+}
