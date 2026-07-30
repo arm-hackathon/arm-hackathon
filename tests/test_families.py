@@ -90,6 +90,14 @@ def test_family_manifest_rejects_duplicate_family_identity():
         parse_family_manifest(document, base_dir=SCENARIOS)
 
 
+def test_family_manifest_rejects_scenario_reused_across_splits():
+    document = _manifest_document()
+    document["families"][0]["split"] = "train"
+
+    with pytest.raises(ValueError, match="scenario is assigned to more than one split"):
+        parse_family_manifest(document, base_dir=SCENARIOS)
+
+
 def test_family_manifest_rejects_faulted_reference_scenario():
     document = _manifest_document()
     document["families"][0]["reference_scenario"] = "blocked_path.json"

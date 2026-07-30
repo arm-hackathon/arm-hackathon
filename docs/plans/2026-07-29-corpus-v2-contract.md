@@ -341,7 +341,10 @@ git commit -m "feat: score corpus v2 from observable onset"
 
 ```bash
 rm -rf out/corpus-v2-contract
-uv run --extra dev python -m icarus.corpus out/corpus-v2-contract scenarios/families.json
+PYTHONPATH=src uv run python -m icarus.corpus \
+  --v2 out/corpus-v2-contract scenarios/families.json
+PYTHONPATH=src uv run python -m icarus.evaluate \
+  --v2 out/corpus-v2-contract/corpus.jsonl scenarios/families.json --split test
 ```
 
 Use the actual final v2 CLI/API documented by the preceding implementation. Generated JSONL stays under `out/` and remains untracked.

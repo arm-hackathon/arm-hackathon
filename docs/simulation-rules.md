@@ -236,8 +236,17 @@ uv run --extra dev python -m pytest
 mkdir -p out
 uv run python -m aeolus scenarios/standard_habitat.json out/standard.jsonl
 uv run python -m aeolus.visualise out/standard.jsonl out/standard.html
-uv run python -m aeolus.corpus out/corpus scenarios/*.json
-uv run python -m aeolus.evaluate out/corpus/corpus.jsonl scenarios/*.json
+uv run python -m aeolus.corpus out/corpus \
+  scenarios/standard_habitat.json scenarios/high_demand_healthy.json \
+  scenarios/primary_fan_degradation.json scenarios/blocked_path.json \
+  scenarios/frozen_sensor.json
+uv run python -m aeolus.evaluate out/corpus/corpus.jsonl \
+  scenarios/standard_habitat.json scenarios/high_demand_healthy.json \
+  scenarios/primary_fan_degradation.json scenarios/blocked_path.json \
+  scenarios/frozen_sensor.json
+uv run python -m aeolus.corpus --v2 out/corpus-v2 scenarios/families.json
+uv run python -m aeolus.evaluate --v2 out/corpus-v2/corpus.jsonl \
+  scenarios/families.json --split test
 ```
 
 `aeolus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a

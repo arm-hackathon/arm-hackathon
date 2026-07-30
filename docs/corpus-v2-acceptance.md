@@ -9,7 +9,8 @@ Arm64 performance.
 ## Contract accepted
 
 - The independent split unit is a **scenario family**, never an overlapping
-  window or replay from that family.
+  window or replay from that family. A reference or fault replay may not appear
+  in more than one split.
 - Every family binds a fault-free reference and exactly one faulty scenario to
   the frozen `model_input_v1` selector/topology contract.
 - A fault becomes label-eligible at the first equal-tick difference between
@@ -19,7 +20,8 @@ Arm64 performance.
   It updates a stateful detector's history but is excluded from training,
   accuracy, confusion matrices, class support, and scored totals.
 - Corpus-v2 evaluation rejects rows with missing or mismatched model-input
-  contract metadata.
+  contract metadata, non-finite or non-`float32[24]`-compatible feature vectors,
+  and scores only an explicitly selected split.
 
 ## Fixture evidence
 
@@ -54,7 +56,7 @@ model with the baseline.
 Run from repository root on branch `ben/corpus-v2-contract`:
 
 ```text
-uv run --extra dev python -m pytest -q  -> 245 passed in 1.84s
+uv run --extra dev python -m pytest -q  -> 252 passed in 3.43s
 uv run ruff check .                     -> All checks passed!
 git diff --check origin/main            -> clean
 ```

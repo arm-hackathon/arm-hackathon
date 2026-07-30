@@ -74,12 +74,25 @@ PYTHONPATH=src uv run python -m aeolus.visualise \
   out/primary_fan_degradation.jsonl \
   out/primary_fan_degradation.html
 
-# Generate the labelled window corpus and its manifest
-PYTHONPATH=src uv run python -m aeolus.corpus out/corpus scenarios/*.json
+# Generate the historical v1 labelled window corpus and its manifest
+PYTHONPATH=src uv run python -m aeolus.corpus out/corpus \
+  scenarios/standard_habitat.json scenarios/high_demand_healthy.json \
+  scenarios/primary_fan_degradation.json scenarios/blocked_path.json \
+  scenarios/frozen_sensor.json
 
-# Grade the rule baseline against the corpus
+# Grade the historical rule baseline against corpus v1
 PYTHONPATH=src uv run python -m aeolus.evaluate \
-  out/corpus/corpus.jsonl scenarios/*.json
+  out/corpus/corpus.jsonl scenarios/standard_habitat.json \
+  scenarios/high_demand_healthy.json scenarios/primary_fan_degradation.json \
+  scenarios/blocked_path.json scenarios/frozen_sensor.json
+
+# Generate the Gate-2 observable-labelled corpus-v2 fixture
+PYTHONPATH=src uv run python -m aeolus.corpus \
+  --v2 out/corpus-v2 scenarios/families.json
+
+# Grade only the manifest-selected held-out test families
+PYTHONPATH=src uv run python -m aeolus.evaluate \
+  --v2 out/corpus-v2/corpus.jsonl scenarios/families.json --split test
 ```
 
 On Windows PowerShell, set `PYTHONPATH` for the session before running the same commands:
