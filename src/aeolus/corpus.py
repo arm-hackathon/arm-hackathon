@@ -1,9 +1,10 @@
 """Leakage-safe labelled corpus generation from AEOLUS scenario replays.
 
-Every feature row is exactly :func:`aeolus.trace.model_feature_row` output, so
-the corpus cannot contain hidden fault truth (health, fault effectiveness,
-seed or noise). Labels come from the scenario's declared fault profiles at
-each window's final measured tick, never from telemetry.
+Corpus v1 uses :func:`aeolus.trace.model_feature_row` and historical
+configuration-truth labels. Corpus v2 serialises only frozen ``model_input_v1``
+vectors; labels derive from paired observable onset rather than hidden fault
+schedules. Neither version exposes hidden fault effectiveness, health, seed, or
+source-noise state to model-facing features.
 """
 
 from __future__ import annotations

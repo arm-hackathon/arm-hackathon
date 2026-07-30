@@ -127,12 +127,17 @@ def parse_family_manifest(document: object, *, base_dir: Path) -> FamilyManifest
 
     families: list[ScenarioFamily] = []
     seen_ids: set[str] = set()
+    scenario_splits: dict[Path, str] = {}
     for raw_family in raw_families:
         family = _parse_family(raw_family, base_dir=base_dir)
         if family.family_id in seen_ids:
             raise ValueError(f"duplicate family_id {family.family_id!r}")
         seen_ids.add(family.family_id)
         _validate_family_pair(family, declared_metadata)
+        for scenario_path in (family.reference_path, family.fault_path):
+            existing_split = scenario_splits.setdefault(scenario_path, family.split)
+            if existing_split != family.split:
+                raise ValueError("scenario is assigned to more than one split")
         families.append(family)
 
     ordered_families = tuple(sorted(families, key=lambda family: family.family_id))

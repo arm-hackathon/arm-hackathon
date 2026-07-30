@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from aeolus.baseline import RuleBaseline
 from aeolus.config import load_scenario
 from aeolus.corpus import generate_corpus, generate_corpus_v2
 from aeolus.evaluate import evaluate, evaluate_v2, fault_start_tick, main
+from aeolus.model_input import build_model_input_contract, model_artifact_metadata
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = REPO_ROOT / "scenarios"
@@ -153,7 +156,7 @@ def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
             "start_tick": 1,
             "end_tick": 10,
             "label": "nominal",
-            "features": [{"prediction": "nominal"}],
+            "features": [[0.0] * 24],
         },
         {
             **common,
@@ -161,7 +164,7 @@ def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
             "start_tick": 26,
             "end_tick": 35,
             "label": "excluded_transition",
-            "features": [{"prediction": "blocked_path"}],
+            "features": [[1.0] * 24],
         },
         {
             **common,
@@ -169,11 +172,16 @@ def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
             "start_tick": 31,
             "end_tick": 40,
             "label": "blocked_path",
-            "features": [{"prediction": "blocked_path"}],
+            "features": [[1.0] * 24],
         },
     ]
 
-    result = evaluate_v2(rows, lambda features: features[0]["prediction"])
+    result = evaluate_v2(
+        rows,
+        lambda features: "blocked_path" if features[0][0] else "nominal",
+        expected_contract=metadata,
+        target_split="test",
+    )
 
     assert result["scored_total"] == 2
     assert result["excluded_transition_total"] == 1
@@ -189,19 +197,19 @@ def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
             self.seen: list[str] = []
 
         def label_window(self, features):
-            self.seen.append(features[0]["marker"])
+            self.seen.append(features[0][0])
             return "nominal"
 
     metadata = {"model_input_version": "model_input_v1", "selector_sha256": "a" * 64, "topology_sha256": "b" * 64}
     rows = [
-        {**metadata, "family_id": "f", "scenario_role": "fault", "observable_onset_tick": 2, "start_tick": 1, "end_tick": 2, "label": "excluded_transition", "features": [{"marker": "transition"}]},
-        {**metadata, "family_id": "f", "scenario_role": "fault", "observable_onset_tick": 2, "start_tick": 3, "end_tick": 4, "label": "blocked_path", "features": [{"marker": "scored"}]},
+        {**metadata, "family_id": "f", "scenario_role": "fault", "split": "test", "observable_onset_tick": 2, "start_tick": 1, "end_tick": 2, "label": "excluded_transition", "features": [[1.0] + [0.0] * 23]},
+        {**metadata, "family_id": "f", "scenario_role": "fault", "split": "test", "observable_onset_tick": 2, "start_tick": 3, "end_tick": 4, "label": "blocked_path", "features": [[2.0] + [0.0] * 23]},
     ]
     labeller = StatefulLabeller()
 
-    evaluate_v2(rows, labeller)
+    evaluate_v2(rows, labeller, expected_contract=metadata, target_split="test")
 
-    assert labeller.seen == ["transition", "scored"]
+    assert labeller.seen == [1.0, 2.0]
 
 
 def test_rule_baseline_scores_generated_corpus_v2_from_frozen_vectors(tmp_path):
@@ -214,7 +222,96 @@ def test_rule_baseline_scores_generated_corpus_v2_from_frozen_vectors(tmp_path):
     result = evaluate_v2(
         rows,
         RuleBaseline(load_scenario(SCENARIOS / "high_demand_healthy.json")),
+        expected_contract=model_artifact_metadata(
+            build_model_input_contract(load_scenario(SCENARIOS / "high_demand_healthy.json"))
+        ),
+        target_split="test",
     )
 
     assert result["scored_total"] == 134
     assert result["correct"] == 134
+
+
+def test_evaluate_v2_scores_only_the_requested_split(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    for row in rows:
+        if row["family_id"] == "blocked-path-v1":
+            row["split"] = "train"
+
+    contract = model_artifact_metadata(
+        build_model_input_contract(load_scenario(SCENARIOS / "high_demand_healthy.json"))
+    )
+    result = evaluate_v2(
+        rows,
+        RuleBaseline(load_scenario(SCENARIOS / "high_demand_healthy.json")),
+        expected_contract=contract,
+        target_split="test",
+    )
+
+    assert result["scored_total"] == 90
+    assert "blocked_path" not in result["per_class"]
+
+
+def test_evaluate_v2_rejects_vector_with_wrong_shape(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    rows[0]["features"][0] = [0.0] * 23
+    contract = model_artifact_metadata(
+        build_model_input_contract(load_scenario(SCENARIOS / "high_demand_healthy.json"))
+    )
+
+    with pytest.raises(ValueError, match="model-input tick 1 has an unexpected shape"):
+        evaluate_v2(
+            rows,
+            lambda _: "nominal",
+            expected_contract=contract,
+            target_split="test",
+        )
+
+
+def test_evaluate_v2_rejects_uniformly_stale_contract_metadata(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    stale_contract = {
+        "model_input_version": "obsolete_model_input",
+        "selector_sha256": "a" * 64,
+        "topology_sha256": "b" * 64,
+    }
+    for row in rows:
+        row.update(stale_contract)
+
+    with pytest.raises(ValueError, match="expected corpus v2 contract is incompatible"):
+        evaluate_v2(
+            rows,
+            lambda _: "nominal",
+            expected_contract=stale_contract,
+            target_split="test",
+        )
+
+
+def test_evaluate_v2_cli_prints_selected_split_metrics(tmp_path, capsys):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    exit_code = main(
+        [
+            "--v2",
+            str(tmp_path / "corpus.jsonl"),
+            str(SCENARIOS / "families.json"),
+            "--split",
+            "test",
+        ]
+    )
+
+    assert exit_code == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["scored_total"] == 134
+    assert printed["correct"] == 134
