@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from icarus.config import load_scenario
-from icarus.scenario import run_scenario
-from icarus.visualise import load_trace, write_visualisation
+from aeolus.config import load_scenario
+from aeolus.scenario import run_scenario
+from aeolus.visualise import load_trace, write_visualisation
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

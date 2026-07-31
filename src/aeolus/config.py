@@ -1,4 +1,4 @@
-"""User-editable scenario graph loading and validation for ICARUS.
+"""User-editable scenario graph loading and validation for AEOLUS.
 
 A scenario file is versioned JSON describing the habitat as a directed
 graph: ``zones`` (rooms) and ``connections`` (directed air paths). This
@@ -22,8 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from icarus.actuator import ActuatorSettings
-from icarus.control import CO2ControlSettings
+from aeolus.actuator import ActuatorSettings
+from aeolus.control import CO2ControlSettings
 
 SUPPORTED_SCENARIO_VERSION = 7
 

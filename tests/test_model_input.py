@@ -1,4 +1,4 @@
-"""Gate 1 contracts for the fixed ICARUS model-input tensor."""
+"""Gate 1 contracts for the fixed AEOLUS model-input tensor."""
 
 from __future__ import annotations
 
@@ -11,14 +11,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from icarus.config import load_scenario, parse_scenario
-from icarus.model_input import (
+from aeolus.config import load_scenario, parse_scenario
+from aeolus.model_input import (
     assert_model_contract_compatible,
     build_model_input_contract,
     model_artifact_metadata,
     model_input_v1,
 )
-from icarus.scenario import run_scenario
+from aeolus.scenario import run_scenario
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -104,7 +104,7 @@ def test_model_input_contract_hashes_are_canonical_and_topology_bound():
     topology = json.loads(first.topology_json)
     assert selector["schema_version"] == "model_input_v1"
     assert "version" not in selector
-    assert topology["schema_version"] == "icarus_topology_v1"
+    assert topology["schema_version"] == "aeolus_topology_v1"
     assert "version" not in topology
 
     changed_selector = json.loads(first.selector_json)

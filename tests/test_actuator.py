@@ -2,7 +2,7 @@
 
 import pytest
 
-from icarus.actuator import ActuatorSettings, ActuatorState, RateLimitedActuator
+from aeolus.actuator import ActuatorSettings, ActuatorState, RateLimitedActuator
 
 
 @pytest.fixture

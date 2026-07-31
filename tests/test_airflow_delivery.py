@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from icarus.actuator import ActuatorState
-from icarus.config import ConnectionSpec, load_scenario, parse_scenario
-from icarus.plant import initial_state, requested_loop_airflow, step_habitat
-from icarus.scenario import STANDARD_RUN, run_scenario
+from aeolus.actuator import ActuatorState
+from aeolus.config import ConnectionSpec, load_scenario, parse_scenario
+from aeolus.plant import initial_state, requested_loop_airflow, step_habitat
+from aeolus.scenario import STANDARD_RUN, run_scenario
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

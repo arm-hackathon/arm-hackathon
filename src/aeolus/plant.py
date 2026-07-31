@@ -1,4 +1,4 @@
-"""Hub-layout ventilation plant for the ICARUS scenario graph.
+"""Hub-layout ventilation plant for the AEOLUS scenario graph.
 
 Each non-processing zone has an idealised CO₂ sensor. Its reading drives a
 bounded actuator command for that zone's circulation loop. Air passes through
@@ -17,9 +17,9 @@ from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from icarus.actuator import ActuatorState, RateLimitedActuator
-from icarus.config import ConnectionSpec, HabitatConfig
-from icarus.control import CO2SensorReading, ProportionalCO2Controller
+from aeolus.actuator import ActuatorState, RateLimitedActuator
+from aeolus.config import ConnectionSpec, HabitatConfig
+from aeolus.control import CO2SensorReading, ProportionalCO2Controller
 
 
 @dataclass(frozen=True)
@@ -124,7 +124,7 @@ def _co2_source_for_tick(
     if epsilon == 0.0:
         return zone.co2_generation_per_second * occupancy, 0.0, occupancy
     generator = random.Random(
-        f"icarus:{config.simulation.random_seed}:{source_tick}:{zone.id}"
+        f"aeolus:{config.simulation.random_seed}:{source_tick}:{zone.id}"
     )
     innovation = generator.uniform(-epsilon, epsilon)
     correlation = zone.co2_noise_correlation

@@ -1,20 +1,20 @@
 """Run an explicit scenario JSON file and write its JSONL replay trace.
 
 Usage:
-    PYTHONPATH=src python3 -m icarus <scenario.json> <trace-path>
+    PYTHONPATH=src python3 -m aeolus <scenario.json> <trace-path>
 
 Example:
-    PYTHONPATH=src python3 -m icarus scenarios/standard_habitat.json traces/standard_habitat.jsonl
+    PYTHONPATH=src python3 -m aeolus scenarios/standard_habitat.json traces/standard_habitat.jsonl
 """
 
 import sys
 
-from icarus.config import load_scenario
-from icarus.scenario import run_scenario
+from aeolus.config import load_scenario
+from aeolus.scenario import run_scenario
 
 USAGE = (
-    "Usage: PYTHONPATH=src python3 -m icarus <scenario.json> <trace-path>\n"
-    "Example: PYTHONPATH=src python3 -m icarus scenarios/standard_habitat.json "
+    "Usage: PYTHONPATH=src python3 -m aeolus <scenario.json> <trace-path>\n"
+    "Example: PYTHONPATH=src python3 -m aeolus scenarios/standard_habitat.json "
     "traces/standard_habitat.jsonl"
 )
 

@@ -1,4 +1,4 @@
-"""Versioned, topology-derived model-input selection for ICARUS."""
+"""Versioned, topology-derived model-input selection for AEOLUS."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from typing import Any, Mapping
 import numpy as np
 from numpy.typing import NDArray
 
-from icarus.config import HabitatConfig
-from icarus.trace import TickRecord, model_feature_row
+from aeolus.config import HabitatConfig
+from aeolus.trace import TickRecord, model_feature_row
 
 MODEL_INPUT_VERSION = "model_input_v1"
-TOPOLOGY_VERSION = "icarus_topology_v1"
+TOPOLOGY_VERSION = "aeolus_topology_v1"
 MODEL_INPUT_DTYPE = "float32"
 MODEL_INPUT_SHAPE = (24,)
 _ARTIFACT_METADATA_KEYS = frozenset(

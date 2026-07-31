@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from icarus.config import (
+from aeolus.config import (
     BlockedPath,
     FrozenSensor,
     GradualPrimaryFanDegradation,

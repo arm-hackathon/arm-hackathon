@@ -13,11 +13,11 @@ import sys
 from pathlib import Path
 from typing import Callable, Protocol, runtime_checkable
 
-from icarus.baseline import RuleBaseline
-from icarus.config import HabitatConfig, load_scenario
+from aeolus.baseline import RuleBaseline
+from aeolus.config import HabitatConfig, load_scenario
 
 USAGE = (
-    "Usage: PYTHONPATH=src python3 -m icarus.evaluate <corpus.jsonl> "
+    "Usage: PYTHONPATH=src python3 -m aeolus.evaluate <corpus.jsonl> "
     "<scenario.json> [scenario.json ...]"
 )
 

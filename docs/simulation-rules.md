@@ -1,6 +1,6 @@
-# ICARUS simulation rules
+# Project AEOLUS simulation rules
 
-This document defines the current ICARUS simulator. It is a deterministic,
+This document defines the current AEOLUS simulator. It is a deterministic,
 abstract hub-layout CO₂ and airflow model, not a spacecraft or life-support
 model.
 
@@ -141,7 +141,7 @@ Time advances in fixed one-second ticks.
    requested = min(outbound.max_airflow, inbound.max_airflow) * actual_position
    ```
 
-6. Both loop legs constrain physical delivery. ICARUS derives a hidden static
+6. Both loop legs constrain physical delivery. AEOLUS derives a hidden static
    health factor from the two healthy path capacities:
 
    ```text
@@ -234,20 +234,20 @@ before it writes a report.
 ```bash
 uv run --extra dev python -m pytest
 mkdir -p out
-uv run python -m icarus scenarios/standard_habitat.json out/standard.jsonl
-uv run python -m icarus.visualise out/standard.jsonl out/standard.html
-uv run python -m icarus.corpus out/corpus scenarios/*.json
-uv run python -m icarus.evaluate out/corpus/corpus.jsonl scenarios/*.json
+uv run python -m aeolus scenarios/standard_habitat.json out/standard.jsonl
+uv run python -m aeolus.visualise out/standard.jsonl out/standard.html
+uv run python -m aeolus.corpus out/corpus scenarios/*.json
+uv run python -m aeolus.evaluate out/corpus/corpus.jsonl scenarios/*.json
 ```
 
-`icarus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a
-`manifest.json` into the given output directory. `icarus.evaluate` grades the
+`aeolus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a
+`manifest.json` into the given output directory. `aeolus.evaluate` grades the
 rule baseline against that corpus and prints accuracy, confusion and
 detection-latency metrics as JSON. See
 `docs/telemetry-contract.md` for the corpus leakage boundary.
 
 ## Deliberately absent
 
-ICARUS currently has no model or ONNX path, quantisation, governor, redundant
+AEOLUS currently has no model or ONNX path, quantisation, governor, redundant
 fan, recovery controller, Arm benchmark, dashboard, API, cloud service or
 hardware connection.

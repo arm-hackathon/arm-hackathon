@@ -1,4 +1,4 @@
-# ICARUS Plan
+# Project AEOLUS Plan
 
 ## End goal
 

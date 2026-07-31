@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from icarus.config import parse_scenario
-from icarus.corpus import (
+from aeolus.config import parse_scenario
+from aeolus.corpus import (
     DEFAULT_STRIDE_TICKS,
     DEFAULT_WINDOW_TICKS,
     build_corpus_rows,
@@ -16,8 +16,8 @@ from icarus.corpus import (
     label_for_window,
     main,
 )
-from icarus.scenario import run_scenario
-from icarus.trace import model_feature_row
+from aeolus.scenario import run_scenario
+from aeolus.trace import model_feature_row
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = REPO_ROOT / "scenarios"

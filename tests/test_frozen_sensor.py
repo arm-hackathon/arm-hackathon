@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from icarus.config import load_scenario, parse_scenario
-from icarus.plant import initial_state, step_habitat
-from icarus.scenario import run_scenario
+from aeolus.config import load_scenario, parse_scenario
+from aeolus.plant import initial_state, step_habitat
+from aeolus.scenario import run_scenario
 
 
 def _frozen_lab_doc(standard_doc: dict, start_tick: int) -> dict:

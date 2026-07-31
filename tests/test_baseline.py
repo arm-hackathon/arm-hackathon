@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from icarus.baseline import RuleBaseline
-from icarus.config import load_scenario, parse_scenario
+from aeolus.baseline import RuleBaseline
+from aeolus.config import load_scenario, parse_scenario
 
 LOOPS = ("cabin_a", "cabin_b", "lab")
 REPO_ROOT = Path(__file__).resolve().parents[1]
