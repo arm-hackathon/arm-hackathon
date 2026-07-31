@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+from types import MappingProxyType
 
 import numpy as np
 
@@ -166,6 +167,51 @@ class ObservableOnset:
     contract_metadata: dict[str, str]
     reference_scenario_sha256: str
     fault_scenario_sha256: str
+    reference_trace_ticks: int
+    fault_trace_ticks: int
+
+
+@dataclass(frozen=True)
+class FamilyEvidence:
+    """Trusted runtime facts derived from one validated scenario family."""
+
+    family_id: str
+    split: str
+    fault_class: str
+    observable_onset_tick: int
+    reference_scenario_sha256: str
+    fault_scenario_sha256: str
+    reference_trace_ticks: int | None = None
+    fault_trace_ticks: int | None = None
+
+
+def build_family_evidence(manifest: FamilyManifest) -> Mapping[str, FamilyEvidence]:
+    """Resolve immutable observable evidence for every validated family."""
+    evidence: dict[str, FamilyEvidence] = {}
+    for family in manifest.families:
+        onset = observable_onset(family, manifest.contract_metadata)
+        evidence[family.family_id] = FamilyEvidence(
+            family_id=family.family_id,
+            split=family.split,
+            fault_class=family.fault_class,
+            observable_onset_tick=onset.tick,
+            reference_scenario_sha256=onset.reference_scenario_sha256,
+            fault_scenario_sha256=onset.fault_scenario_sha256,
+            reference_trace_ticks=onset.reference_trace_ticks,
+            fault_trace_ticks=onset.fault_trace_ticks,
+        )
+    return MappingProxyType(evidence)
+
+
+def family_window_label(
+    *, scenario_role: str, start_tick: int, end_tick: int, evidence: FamilyEvidence
+) -> str:
+    """Derive the only valid corpus-v2 label for a family window."""
+    if scenario_role == "reference" or end_tick < evidence.observable_onset_tick:
+        return "nominal"
+    if start_tick < evidence.observable_onset_tick <= end_tick:
+        return "excluded_transition"
+    return evidence.fault_class
 
 
 def observable_onset(
@@ -201,6 +247,8 @@ def observable_onset(
                 fault_scenario_sha256=hashlib.sha256(
                     family.fault_path.read_bytes()
                 ).hexdigest(),
+                reference_trace_ticks=len(reference_records),
+                fault_trace_ticks=len(fault_records),
             )
     raise ValueError(f"family {family.family_id!r} never becomes model-input observable")
 

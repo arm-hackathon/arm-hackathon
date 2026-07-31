@@ -1,6 +1,6 @@
 # Gate 2 acceptance receipt: corpus-v2 contract
 
-**Status:** accepted on 2026-07-29.
+**Status:** accepted on 2026-07-29; contract boundary hardened on 2026-07-31.
 
 Gate 2 establishes an auditable boundary for later corpus generation and model
 evaluation. It does not establish classifier quality, model generalisation, or
@@ -19,9 +19,13 @@ Arm64 performance.
 - A window that straddles observable onset is labelled `excluded_transition`.
   It updates a stateful detector's history but is excluded from training,
   accuracy, confusion matrices, class support, and scored totals.
-- Corpus-v2 evaluation rejects rows with missing or mismatched model-input
-  contract metadata, non-finite or non-`float32[24]`-compatible feature vectors,
-  and scores only an explicitly selected split.
+- Corpus-v2 evaluation validates an exact row schema and rejects missing or
+  unexpected fields; duplicate or malformed row identities; incomplete
+  reference/fault streams or window inventories for any manifest-declared family;
+  non-finite or non-`float32[24]`-compatible feature vectors; and every row
+  whose family, split, role, observable onset or derived label disagrees with
+  immutable evidence recomputed from the validated family manifest. It then
+  scores only an explicitly selected split.
 
 ## Fixture evidence
 
@@ -35,6 +39,8 @@ presented as a performance or generalisation result.
 | Scored windows | 134 |
 | Transition-excluded windows | 4 |
 | Family-manifest SHA-256 | `828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541` |
+| Generated-manifest SHA-256 | `fa3175b2964d37bc8e30d51202be780c43163a6cfa0874f7ba48c06f0d90355c` (canonical JSON with this field omitted) |
+| Families by split | train=0, validation=0, test=3 |
 | Model input | `model_input_v1`, `float32[24]` |
 
 | Family | Hidden injection tick | First observable tick |
@@ -56,7 +62,7 @@ model with the baseline.
 Run from repository root on branch `ben/corpus-v2-contract`:
 
 ```text
-uv run --extra dev python -m pytest -q  -> 252 passed in 3.43s
+uv run --extra dev python -m pytest -q  -> 264 passed
 uv run ruff check .                     -> All checks passed!
 git diff --check origin/main            -> clean
 ```

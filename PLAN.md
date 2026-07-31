@@ -109,9 +109,11 @@ packaging.
 
 ### 4. AI diagnosis
 
-- Generate labelled telemetry windows from the simulator. (done for corpus v1;
-  corpus v2 is blocked on Gate 2 and must persist the frozen
-  `model_input_v1` selector/topology hashes alongside its family manifest)
+- Generate labelled telemetry windows from the simulator. (done for corpus v1
+  and for the corpus-v2 contract fixture: each row is schema-validated and
+  bound to immutable family evidence for its split, role, onset and label;
+  generated manifests persist frozen Gate-1 metadata, family split counts and
+  a canonical integrity hash.)
 - After Gates 0-2, train a compact temporal classifier and compare it with
   rule-based and threshold baselines. Split train/validation/test by family,
   never by window.

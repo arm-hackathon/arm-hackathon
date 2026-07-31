@@ -15,7 +15,11 @@ import sys
 from pathlib import Path
 
 from aeolus.config import GradualPrimaryFanDegradation, HabitatConfig, load_scenario
-from aeolus.families import load_family_manifest, observable_onset
+from aeolus.families import (
+    build_family_evidence,
+    family_window_label,
+    load_family_manifest,
+)
 from aeolus.model_input import build_model_input_contract, model_input_v1
 from aeolus.scenario import run_scenario
 from aeolus.trace import model_feature_row
@@ -175,16 +179,17 @@ def generate_corpus_v2(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     all_rows: list[dict] = []
+    evidence_by_family = build_family_evidence(families)
     onsets: dict[str, int] = {}
     family_evidence: dict[str, dict[str, object]] = {}
     for family in families.families:
-        onset = observable_onset(family, families.contract_metadata)
-        onsets[family.family_id] = onset.tick
+        evidence = evidence_by_family[family.family_id]
+        onsets[family.family_id] = evidence.observable_onset_tick
         family_evidence[family.family_id] = {
-            "fault_scenario_sha256": onset.fault_scenario_sha256,
-            "observable_onset_tick": onset.tick,
-            "reference_scenario_sha256": onset.reference_scenario_sha256,
-            "split": family.split,
+            "fault_scenario_sha256": evidence.fault_scenario_sha256,
+            "observable_onset_tick": evidence.observable_onset_tick,
+            "reference_scenario_sha256": evidence.reference_scenario_sha256,
+            "split": evidence.split,
         }
         contract = build_model_input_contract(load_scenario(family.reference_path))
         for role, path in (("reference", family.reference_path), ("fault", family.fault_path)):
@@ -194,12 +199,11 @@ def generate_corpus_v2(
                 window_records = records[start : start + window]
                 start_tick = window_records[0].tick
                 end_tick = window_records[-1].tick
-                label = _v2_label(
-                    role=role,
-                    fault_class=family.fault_class,
+                label = family_window_label(
+                    scenario_role=role,
                     start_tick=start_tick,
                     end_tick=end_tick,
-                    onset_tick=onset.tick,
+                    evidence=evidence,
                 )
                 all_rows.append(
                     {
@@ -209,7 +213,7 @@ def generate_corpus_v2(
                         "window_index": index,
                         "start_tick": start_tick,
                         "end_tick": end_tick,
-                        "observable_onset_tick": onset.tick,
+                        "observable_onset_tick": evidence.observable_onset_tick,
                         "label": label,
                         "model_input_version": families.contract_metadata["model_input_version"],
                         "selector_sha256": families.contract_metadata["selector_sha256"],
@@ -229,10 +233,14 @@ def generate_corpus_v2(
     label_counts: dict[str, int] = {}
     for row in all_rows:
         label_counts[row["label"]] = label_counts.get(row["label"], 0) + 1
+    family_counts_by_split = {split: 0 for split in ("train", "validation", "test")}
+    for evidence in evidence_by_family.values():
+        family_counts_by_split[evidence.split] += 1
     manifest = {
         "corpus_version": CORPUS_V2_VERSION,
         **families.contract_metadata,
         "family_manifest_sha256": families.manifest_sha256,
+        "family_counts_by_split": family_counts_by_split,
         "families": family_evidence,
         "window_ticks": window,
         "stride_ticks": stride,
@@ -242,20 +250,19 @@ def generate_corpus_v2(
         "label_counts": label_counts,
         "observable_onsets": onsets,
     }
+    manifest["manifest_sha256"] = _canonical_json_sha256(manifest)
     (out_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return manifest
 
 
-def _v2_label(
-    *, role: str, fault_class: str, start_tick: int, end_tick: int, onset_tick: int
-) -> str:
-    if role == "reference" or end_tick < onset_tick:
-        return NOMINAL_LABEL
-    if start_tick < onset_tick <= end_tick:
-        return EXCLUDED_TRANSITION_LABEL
-    return fault_class
+def _canonical_json_sha256(document: dict[str, object]) -> str:
+    """Hash canonical generated-manifest JSON before its hash field is added."""
+    canonical_json = json.dumps(
+        document, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
 
 def main(argv: list[str]) -> int:

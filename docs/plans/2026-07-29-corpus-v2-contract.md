@@ -66,7 +66,7 @@ A corpus-v2 row retains `window_index`, ticks, and `features`, adding:
 }
 ```
 
-The generated corpus manifest must include its own canonical SHA-256, source scenario SHA-256 values, family counts by split, label counts, excluded-transition counts, and frozen Gate-1 metadata. Generated files remain under ignored `out/`; no generated JSONL is committed.
+The generated corpus manifest must include `manifest_sha256`: SHA-256 of its canonical compact UTF-8 JSON with the `manifest_sha256` field omitted. It must also include source scenario SHA-256 values, family counts by split, label counts, excluded-transition counts, and frozen Gate-1 metadata. Evaluation derives each complete window inventory from trusted replay lengths rather than accepting a row-provided count. Generated files remain under ignored `out/`; no generated JSONL is committed.
 
 ## Task 1: Add strict family-manifest contracts
 
