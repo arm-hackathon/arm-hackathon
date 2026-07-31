@@ -8,14 +8,20 @@ explicit split, and measures latency from persisted observable onset.
 from __future__ import annotations
 
 import json
-import math
 import sys
 from pathlib import Path
-from typing import Callable, Protocol, runtime_checkable
+from typing import Callable, Mapping, Protocol, runtime_checkable
+
+import numpy as np
 
 from aeolus.baseline import RuleBaseline
 from aeolus.config import HabitatConfig, load_scenario
-from aeolus.families import load_family_manifest
+from aeolus.families import (
+    FamilyEvidence,
+    build_family_evidence,
+    family_window_label,
+    load_family_manifest,
+)
 from aeolus.model_input import MODEL_INPUT_SHAPE, MODEL_INPUT_VERSION
 
 USAGE = (
@@ -28,6 +34,19 @@ EXCLUDED_TRANSITION_LABEL = "excluded_transition"
 _V2_CONTRACT_KEYS = frozenset(
     {"model_input_version", "selector_sha256", "topology_sha256"}
 )
+_V2_ROW_KEYS = _V2_CONTRACT_KEYS | {
+    "family_id",
+    "scenario_role",
+    "split",
+    "window_index",
+    "start_tick",
+    "end_tick",
+    "observable_onset_tick",
+    "label",
+    "features",
+}
+_V2_SPLITS = frozenset({"train", "validation", "test"})
+_V2_SCENARIO_ROLES = frozenset({"reference", "fault"})
 
 
 @runtime_checkable
@@ -125,11 +144,12 @@ def evaluate_v2(
     labeller: Callable[[list[dict]], str] | _WindowLabeller,
     *,
     expected_contract: dict[str, str],
+    expected_families: Mapping[str, FamilyEvidence],
     target_split: str,
 ) -> dict:
     """Score one corpus-v2 split from trusted observable-onset evidence."""
-    _validate_v2_contract(rows, expected_contract)
-    if target_split not in {"train", "validation", "test"}:
+    _validate_v2_contract(rows, expected_contract, expected_families)
+    if target_split not in _V2_SPLITS:
         raise ValueError("corpus v2 target split is unsupported")
     if not isinstance(labeller, _WindowLabeller):
         labeller = _FunctionLabeller(labeller)
@@ -196,7 +216,11 @@ def evaluate_v2(
     }
 
 
-def _validate_v2_contract(rows: list[dict], expected_contract: dict[str, str]) -> None:
+def _validate_v2_contract(
+    rows: list[dict],
+    expected_contract: dict[str, str],
+    expected_families: Mapping[str, FamilyEvidence],
+) -> None:
     if not rows:
         raise ValueError("corpus v2 evaluation requires at least one row")
     if set(expected_contract) != _V2_CONTRACT_KEYS or any(
@@ -209,44 +233,146 @@ def _validate_v2_contract(rows: list[dict], expected_contract: dict[str, str]) -
         or not _is_sha256(expected_contract["topology_sha256"])
     ):
         raise ValueError("expected corpus v2 contract is incompatible")
-    first = rows[0]
-    try:
-        expected = {key: first[key] for key in _V2_CONTRACT_KEYS}
-    except KeyError as exc:
-        raise ValueError("corpus v2 row is missing contract metadata") from exc
-    if expected != expected_contract:
-        raise ValueError("corpus v2 contract does not match the expected contract")
-    if any(not isinstance(value, str) for value in expected.values()):
-        raise ValueError("corpus v2 contract metadata must be strings")
-    for row in rows:
-        try:
-            actual = {key: row[key] for key in _V2_CONTRACT_KEYS}
-            if actual != expected:
-                raise ValueError("corpus v2 rows do not share one model contract")
-            if not isinstance(row["observable_onset_tick"], int):
-                raise ValueError("corpus v2 observable onset must be an integer")
-            if row["split"] not in {"train", "validation", "test"}:
-                raise ValueError("corpus v2 row split is unsupported")
-            _validate_v2_features(row["features"])
-            if not isinstance(row["family_id"], str) or not isinstance(
-                row["scenario_role"], str
-            ):
-                raise ValueError("corpus v2 row identity is malformed")
-        except KeyError as exc:
-            raise ValueError("corpus v2 row is missing required fields") from exc
+    if not expected_families:
+        raise ValueError("expected corpus v2 family evidence is empty")
+    for family_id, evidence in expected_families.items():
+        if not isinstance(evidence, FamilyEvidence) or evidence.family_id != family_id:
+            raise ValueError("expected corpus v2 family evidence is malformed")
+
+    window_ticks: int | None = None
+    family_streams = {family_id: set() for family_id in expected_families}
+    stream_rows: dict[tuple[str, str], list[dict]] = {}
+    row_identities: set[tuple[str, str, int]] = set()
+    for row_number, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise ValueError(f"corpus v2 row {row_number} must be an object")
+        missing = _V2_ROW_KEYS - set(row)
+        unexpected = set(row) - _V2_ROW_KEYS
+        if missing or unexpected:
+            raise ValueError(
+                f"corpus v2 row {row_number} schema mismatch: "
+                f"missing={sorted(missing)!r} unexpected={sorted(unexpected)!r}"
+            )
+        actual_contract = {key: row[key] for key in _V2_CONTRACT_KEYS}
+        if any(not isinstance(value, str) for value in actual_contract.values()):
+            raise ValueError("corpus v2 contract metadata must be strings")
+        if actual_contract != expected_contract:
+            raise ValueError("corpus v2 contract does not match the expected contract")
+
+        family_id = row["family_id"]
+        if not isinstance(family_id, str) or not family_id:
+            raise ValueError("corpus v2 family_id is malformed")
+        evidence = expected_families.get(family_id)
+        if evidence is None:
+            raise ValueError("corpus v2 family_id is absent from family evidence")
+        scenario_role = row["scenario_role"]
+        if not isinstance(scenario_role, str) or scenario_role not in _V2_SCENARIO_ROLES:
+            raise ValueError("corpus v2 scenario_role is unsupported")
+        family_streams[family_id].add(scenario_role)
+        if row["split"] != evidence.split:
+            raise ValueError("corpus v2 split does not match family evidence")
+        for field_name in ("window_index", "start_tick", "end_tick"):
+            if not _is_non_boolean_int(row[field_name]):
+                raise ValueError(f"corpus v2 {field_name} must be an integer")
+        if row["window_index"] < 0:
+            raise ValueError("corpus v2 window_index must not be negative")
+        if row["start_tick"] < 1 or row["end_tick"] < 1:
+            raise ValueError("corpus v2 window ticks must be positive")
+        if row["start_tick"] > row["end_tick"]:
+            raise ValueError("corpus v2 start_tick must not exceed end_tick")
+        if not _is_non_boolean_int(row["observable_onset_tick"]):
+            raise ValueError("corpus v2 observable onset must be an integer")
+        if row["observable_onset_tick"] != evidence.observable_onset_tick:
+            raise ValueError("corpus v2 observable onset does not match family evidence")
+        expected_label = family_window_label(
+            scenario_role=scenario_role,
+            start_tick=row["start_tick"],
+            end_tick=row["end_tick"],
+            evidence=evidence,
+        )
+        if row["label"] != expected_label:
+            raise ValueError("corpus v2 label does not match family evidence")
+        feature_ticks = _validate_v2_features(row["features"])
+        if window_ticks is None:
+            window_ticks = feature_ticks
+        elif feature_ticks != window_ticks:
+            raise ValueError("corpus v2 rows do not share one window shape")
+        identity = (family_id, scenario_role, row["window_index"])
+        if identity in row_identities:
+            raise ValueError("corpus v2 contains a duplicate row identity")
+        row_identities.add(identity)
+        stream_rows.setdefault((family_id, scenario_role), []).append(row)
+
+    incomplete_streams = {
+        family_id: sorted(_V2_SCENARIO_ROLES - streams)
+        for family_id, streams in family_streams.items()
+        if streams != _V2_SCENARIO_ROLES
+    }
+    if incomplete_streams:
+        raise ValueError(
+            f"corpus v2 family evidence is missing streams: {incomplete_streams!r}"
+        )
+    assert window_ticks is not None
+    for family_id, evidence in expected_families.items():
+        for scenario_role, trace_ticks in (
+            ("reference", evidence.reference_trace_ticks),
+            ("fault", evidence.fault_trace_ticks),
+        ):
+            if trace_ticks is not None:
+                _validate_v2_window_sequence(
+                    stream_rows[(family_id, scenario_role)],
+                    trace_ticks=trace_ticks,
+                    window_ticks=window_ticks,
+                )
 
 
-def _validate_v2_features(features: object) -> None:
+def _validate_v2_window_sequence(
+    rows: list[dict], *, trace_ticks: int, window_ticks: int
+) -> None:
+    if not _is_non_boolean_int(trace_ticks) or trace_ticks < window_ticks:
+        raise ValueError("expected corpus v2 trace length is malformed")
+    ordered = sorted(rows, key=lambda row: row["window_index"])
+    actual_indices = [row["window_index"] for row in ordered]
+    if actual_indices != list(range(len(ordered))):
+        raise ValueError("corpus v2 window sequence is incomplete")
+    if len(ordered) < 2:
+        raise ValueError("corpus v2 window sequence cannot establish a stride")
+    stride = ordered[1]["start_tick"] - ordered[0]["start_tick"]
+    if stride < 1:
+        raise ValueError("corpus v2 window sequence has an invalid stride")
+    expected_count = (trace_ticks - window_ticks) // stride + 1
+    if len(ordered) != expected_count:
+        raise ValueError("corpus v2 window sequence is incomplete")
+    for row in ordered:
+        expected_start = 1 + row["window_index"] * stride
+        expected_end = expected_start + window_ticks - 1
+        if row["start_tick"] != expected_start or row["end_tick"] != expected_end:
+            raise ValueError("corpus v2 window sequence does not match its ticks")
+
+
+def _validate_v2_features(features: object) -> int:
     if not isinstance(features, list):
         raise ValueError("corpus v2 features must be a list")
+    if not features:
+        raise ValueError("corpus v2 features must contain at least one tick")
     for tick_number, vector in enumerate(features, start=1):
         if not isinstance(vector, list) or len(vector) != MODEL_INPUT_SHAPE[0]:
             raise ValueError(f"model-input tick {tick_number} has an unexpected shape")
         for value in vector:
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"model-input tick {tick_number} contains a non-numeric value")
-            if not math.isfinite(value):
-                raise ValueError(f"model-input tick {tick_number} contains a non-finite value")
+        try:
+            with np.errstate(over="raise", invalid="raise"):
+                narrowed = np.asarray(vector, dtype=np.float32)
+        except (FloatingPointError, OverflowError) as exc:
+            raise ValueError(f"model-input tick {tick_number} overflows float32") from exc
+        if not np.isfinite(narrowed).all():
+            raise ValueError(f"model-input tick {tick_number} contains a non-finite value")
+    return len(features)
+
+
+def _is_non_boolean_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _is_sha256(value: str) -> bool:
@@ -296,6 +422,7 @@ def _main_v2(argv: list[str]) -> int:
             rows,
             RuleBaseline(baseline_config),
             expected_contract=manifest.contract_metadata,
+            expected_families=build_family_evidence(manifest),
             target_split=target_split,
         )
     except (ValueError, OSError, json.JSONDecodeError) as exc:

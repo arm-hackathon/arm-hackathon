@@ -90,7 +90,7 @@ PYTHONPATH=src uv run python -m aeolus.evaluate \
 PYTHONPATH=src uv run python -m aeolus.corpus \
   --v2 out/corpus-v2 scenarios/families.json
 
-# Grade only the manifest-selected held-out test families
+# Grade only rows that match manifest-derived held-out test-family evidence
 PYTHONPATH=src uv run python -m aeolus.evaluate \
   --v2 out/corpus-v2/corpus.jsonl scenarios/families.json --split test
 ```
@@ -118,7 +118,10 @@ v1 feature rows are exactly `model_feature_row()` output and retain their
 historical declared-profile labels. Corpus v2 instead uses paired
 `model_input_v1` traces to label first observable onset, persists the frozen
 selector/topology metadata, and excludes onset-straddling windows from scored
-metrics. Corpus output is a generated artifact and belongs in `out/`, not Git.
+metrics. Evaluation rejects rows whose exact schema, complete reference/fault
+family streams and window inventories, float32-narrowed features, family split,
+role, onset or label disagree with manifest-derived evidence. Corpus output is a
+generated artifact and belongs in `out/`, not Git.
 
 ## Results so far
 
