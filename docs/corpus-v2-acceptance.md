@@ -34,7 +34,7 @@ presented as a performance or generalisation result.
 | Total windows | 138 |
 | Scored windows | 134 |
 | Transition-excluded windows | 4 |
-| Family-manifest SHA-256 | `583aa71eea8a45cd67c743c92941c41f3923f36e4559d8534d68f1b6db532bfc` |
+| Family-manifest SHA-256 | `828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541` |
 | Model input | `model_input_v1`, `float32[24]` |
 
 | Family | Hidden injection tick | First observable tick |
