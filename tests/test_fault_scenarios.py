@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from icarus.config import BlockedPath, FrozenSensor, load_scenario
-from icarus.scenario import run_scenario
+from aeolus.config import BlockedPath, FrozenSensor, load_scenario
+from aeolus.scenario import run_scenario
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_SCENARIO = REPO_ROOT / "scenarios" / "high_demand_healthy.json"

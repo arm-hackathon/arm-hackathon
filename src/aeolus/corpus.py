@@ -1,6 +1,6 @@
-"""Leakage-safe labelled corpus generation from ICARUS scenario replays.
+"""Leakage-safe labelled corpus generation from AEOLUS scenario replays.
 
-Every feature row is exactly :func:`icarus.trace.model_feature_row` output, so
+Every feature row is exactly :func:`aeolus.trace.model_feature_row` output, so
 the corpus cannot contain hidden fault truth (health, fault effectiveness,
 seed or noise). Labels come from the scenario's declared fault profiles at
 each window's final measured tick, never from telemetry.
@@ -13,9 +13,9 @@ import json
 import sys
 from pathlib import Path
 
-from icarus.config import GradualPrimaryFanDegradation, HabitatConfig, load_scenario
-from icarus.scenario import run_scenario
-from icarus.trace import model_feature_row
+from aeolus.config import GradualPrimaryFanDegradation, HabitatConfig, load_scenario
+from aeolus.scenario import run_scenario
+from aeolus.trace import model_feature_row
 
 CORPUS_VERSION = 1
 DEFAULT_WINDOW_TICKS = 10
@@ -29,7 +29,7 @@ LABEL_SET = (
 )
 
 USAGE = (
-    "Usage: PYTHONPATH=src python3 -m icarus.corpus <out-dir> "
+    "Usage: PYTHONPATH=src python3 -m aeolus.corpus <out-dir> "
     "<scenario.json> [scenario.json ...]"
 )
 

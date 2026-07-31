@@ -2,8 +2,8 @@
 
 import pytest
 
-from icarus.config import ConnectionSpec, load_scenario, parse_scenario
-from icarus.plant import initial_state, path_airflow, step_habitat
+from aeolus.config import ConnectionSpec, load_scenario, parse_scenario
+from aeolus.plant import initial_state, path_airflow, step_habitat
 
 
 def test_initial_state_has_empty_zones_and_zero_capture(standard_scenario_path):

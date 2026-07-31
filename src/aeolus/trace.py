@@ -1,4 +1,4 @@
-"""JSONL replay traces and an allowlisted model-feature projection for ICARUS."""
+"""JSONL replay traces and an allowlisted model-feature projection for AEOLUS."""
 
 from __future__ import annotations
 

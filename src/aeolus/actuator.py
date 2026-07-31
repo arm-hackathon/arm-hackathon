@@ -1,4 +1,4 @@
-"""Rate-limited ventilation actuator dynamics for the ICARUS plant."""
+"""Rate-limited ventilation actuator dynamics for the AEOLUS plant."""
 
 from __future__ import annotations
 

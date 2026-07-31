@@ -1,9 +1,11 @@
-# ICARUS
+# Project AEOLUS
 
-> Deterministic multi-zone habitat air-circulation simulation with explicit
-> requested-versus-delivered airflow and reproducible gradual fan degradation.
+> **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
+> **U**ser-defined **S**cenarios
+>
+> Deterministic habitat environmental simulation with replayable traces.
 
-ICARUS is a local simulation. It models abstract CO₂ mass and airflow units in
+AEOLUS is a local simulation. It models abstract CO₂ mass and airflow units in
 a hub-layout habitat; it does not model real spacecraft equipment, life-support
 limits, or a general fluid system.
 
@@ -62,18 +64,18 @@ uv run --extra dev python -m pytest
 
 # Generate a replay and a self-contained local report
 mkdir -p out
-PYTHONPATH=src uv run python -m icarus \
+PYTHONPATH=src uv run python -m aeolus \
   scenarios/primary_fan_degradation.json \
   out/primary_fan_degradation.jsonl
-PYTHONPATH=src uv run python -m icarus.visualise \
+PYTHONPATH=src uv run python -m aeolus.visualise \
   out/primary_fan_degradation.jsonl \
   out/primary_fan_degradation.html
 
 # Generate the labelled window corpus and its manifest
-PYTHONPATH=src uv run python -m icarus.corpus out/corpus scenarios/*.json
+PYTHONPATH=src uv run python -m aeolus.corpus out/corpus scenarios/*.json
 
 # Grade the rule baseline against the corpus
-PYTHONPATH=src uv run python -m icarus.evaluate \
+PYTHONPATH=src uv run python -m aeolus.evaluate \
   out/corpus/corpus.jsonl scenarios/*.json
 ```
 
@@ -91,11 +93,11 @@ Generated traces and reports belong in `out/`, not Git.
 
 Trace records contain observable simulation outputs only. They do not expose
 fault effectiveness, connection health, random seed or source-noise state.
-`icarus.trace.model_feature_row()` is a separate, strict allowlist for any
+`aeolus.trace.model_feature_row()` is a separate, strict allowlist for any
 future model-facing consumer; visualiser fields do not expand that model
 feature set.
 
-`icarus.corpus` builds the labelled window corpus for the future fault
+`aeolus.corpus` builds the labelled window corpus for the future fault
 classifier. Every feature row is exactly `model_feature_row()` output and
 labels come from declared fault profiles, never from telemetry, so the corpus
 carries no hidden fault truth. Corpus output is a generated artifact and
@@ -107,7 +109,7 @@ Every claimed number below is reproducible from the commands in this README.
 
 | Date | What was measured | Result | What it represents |
 |---|---|---|---|
-| 2026-07-27 | Fault-detection quality of the rule baseline on corpus v1 (115 windows from 5 scenario runs) | **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | The performance floor for fault detection in ICARUS: what the simplest hand-written rules achieve on the first, small corpus. It is the bar the learned classifier must beat — not a model result and not a deployment claim. |
+| 2026-07-27 | Fault-detection quality of the rule baseline on corpus v1 (115 windows from 5 scenario runs) | **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | The performance floor for fault detection in AEOLUS: what the simplest hand-written rules achieve on the first, small corpus. It is the bar the learned classifier must beat — not a model result and not a deployment claim. |
 
 Read the latency column with the accuracy: the baseline is accurate but
 structurally slow, because a rule cannot fire until a fault fills its

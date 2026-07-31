@@ -4,10 +4,10 @@ import json
 
 import pytest
 
-from icarus.__main__ import main
-from icarus.config import load_scenario
-from icarus.plant import initial_state, step_habitat
-from icarus.scenario import RunSpec, STANDARD_RUN, run_scenario
+from aeolus.__main__ import main
+from aeolus.config import load_scenario
+from aeolus.plant import initial_state, step_habitat
+from aeolus.scenario import RunSpec, STANDARD_RUN, run_scenario
 
 
 def test_run_produces_one_record_per_tick_in_tick_order(standard_scenario_path):

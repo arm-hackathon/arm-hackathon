@@ -1,8 +1,8 @@
-"""Tests for scenario graph loading and validation (src/icarus/config.py)."""
+"""Tests for scenario graph loading and validation (src/aeolus/config.py)."""
 
 import pytest
 
-from icarus.config import load_scenario, parse_scenario
+from aeolus.config import load_scenario, parse_scenario
 
 ZONE_IDS = {"cabin_a", "cabin_b", "lab", "processing"}
 CONNECTION_IDS = {

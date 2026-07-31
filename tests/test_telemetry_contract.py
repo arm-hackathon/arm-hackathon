@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from icarus.config import load_scenario
-from icarus.scenario import run_scenario
-from icarus.trace import TraceWriter, model_feature_row
+from aeolus.config import load_scenario
+from aeolus.scenario import run_scenario
+from aeolus.trace import TraceWriter, model_feature_row
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

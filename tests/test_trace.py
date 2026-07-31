@@ -2,7 +2,7 @@
 
 import json
 
-from icarus.trace import TickRecord, TraceWriter
+from aeolus.trace import TickRecord, TraceWriter
 
 
 def _record(tick: int) -> TickRecord:

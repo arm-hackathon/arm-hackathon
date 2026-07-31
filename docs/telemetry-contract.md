@@ -1,4 +1,4 @@
-# ICARUS telemetry contract
+# Project AEOLUS telemetry contract
 
 This contract separates observable replay data from simulator truth. It is
 binding for trace writers, model-facing projections and visualisation changes.
@@ -58,8 +58,8 @@ tracking residual, movement and power.
 
 ## Gate 1: topology-bound model input
 
-`icarus.trace.model_feature_row()` remains the narrow observable projection. Gate
-1 adds `icarus.model_input.model_input_v1(record, contract)`: it validates the
+`aeolus.trace.model_feature_row()` remains the narrow observable projection. Gate
+1 adds `aeolus.model_input.model_input_v1(record, contract)`: it validates the
 record through that projection and returns an exact `numpy.float32` tensor with
 shape `(24,)`. It does not accept fault labels, schedules, target metadata,
 health, seeds, or any presentation/debug field.
@@ -150,7 +150,7 @@ forbidden fields.
 
 ## Corpus boundary
 
-`icarus.corpus` builds the labelled window corpus for the future fault
+`aeolus.corpus` builds the labelled window corpus for the future fault
 classifier. Its leakage rules are strict:
 
 - corpus v1 feature rows remain exactly `model_feature_row()` output for each
