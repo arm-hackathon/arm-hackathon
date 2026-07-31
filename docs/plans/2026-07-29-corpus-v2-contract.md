@@ -6,7 +6,7 @@
 
 **Architecture:** A strict scenario-family manifest binds one healthy reference and one single-fault scenario to a train/validation/test split and the existing Gate-1 selector/topology hashes. The observable-onset resolver replays both scenarios and compares only the corresponding `float32[24]` `model_input_v1` tensors. Corpus generation persists that evidence and labels windows as nominal, fault-class, or `excluded_transition`; evaluation scores only the first two categories and measures latency from observable onset.
 
-**Tech Stack:** Python 3.11, dataclasses, standard-library JSON/SHA-256, NumPy, pytest, Ruff, existing `icarus.config`, `icarus.scenario`, and `icarus.model_input` contracts.
+**Tech Stack:** Python 3.11, dataclasses, standard-library JSON/SHA-256, NumPy, pytest, Ruff, existing `aeolus.config`, `aeolus.scenario`, and `aeolus.model_input` contracts.
 
 ---
 
@@ -32,7 +32,7 @@ Create committed `scenarios/families.json`. It is strict JSON with no unknown fi
 
 ```json
 {
-  "schema_version": "icarus_family_manifest_v1",
+  "schema_version": "aeolus_family_manifest_v1",
   "model_input_version": "model_input_v1",
   "selector_sha256": "<64 lowercase hex characters>",
   "topology_sha256": "<64 lowercase hex characters>",
@@ -73,7 +73,7 @@ The generated corpus manifest must include its own canonical SHA-256, source sce
 **Objective:** Define the unit of independence and bind each pair to the frozen model-input contract before any corpus-v2 label is produced.
 
 **Files:**
-- Create: `src/icarus/families.py`
+- Create: `src/aeolus/families.py`
 - Create: `tests/test_families.py`
 - Create: `scenarios/families.json`
 - Modify: `PLAN.md`
@@ -143,7 +143,7 @@ uv run ruff check .
 **Step 5: Commit checkpoint**
 
 ```bash
-git add src/icarus/families.py tests/test_families.py scenarios/families.json PLAN.md docs/telemetry-contract.md
+git add src/aeolus/families.py tests/test_families.py scenarios/families.json PLAN.md docs/telemetry-contract.md
 git commit -m "feat: add corpus v2 family manifest contract"
 ```
 
@@ -152,7 +152,7 @@ git commit -m "feat: add corpus v2 family manifest contract"
 **Objective:** Compute an auditable, observable fault onset without reading hidden schedule truth.
 
 **Files:**
-- Modify: `src/icarus/families.py`
+- Modify: `src/aeolus/families.py`
 - Modify: `tests/test_families.py`
 
 **Step 1: Write failing tests**
@@ -210,7 +210,7 @@ uv run ruff check .
 **Step 5: Commit checkpoint**
 
 ```bash
-git add src/icarus/families.py tests/test_families.py
+git add src/aeolus/families.py tests/test_families.py
 git commit -m "feat: define observable corpus onset"
 ```
 
@@ -219,7 +219,7 @@ git commit -m "feat: define observable corpus onset"
 **Objective:** Replace schedule-truth labels with manifest-bound observable labels while preserving the feature leakage boundary.
 
 **Files:**
-- Modify: `src/icarus/corpus.py`
+- Modify: `src/aeolus/corpus.py`
 - Modify: `tests/test_corpus.py`
 - Modify: `docs/simulation-rules.md`
 
@@ -267,7 +267,7 @@ uv run ruff check .
 **Step 5: Commit checkpoint**
 
 ```bash
-git add src/icarus/corpus.py tests/test_corpus.py docs/simulation-rules.md
+git add src/aeolus/corpus.py tests/test_corpus.py docs/simulation-rules.md
 git commit -m "feat: generate observable-labelled corpus v2"
 ```
 
@@ -276,7 +276,7 @@ git commit -m "feat: generate observable-labelled corpus v2"
 **Objective:** Score corpus-v2 predictions without hidden fault starts and report excluded-transition evidence separately.
 
 **Files:**
-- Modify: `src/icarus/evaluate.py`
+- Modify: `src/aeolus/evaluate.py`
 - Modify: `tests/test_evaluate.py`
 - Modify: `README.md`
 - Modify: `docs/simulation-rules.md`
@@ -324,7 +324,7 @@ uv run ruff check .
 **Step 5: Commit checkpoint**
 
 ```bash
-git add src/icarus/evaluate.py tests/test_evaluate.py README.md docs/simulation-rules.md
+git add src/aeolus/evaluate.py tests/test_evaluate.py README.md docs/simulation-rules.md
 git commit -m "feat: score corpus v2 from observable onset"
 ```
 
@@ -341,9 +341,9 @@ git commit -m "feat: score corpus v2 from observable onset"
 
 ```bash
 rm -rf out/corpus-v2-contract
-PYTHONPATH=src uv run python -m icarus.corpus \
+PYTHONPATH=src uv run python -m aeolus.corpus \
   --v2 out/corpus-v2-contract scenarios/families.json
-PYTHONPATH=src uv run python -m icarus.evaluate \
+PYTHONPATH=src uv run python -m aeolus.evaluate \
   --v2 out/corpus-v2-contract/corpus.jsonl scenarios/families.json --split test
 ```
 

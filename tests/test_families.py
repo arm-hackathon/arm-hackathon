@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from icarus.config import load_scenario
-from icarus.families import (
+from aeolus.config import load_scenario
+from aeolus.families import (
     load_family_manifest,
     observable_onset,
     parse_family_manifest,
 )
-from icarus.model_input import build_model_input_contract, model_artifact_metadata
+from aeolus.model_input import build_model_input_contract, model_artifact_metadata
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

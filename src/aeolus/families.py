@@ -1,4 +1,4 @@
-"""Strict scenario-family manifests for leakage-safe ICARUS corpus v2."""
+"""Strict scenario-family manifests for leakage-safe AEOLUS corpus v2."""
 
 from __future__ import annotations
 
@@ -10,22 +10,22 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from icarus.config import (
+from aeolus.config import (
     BlockedPath,
     FrozenSensor,
     GradualPrimaryFanDegradation,
     HabitatConfig,
     load_scenario,
 )
-from icarus.model_input import (
+from aeolus.model_input import (
     build_model_input_contract,
     model_artifact_metadata,
     model_input_v1,
 )
-from icarus.scenario import run_scenario
+from aeolus.scenario import run_scenario
 
 
-FAMILY_MANIFEST_VERSION = "icarus_family_manifest_v1"
+FAMILY_MANIFEST_VERSION = "aeolus_family_manifest_v1"
 _SPLITS = frozenset({"train", "validation", "test"})
 _TOP_LEVEL_FIELDS = frozenset(
     {
