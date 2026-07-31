@@ -1,7 +1,7 @@
-"""Create a standalone HTML visualisation from an ICARUS JSONL trace.
+"""Create a standalone HTML visualisation from an AEOLUS JSONL trace.
 
 Usage:
-    PYTHONPATH=src python -m icarus.visualise <trace.jsonl> <report.html>
+    PYTHONPATH=src python -m aeolus.visualise <trace.jsonl> <report.html>
 
 The report embeds its data and uses no external JavaScript or CSS, so it can
 be opened directly in a browser and shared as a single file.
@@ -18,8 +18,8 @@ from typing import Any
 
 
 USAGE = (
-    "Usage: PYTHONPATH=src python -m icarus.visualise <trace.jsonl> <report.html>\n"
-    "Example: PYTHONPATH=src python -m icarus.visualise "
+    "Usage: PYTHONPATH=src python -m aeolus.visualise <trace.jsonl> <report.html>\n"
+    "Example: PYTHONPATH=src python -m aeolus.visualise "
     "traces/standard_habitat.jsonl out/standard_habitat.html"
 )
 
@@ -247,7 +247,7 @@ _HTML = r'''<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ICARUS Trace Visualiser</title>
+  <title>AEOLUS Trace Visualiser</title>
   <style>
     :root { color-scheme: dark; --bg:#080d18; --panel:#111a2b; --line:#26344d;
       --text:#ecf3ff; --muted:#91a1ba; --accent:#63e6be; }
@@ -294,7 +294,7 @@ _HTML = r'''<!doctype html>
 </head>
 <body>
 <main>
-  <header><div><h1>ICARUS telemetry</h1><p>Deterministic habitat simulation trace</p></div>
+  <header><div><h1>AEOLUS telemetry</h1><p>Deterministic habitat simulation trace</p></div>
     <div class="badge">Standalone replay</div></header>
   <section class="summary" id="summary"></section>
   <section class="charts">
@@ -310,7 +310,7 @@ _HTML = r'''<!doctype html>
     <article class="chart"><h2>Actuator power</h2><p class="subtitle">Abstract power used while moving or holding</p><div id="power"></div></article>
     <article class="chart"><h2>Captured CO₂</h2><p class="subtitle">Cumulative amount retained by processing</p><div id="captured"></div></article>
   </section>
-  <footer>Generated locally by ICARUS. Values are abstract simulation units.</footer>
+  <footer>Generated locally by AEOLUS. Values are abstract simulation units.</footer>
 </main>
 <script>
 const rows=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob('__TRACE_DATA__'),c=>c.charCodeAt(0))));

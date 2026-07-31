@@ -24,7 +24,7 @@ both are handled explicitly:
 
 from __future__ import annotations
 
-from icarus.config import HabitatConfig
+from aeolus.config import HabitatConfig
 
 DELIVERY_RESIDUAL_RATIO = 0.05
 """Relative residual (residual / requested) above which a loop is losing delivery."""

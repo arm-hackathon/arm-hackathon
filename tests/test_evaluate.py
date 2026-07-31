@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from icarus.baseline import RuleBaseline
-from icarus.config import load_scenario
-from icarus.corpus import generate_corpus
-from icarus.evaluate import evaluate, fault_start_tick, main
+from aeolus.baseline import RuleBaseline
+from aeolus.config import load_scenario
+from aeolus.corpus import generate_corpus
+from aeolus.evaluate import evaluate, fault_start_tick, main
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = REPO_ROOT / "scenarios"

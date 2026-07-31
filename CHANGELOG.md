@@ -2,13 +2,13 @@
 
 ## 2026-07-27 — rule baseline and evaluation harness
 
-- Added `icarus.baseline.RuleBaseline`: a streaming rule detector over
+- Added `aeolus.baseline.RuleBaseline`: a streaming rule detector over
   model-feature windows. Zero-variance sensor runs mark frozen sensors;
   isolated residual loss (one loop above its sisters, persistent) marks a
   delivery fault; a remembered onset jump separates blockage from gradual
   degradation. Shared-capacity contention does not false-fire because faults
   must be isolated, not merely elevated.
-- Added `icarus.evaluate`: one harness grades any window labeller (rules
+- Added `aeolus.evaluate`: one harness grades any window labeller (rules
   today, the classifier later) on accuracy, per-class support, confusion and
   detection latency against declared fault starts.
 - On corpus v1 the baseline scores 111/115 windows (all four misses are
@@ -24,7 +24,7 @@
   paired with the high-demand baseline habitat; the frozen-sensor scenario
   steps lab demand down after the freeze so the held reading diverges from
   observable reality.
-- Added `icarus.corpus`: a leakage-safe labelled window corpus over all five
+- Added `aeolus.corpus`: a leakage-safe labelled window corpus over all five
   shipped scenarios. Features are exactly the `model_feature_row()` allowlist,
   labels come from declared fault profiles at each window's final tick, and
   regeneration is byte-identical.
@@ -84,7 +84,7 @@
 
 ### Trace and visualisation
 
-- Added a dependency-free British-English visualiser at `python -m icarus.visualise <trace> <report>`.
+- Added a dependency-free British-English visualiser at `python -m aeolus.visualise <trace> <report>`.
 - The self-contained HTML report shows occupancy, source mass, concentration, requested and allocated airflow, shared capacity, actuator response, power, connection health and captured CO₂, with responsive charts and hover values.
 - Added strict trace validation with line-specific errors for malformed or non-finite data.
 - Expanded trace records with actuator and system sections.

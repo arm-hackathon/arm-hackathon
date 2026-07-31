@@ -2,7 +2,7 @@
 
 import pytest
 
-from icarus.control import (
+from aeolus.control import (
     CO2ControlSettings,
     CO2SensorReading,
     ProportionalCO2Controller,

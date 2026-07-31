@@ -8,9 +8,9 @@ state, so the same scenario and seed always reproduce the same trace.
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 
-from icarus.config import HabitatConfig
-from icarus.plant import initial_state, step_habitat
-from icarus.trace import TickRecord, TraceWriter
+from aeolus.config import HabitatConfig
+from aeolus.plant import initial_state, step_habitat
+from aeolus.trace import TickRecord, TraceWriter
 
 
 @dataclass(frozen=True)

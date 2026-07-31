@@ -2,8 +2,8 @@
 
 import json
 
-from icarus.trace import TickRecord, TraceWriter
-from icarus.visualise import load_trace, main, write_visualisation
+from aeolus.trace import TickRecord, TraceWriter
+from aeolus.visualise import load_trace, main, write_visualisation
 
 
 def _write_trace(path) -> None:
@@ -66,7 +66,7 @@ def test_visualiser_writes_self_contained_html(tmp_path):
 
     html = report.read_text(encoding="utf-8")
     assert result == report
-    assert "ICARUS Trace Visualiser" in html
+    assert "AEOLUS Trace Visualiser" in html
     assert "CO₂ concentration" in html
     assert "Requested and delivered airflow" in html
     assert "Airflow residual" in html

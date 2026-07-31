@@ -30,9 +30,9 @@ resolution reproducible. `uv` creates its local environment as needed.
 
    ```bash
    mkdir -p out
-   PYTHONPATH=src uv run python -m icarus \
+   PYTHONPATH=src uv run python -m aeolus \
      scenarios/standard_habitat.json out/standard.jsonl
-   PYTHONPATH=src uv run python -m icarus.visualise \
+   PYTHONPATH=src uv run python -m aeolus.visualise \
      out/standard.jsonl out/standard.html
    ```
 
@@ -45,18 +45,18 @@ resolution reproducible. `uv` creates its local environment as needed.
 | Path | Purpose |
 |---|---|
 | `scenarios/` | Closed-schema v7 scenario inputs. |
-| `src/icarus/config.py` | Scenario parsing and validation. |
-| `src/icarus/plant.py` | Deterministic plant, airflow and CO₂ mass transfer. |
-| `src/icarus/scenario.py` | Warm-up, measured runs and fault-profile scheduling. |
-| `src/icarus/trace.py` | JSONL writer and allowlisted model-feature projection. |
-| `src/icarus/visualise.py` | Dependency-free local HTML replay visualiser. |
+| `src/aeolus/config.py` | Scenario parsing and validation. |
+| `src/aeolus/plant.py` | Deterministic plant, airflow and CO₂ mass transfer. |
+| `src/aeolus/scenario.py` | Warm-up, measured runs and fault-profile scheduling. |
+| `src/aeolus/trace.py` | JSONL writer and allowlisted model-feature projection. |
+| `src/aeolus/visualise.py` | Dependency-free local HTML replay visualiser. |
 | `tests/` | Unit, scenario, replay and visualisation tests. |
 | `docs/` | Current simulation and telemetry contracts. |
 | `out/` | Ignored generated local traces and reports. |
 
 ## Current boundaries
 
-ICARUS currently implements deterministic simulation and replay only. It does
+AEOLUS currently implements deterministic simulation and replay only. It does
 not include model training or inference, ONNX, quantisation, a governor,
 redundant fan, Arm measurements, a dashboard, API, database, cloud service or
 hardware integration. Do not represent future work as current behaviour.
