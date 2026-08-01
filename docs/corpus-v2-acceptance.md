@@ -22,10 +22,11 @@ Arm64 performance.
 - Corpus-v2 evaluation validates an exact row schema and rejects missing or
   unexpected fields; duplicate or malformed row identities; incomplete
   reference/fault streams or window inventories for any manifest-declared family;
-  non-finite or non-`float32[24]`-compatible feature vectors; and every row
-  whose family, split, role, observable onset or derived label disagrees with
-  immutable evidence recomputed from the validated family manifest. It then
-  scores only an explicitly selected split.
+  non-finite or non-`float32[24]`-compatible feature vectors, or feature
+  windows whose values differ from the recomputed validated replay; and every
+  row whose family, split, role, observable onset or derived label disagrees
+  with immutable evidence recomputed from the validated family manifest. It
+  then scores only an explicitly selected split.
 
 ## Fixture evidence
 
