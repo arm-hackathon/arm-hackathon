@@ -344,7 +344,9 @@ rm -rf out/corpus-v2-contract
 PYTHONPATH=src uv run python -m aeolus.corpus \
   --v2 out/corpus-v2-contract scenarios/families.json
 PYTHONPATH=src uv run python -m aeolus.evaluate \
-  --v2 out/corpus-v2-contract/corpus.jsonl scenarios/families.json --split test
+  --v2 out/corpus-v2-contract/corpus.jsonl scenarios/families.json \
+  --expected-family-manifest-sha256 828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541 \
+  --split test
 ```
 
 Use the actual final v2 CLI/API documented by the preceding implementation. Generated JSONL stays under `out/` and remains untracked.

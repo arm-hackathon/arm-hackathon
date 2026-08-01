@@ -10,7 +10,11 @@ Arm64 performance.
 
 - The independent split unit is a **scenario family**, never an overlapping
   window. A reference or fault replay may not appear in more than one split,
-  and an exact reference/fault pair may appear in only one family.
+  and an exact reference/fault pair may appear in only one family. Identity is
+  canonical scenario JSON content, not a mutable filename or path.
+- The corpus-v2 CLI requires a caller-supplied, previously recorded
+  family-manifest SHA-256 and rejects a supplied manifest that does not match;
+  a self-recomputed manifest hash is traceability, not an authority boundary.
 - Every family binds a fault-free reference and exactly one faulty scenario to
   the frozen `model_input_v1` selector/topology contract.
 - A fault becomes label-eligible at the first equal-tick difference between

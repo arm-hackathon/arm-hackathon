@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -94,7 +95,7 @@ def test_family_manifest_rejects_scenario_reused_across_splits():
     document = _manifest_document()
     document["families"][0]["split"] = "train"
 
-    with pytest.raises(ValueError, match="scenario is assigned to more than one split"):
+    with pytest.raises(ValueError, match="scenario content is assigned to more than one split"):
         parse_family_manifest(document, base_dir=SCENARIOS)
 
 
@@ -106,6 +107,27 @@ def test_family_manifest_rejects_duplicate_pair_in_the_same_split():
 
     with pytest.raises(ValueError, match="scenario family pair is assigned more than once"):
         parse_family_manifest(document, base_dir=SCENARIOS)
+
+
+def test_family_manifest_rejects_renamed_scenario_content_across_splits(tmp_path: Path):
+    scenario_dir = tmp_path / "scenarios"
+    shutil.copytree(SCENARIOS, scenario_dir)
+    (scenario_dir / "blocked_path_copy.json").write_bytes(
+        (scenario_dir / "blocked_path.json").read_bytes()
+    )
+    (scenario_dir / "high_demand_healthy_copy.json").write_bytes(
+        (scenario_dir / "high_demand_healthy.json").read_bytes()
+    )
+    document = _manifest_document()
+    duplicate = dict(document["families"][0])
+    duplicate["family_id"] = "blocked-path-copy-v1"
+    duplicate["fault_scenario"] = "blocked_path_copy.json"
+    duplicate["reference_scenario"] = "high_demand_healthy_copy.json"
+    duplicate["split"] = "train"
+    document["families"].append(duplicate)
+
+    with pytest.raises(ValueError, match="scenario content is assigned to more than one split"):
+        parse_family_manifest(document, base_dir=scenario_dir)
 
 
 def test_family_manifest_rejects_faulted_reference_scenario():

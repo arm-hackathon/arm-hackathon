@@ -28,7 +28,8 @@ USAGE = (
     "Usage: PYTHONPATH=src python3 -m aeolus.evaluate <corpus.jsonl> "
     "<scenario.json> [scenario.json ...]\n"
     "   or: PYTHONPATH=src python3 -m aeolus.evaluate --v2 <corpus.jsonl> "
-    "<families.json> [--split train|validation|test]"
+    "<families.json> --expected-family-manifest-sha256 <sha256> "
+    "[--split train|validation|test]"
 )
 EXCLUDED_TRANSITION_LABEL = "excluded_transition"
 _V2_CONTRACT_KEYS = frozenset(
@@ -238,6 +239,11 @@ def _validate_v2_contract(
     for family_id, evidence in expected_families.items():
         if not isinstance(evidence, FamilyEvidence) or evidence.family_id != family_id:
             raise ValueError("expected corpus v2 family evidence is malformed")
+        if (
+            not _is_non_boolean_int(evidence.reference_trace_ticks)
+            or not _is_non_boolean_int(evidence.fault_trace_ticks)
+        ):
+            raise ValueError("expected corpus v2 family evidence lacks replay lengths")
 
     window_ticks: int | None = None
     family_streams = {family_id: set() for family_id in expected_families}
@@ -325,12 +331,12 @@ def _validate_v2_contract(
             ("reference", evidence.reference_trace_ticks),
             ("fault", evidence.fault_trace_ticks),
         ):
-            if trace_ticks is not None:
-                _validate_v2_window_sequence(
-                    stream_rows[(family_id, scenario_role)],
-                    trace_ticks=trace_ticks,
-                    window_ticks=window_ticks,
-                )
+            assert trace_ticks is not None
+            _validate_v2_window_sequence(
+                stream_rows[(family_id, scenario_role)],
+                trace_ticks=trace_ticks,
+                window_ticks=window_ticks,
+            )
 
 
 def _validate_v2_window_sequence(
@@ -342,8 +348,11 @@ def _validate_v2_window_sequence(
     actual_indices = [row["window_index"] for row in ordered]
     if actual_indices != list(range(len(ordered))):
         raise ValueError("corpus v2 window sequence is incomplete")
-    if len(ordered) < 2:
-        raise ValueError("corpus v2 window sequence cannot establish a stride")
+    if len(ordered) == 1:
+        only = ordered[0]
+        if only["start_tick"] != 1 or only["end_tick"] != trace_ticks:
+            raise ValueError("corpus v2 window sequence does not match its ticks")
+        return
     stride = ordered[1]["start_tick"] - ordered[0]["start_tick"]
     if stride < 1:
         raise ValueError("corpus v2 window sequence has an invalid stride")
@@ -437,17 +446,35 @@ def main(argv: list[str]) -> int:
 
 
 def _main_v2(argv: list[str]) -> int:
-    if len(argv) == 2:
-        corpus_path, family_manifest_path = argv
+    if (
+        len(argv) == 4
+        and argv[2] == "--expected-family-manifest-sha256"
+    ):
+        corpus_path, family_manifest_path, _, expected_manifest_sha256 = argv
         target_split = "test"
-    elif len(argv) == 4 and argv[2] == "--split":
-        corpus_path, family_manifest_path, _, target_split = argv
+    elif (
+        len(argv) == 6
+        and argv[2] == "--expected-family-manifest-sha256"
+        and argv[4] == "--split"
+    ):
+        (
+            corpus_path,
+            family_manifest_path,
+            _,
+            expected_manifest_sha256,
+            _,
+            target_split,
+        ) = argv
     else:
         print(USAGE, file=sys.stderr)
         return 2
     try:
+        if not _is_sha256(expected_manifest_sha256):
+            raise ValueError("expected family manifest hash must be lowercase SHA-256")
         rows = _load_rows(corpus_path)
         manifest = load_family_manifest(Path(family_manifest_path))
+        if manifest.manifest_sha256 != expected_manifest_sha256:
+            raise ValueError("family manifest does not match the expected SHA-256")
         baseline_config = load_scenario(manifest.families[0].reference_path)
         result = evaluate_v2(
             rows,

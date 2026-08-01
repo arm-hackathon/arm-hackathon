@@ -154,16 +154,18 @@ def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
             family_id="blocked-path-v1",
             split="test",
             fault_class="blocked_path",
-            observable_onset_tick=30,
+            observable_onset_tick=2,
             reference_scenario_sha256="a" * 64,
             fault_scenario_sha256="b" * 64,
+            reference_trace_ticks=2,
+            fault_trace_ticks=4,
         )
     }
     common = {
         **metadata,
         "family_id": "blocked-path-v1",
         "split": "test",
-        "observable_onset_tick": 30,
+        "observable_onset_tick": 2,
     }
     rows = [
         {
@@ -171,27 +173,27 @@ def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
             "scenario_role": "reference",
             "window_index": 0,
             "start_tick": 1,
-            "end_tick": 10,
+            "end_tick": 2,
             "label": "nominal",
-            "features": [[0.0] * 24],
+            "features": [[0.0] * 24, [0.0] * 24],
         },
         {
             **common,
             "scenario_role": "fault",
             "window_index": 0,
-            "start_tick": 26,
-            "end_tick": 35,
+            "start_tick": 1,
+            "end_tick": 2,
             "label": "excluded_transition",
-            "features": [[1.0] * 24],
+            "features": [[1.0] * 24, [1.0] * 24],
         },
         {
             **common,
             "scenario_role": "fault",
             "window_index": 1,
-            "start_tick": 31,
-            "end_tick": 40,
+            "start_tick": 3,
+            "end_tick": 4,
             "label": "blocked_path",
-            "features": [[1.0] * 24],
+            "features": [[1.0] * 24, [1.0] * 24],
         },
     ]
 
@@ -211,7 +213,7 @@ def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
         "blocked_path": {"blocked_path": 1},
         "nominal": {"nominal": 1},
     }
-    assert result["detection_latency_ticks"] == {"blocked_path": 10.0}
+    assert result["detection_latency_ticks"] == {"blocked_path": 2.0}
 
 
 def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
@@ -236,6 +238,8 @@ def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
             observable_onset_tick=2,
             reference_scenario_sha256="a" * 64,
             fault_scenario_sha256="b" * 64,
+            reference_trace_ticks=2,
+            fault_trace_ticks=4,
         )
     }
     rows = [
@@ -249,7 +253,10 @@ def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
             "start_tick": 1,
             "end_tick": 2,
             "label": "nominal",
-            "features": [[0.0] + [0.0] * 23],
+            "features": [
+                [0.0] + [0.0] * 23,
+                [0.0] + [0.0] * 23,
+            ],
         },
         {
             **metadata,
@@ -261,7 +268,10 @@ def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
             "start_tick": 1,
             "end_tick": 2,
             "label": "excluded_transition",
-            "features": [[1.0] + [0.0] * 23],
+            "features": [
+                [1.0] + [0.0] * 23,
+                [1.0] + [0.0] * 23,
+            ],
         },
         {
             **metadata,
@@ -273,7 +283,10 @@ def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
             "start_tick": 3,
             "end_tick": 4,
             "label": "blocked_path",
-            "features": [[2.0] + [0.0] * 23],
+            "features": [
+                [2.0] + [0.0] * 23,
+                [2.0] + [0.0] * 23,
+            ],
         },
     ]
     labeller = StatefulLabeller()
@@ -385,6 +398,8 @@ def test_evaluate_v2_cli_prints_selected_split_metrics(tmp_path, capsys):
             "--v2",
             str(tmp_path / "corpus.jsonl"),
             str(SCENARIOS / "families.json"),
+            "--expected-family-manifest-sha256",
+            load_family_manifest(SCENARIOS / "families.json").manifest_sha256,
             "--split",
             "test",
         ]
@@ -394,3 +409,21 @@ def test_evaluate_v2_cli_prints_selected_split_metrics(tmp_path, capsys):
     printed = json.loads(capsys.readouterr().out)
     assert printed["scored_total"] == 134
     assert printed["correct"] == 134
+
+
+def test_evaluate_v2_cli_rejects_unpinned_or_mismatched_manifest(tmp_path, capsys):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    corpus_path = str(tmp_path / "corpus.jsonl")
+    manifest_path = str(SCENARIOS / "families.json")
+
+    assert main(["--v2", corpus_path, manifest_path]) == 2
+    assert main(
+        [
+            "--v2",
+            corpus_path,
+            manifest_path,
+            "--expected-family-manifest-sha256",
+            "0" * 64,
+        ]
+    ) == 2
+    assert "expected SHA-256" in capsys.readouterr().err

@@ -246,7 +246,9 @@ uv run python -m aeolus.evaluate out/corpus/corpus.jsonl \
   scenarios/frozen_sensor.json
 uv run python -m aeolus.corpus --v2 out/corpus-v2 scenarios/families.json
 uv run python -m aeolus.evaluate --v2 out/corpus-v2/corpus.jsonl \
-  scenarios/families.json --split test
+  scenarios/families.json \
+  --expected-family-manifest-sha256 828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541 \
+  --split test
 ```
 
 `aeolus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a
