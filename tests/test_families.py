@@ -98,6 +98,16 @@ def test_family_manifest_rejects_scenario_reused_across_splits():
         parse_family_manifest(document, base_dir=SCENARIOS)
 
 
+def test_family_manifest_rejects_duplicate_pair_in_the_same_split():
+    document = _manifest_document()
+    duplicate = dict(document["families"][0])
+    duplicate["family_id"] = "blocked-path-duplicate-v1"
+    document["families"].append(duplicate)
+
+    with pytest.raises(ValueError, match="scenario family pair is assigned more than once"):
+        parse_family_manifest(document, base_dir=SCENARIOS)
+
+
 def test_family_manifest_rejects_faulted_reference_scenario():
     document = _manifest_document()
     document["families"][0]["reference_scenario"] = "blocked_path.json"

@@ -12,7 +12,7 @@
 
 ## Decisions already accepted
 
-1. **Independence unit:** scenario family, not window. All variants/replicas derived from a family share exactly one split. No random window split is allowed.
+1. **Independence unit:** scenario family, not window. All variants/replicas derived from a family share exactly one split; an exact reference/fault pair may appear only once. No random window split is allowed.
 2. **Label evidence:** the offline label builder may compare a fault replay to its paired healthy reference. The trained/inference model receives only `model_input_v1`; it never receives the reference replay, fault profile, start tick, effectiveness, target, seed, or source-noise state.
 3. **Observable onset:** first measured tick where the fault and reference `model_input_v1` vectors differ. The resolver must compare exactly the Gate-1 `float32[24]` tensors.
 4. **Boundary windows:** a fixed-width window that spans the observable-onset boundary is retained as `excluded_transition`, but excluded from supervised training/scored accuracy. It remains available for audit and latency work.
