@@ -5,10 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from aeolus.baseline import RuleBaseline
 from aeolus.config import load_scenario
-from aeolus.corpus import generate_corpus
-from aeolus.evaluate import evaluate, fault_start_tick, main
+from aeolus.corpus import generate_corpus, generate_corpus_v2
+from aeolus.evaluate import evaluate, evaluate_v2, fault_start_tick, main
+from aeolus.families import FamilyEvidence, build_family_evidence, load_family_manifest
+from aeolus.model_input import build_model_input_contract, model_artifact_metadata
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = REPO_ROOT / "scenarios"
@@ -37,6 +41,11 @@ def _fault_starts() -> dict[str, int]:
         if start is not None:
             starts[path.stem] = start
     return starts
+
+
+def _family_evidence():
+    manifest = load_family_manifest(SCENARIOS / "families.json")
+    return build_family_evidence(manifest)
 
 
 def test_fault_start_tick_reads_declared_profiles():
@@ -132,3 +141,289 @@ def test_evaluate_cli_prints_metrics_json(tmp_path, capsys):
 def test_evaluate_cli_rejects_missing_arguments():
     assert main([]) == 2
     assert main(["only-corpus"]) == 2
+
+
+def test_evaluate_v2_excludes_transition_rows_and_uses_observable_onset():
+    metadata = {
+        "model_input_version": "model_input_v1",
+        "selector_sha256": "a" * 64,
+        "topology_sha256": "b" * 64,
+    }
+    evidence = {
+        "blocked-path-v1": FamilyEvidence(
+            family_id="blocked-path-v1",
+            split="test",
+            fault_class="blocked_path",
+            observable_onset_tick=2,
+            reference_scenario_sha256="a" * 64,
+            fault_scenario_sha256="b" * 64,
+            reference_trace_ticks=2,
+            fault_trace_ticks=4,
+        )
+    }
+    common = {
+        **metadata,
+        "family_id": "blocked-path-v1",
+        "split": "test",
+        "observable_onset_tick": 2,
+    }
+    rows = [
+        {
+            **common,
+            "scenario_role": "reference",
+            "window_index": 0,
+            "start_tick": 1,
+            "end_tick": 2,
+            "label": "nominal",
+            "features": [[0.0] * 24, [0.0] * 24],
+        },
+        {
+            **common,
+            "scenario_role": "fault",
+            "window_index": 0,
+            "start_tick": 1,
+            "end_tick": 2,
+            "label": "excluded_transition",
+            "features": [[1.0] * 24, [1.0] * 24],
+        },
+        {
+            **common,
+            "scenario_role": "fault",
+            "window_index": 1,
+            "start_tick": 3,
+            "end_tick": 4,
+            "label": "blocked_path",
+            "features": [[1.0] * 24, [1.0] * 24],
+        },
+    ]
+
+    result = evaluate_v2(
+        rows,
+        lambda features: "blocked_path" if features[0][0] else "nominal",
+        expected_contract=metadata,
+        expected_families=evidence,
+        target_split="test",
+    )
+
+    assert result["scored_total"] == 2
+    assert result["excluded_transition_total"] == 1
+    assert result["correct"] == 2
+    assert result["accuracy"] == 1.0
+    assert result["confusion"] == {
+        "blocked_path": {"blocked_path": 1},
+        "nominal": {"nominal": 1},
+    }
+    assert result["detection_latency_ticks"] == {"blocked_path": 2.0}
+
+
+def test_evaluate_v2_feeds_excluded_rows_to_stateful_labellers():
+    class StatefulLabeller:
+        def __init__(self):
+            self.seen: list[str] = []
+
+        def label_window(self, features):
+            self.seen.append(features[0][0])
+            return "nominal"
+
+    metadata = {
+        "model_input_version": "model_input_v1",
+        "selector_sha256": "a" * 64,
+        "topology_sha256": "b" * 64,
+    }
+    evidence = {
+        "f": FamilyEvidence(
+            family_id="f",
+            split="test",
+            fault_class="blocked_path",
+            observable_onset_tick=2,
+            reference_scenario_sha256="a" * 64,
+            fault_scenario_sha256="b" * 64,
+            reference_trace_ticks=2,
+            fault_trace_ticks=4,
+        )
+    }
+    rows = [
+        {
+            **metadata,
+            "family_id": "f",
+            "scenario_role": "reference",
+            "split": "test",
+            "window_index": 0,
+            "observable_onset_tick": 2,
+            "start_tick": 1,
+            "end_tick": 2,
+            "label": "nominal",
+            "features": [
+                [0.0] + [0.0] * 23,
+                [0.0] + [0.0] * 23,
+            ],
+        },
+        {
+            **metadata,
+            "family_id": "f",
+            "scenario_role": "fault",
+            "split": "test",
+            "window_index": 0,
+            "observable_onset_tick": 2,
+            "start_tick": 1,
+            "end_tick": 2,
+            "label": "excluded_transition",
+            "features": [
+                [1.0] + [0.0] * 23,
+                [1.0] + [0.0] * 23,
+            ],
+        },
+        {
+            **metadata,
+            "family_id": "f",
+            "scenario_role": "fault",
+            "split": "test",
+            "window_index": 1,
+            "observable_onset_tick": 2,
+            "start_tick": 3,
+            "end_tick": 4,
+            "label": "blocked_path",
+            "features": [
+                [2.0] + [0.0] * 23,
+                [2.0] + [0.0] * 23,
+            ],
+        },
+    ]
+    labeller = StatefulLabeller()
+
+    evaluate_v2(
+        rows,
+        labeller,
+        expected_contract=metadata,
+        expected_families=evidence,
+        target_split="test",
+    )
+
+    assert labeller.seen == [1.0, 2.0, 0.0]
+
+
+def test_rule_baseline_scores_generated_corpus_v2_from_frozen_vectors(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    result = evaluate_v2(
+        rows,
+        RuleBaseline(load_scenario(SCENARIOS / "high_demand_healthy.json")),
+        expected_contract=model_artifact_metadata(
+            build_model_input_contract(load_scenario(SCENARIOS / "high_demand_healthy.json"))
+        ),
+        expected_families=_family_evidence(),
+        target_split="test",
+    )
+
+    assert result["scored_total"] == 134
+    assert result["correct"] == 134
+
+
+def test_evaluate_v2_rejects_a_split_that_disagrees_with_family_evidence(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    for row in rows:
+        if row["family_id"] == "blocked-path-v1":
+            row["split"] = "train"
+
+    contract = model_artifact_metadata(
+        build_model_input_contract(load_scenario(SCENARIOS / "high_demand_healthy.json"))
+    )
+    with pytest.raises(ValueError, match="split does not match family evidence"):
+        evaluate_v2(
+            rows,
+            RuleBaseline(load_scenario(SCENARIOS / "high_demand_healthy.json")),
+            expected_contract=contract,
+            expected_families=_family_evidence(),
+            target_split="test",
+        )
+
+
+def test_evaluate_v2_rejects_vector_with_wrong_shape(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    rows[0]["features"][0] = [0.0] * 23
+    contract = model_artifact_metadata(
+        build_model_input_contract(load_scenario(SCENARIOS / "high_demand_healthy.json"))
+    )
+
+    with pytest.raises(ValueError, match="model-input tick 1 has an unexpected shape"):
+        evaluate_v2(
+            rows,
+            lambda _: "nominal",
+            expected_contract=contract,
+            expected_families=_family_evidence(),
+            target_split="test",
+        )
+
+
+def test_evaluate_v2_rejects_uniformly_stale_contract_metadata(tmp_path):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    stale_contract = {
+        "model_input_version": "obsolete_model_input",
+        "selector_sha256": "a" * 64,
+        "topology_sha256": "b" * 64,
+    }
+    for row in rows:
+        row.update(stale_contract)
+
+    with pytest.raises(ValueError, match="expected corpus v2 contract is incompatible"):
+        evaluate_v2(
+            rows,
+            lambda _: "nominal",
+            expected_contract=stale_contract,
+            expected_families=_family_evidence(),
+            target_split="test",
+        )
+
+
+def test_evaluate_v2_cli_prints_selected_split_metrics(tmp_path, capsys):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    exit_code = main(
+        [
+            "--v2",
+            str(tmp_path / "corpus.jsonl"),
+            str(SCENARIOS / "families.json"),
+            "--expected-family-manifest-sha256",
+            load_family_manifest(SCENARIOS / "families.json").manifest_sha256,
+            "--split",
+            "test",
+        ]
+    )
+
+    assert exit_code == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["scored_total"] == 134
+    assert printed["correct"] == 134
+
+
+def test_evaluate_v2_cli_rejects_unpinned_or_mismatched_manifest(tmp_path, capsys):
+    generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    corpus_path = str(tmp_path / "corpus.jsonl")
+    manifest_path = str(SCENARIOS / "families.json")
+
+    assert main(["--v2", corpus_path, manifest_path]) == 2
+    assert main(
+        [
+            "--v2",
+            corpus_path,
+            manifest_path,
+            "--expected-family-manifest-sha256",
+            "0" * 64,
+        ]
+    ) == 2
+    assert "expected SHA-256" in capsys.readouterr().err

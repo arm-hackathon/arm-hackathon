@@ -21,8 +21,8 @@ The repository currently contains:
   blocked path and frozen sensor;
 - JSONL replay traces, an allowlisted model-feature projection, a standalone
   HTML visualiser and a leakage-safe labelled window corpus;
-- a streaming rule-baseline fault detector and an evaluation harness that
-  grades any labeller on accuracy, confusion and detection latency;
+- a family-bound corpus-v2 contract with paired observable-onset labels and
+  transition-aware evaluation, alongside the streaming rule baseline;
 - tests for replay determinism, fault semantics, mass conservation, airflow
   invariants, telemetry boundaries, corpus leakage and detector behaviour.
 
@@ -51,10 +51,13 @@ non-negative difference.
 | `scenarios/high_demand_healthy.json` | Healthy high-demand control and delivery scenario with enough shared capacity to isolate controller demand. |
 | `scenarios/primary_fan_degradation.json` | High-demand scenario with a gradual primary-fan degradation on `cabin_a_to_processing`. |
 | `scenarios/blocked_path.json` | The same high-demand habitat with a sudden blockage on `cabin_b_to_processing` from tick 30. |
+| `scenarios/frozen_sensor_healthy.json` | Fault-free paired reference for the frozen-sensor demand transition. It differs from `frozen_sensor.json` only in `fault_profiles`. |
 | `scenarios/frozen_sensor.json` | The same habitat with the lab sensor frozen from tick 30 while lab demand steps down at tick 41. |
+| `scenarios/families.json` | Gate-2 family manifest. It binds paired references to the frozen `model_input_v1` topology/selector hashes and one evaluation split. |
 
-All five are schema-v7 JSON and replay deterministically from their declared
-seeds.
+All scenario files are schema-v7 JSON and replay deterministically from their
+declared seeds. The current three Gate-2 families are test-only fixtures: they
+prove the contract but are not a train/validation/test corpus.
 
 ## Run locally
 
@@ -71,12 +74,27 @@ PYTHONPATH=src uv run python -m aeolus.visualise \
   out/primary_fan_degradation.jsonl \
   out/primary_fan_degradation.html
 
-# Generate the labelled window corpus and its manifest
-PYTHONPATH=src uv run python -m aeolus.corpus out/corpus scenarios/*.json
+# Generate the historical v1 labelled window corpus and its manifest
+PYTHONPATH=src uv run python -m aeolus.corpus out/corpus \
+  scenarios/standard_habitat.json scenarios/high_demand_healthy.json \
+  scenarios/primary_fan_degradation.json scenarios/blocked_path.json \
+  scenarios/frozen_sensor.json
 
-# Grade the rule baseline against the corpus
+# Grade the historical rule baseline against corpus v1
 PYTHONPATH=src uv run python -m aeolus.evaluate \
-  out/corpus/corpus.jsonl scenarios/*.json
+  out/corpus/corpus.jsonl scenarios/standard_habitat.json \
+  scenarios/high_demand_healthy.json scenarios/primary_fan_degradation.json \
+  scenarios/blocked_path.json scenarios/frozen_sensor.json
+
+# Generate the Gate-2 observable-labelled corpus-v2 fixture
+PYTHONPATH=src uv run python -m aeolus.corpus \
+  --v2 out/corpus-v2 scenarios/families.json
+
+# Grade only rows that match manifest-derived held-out test-family evidence
+PYTHONPATH=src uv run python -m aeolus.evaluate \
+  --v2 out/corpus-v2/corpus.jsonl scenarios/families.json \
+  --expected-family-manifest-sha256 828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541 \
+  --split test
 ```
 
 On Windows PowerShell, set `PYTHONPATH` for the session before running the same commands:
@@ -97,11 +115,16 @@ fault effectiveness, connection health, random seed or source-noise state.
 future model-facing consumer; visualiser fields do not expand that model
 feature set.
 
-`aeolus.corpus` builds the labelled window corpus for the future fault
-classifier. Every feature row is exactly `model_feature_row()` output and
-labels come from declared fault profiles, never from telemetry, so the corpus
-carries no hidden fault truth. Corpus output is a generated artifact and
-belongs in `out/`, not Git.
+`aeolus.corpus` builds labelled windows for the future fault classifier. Corpus
+v1 feature rows are exactly `model_feature_row()` output and retain their
+historical declared-profile labels. Corpus v2 instead uses paired
+`model_input_v1` traces to label first observable onset, persists the frozen
+selector/topology metadata, and excludes onset-straddling windows from scored
+metrics. Evaluation rejects rows whose exact schema, complete reference/fault
+family streams and window inventories, float32-narrowed features, feature
+values against their recomputed paired replay, family split, role, onset or
+label disagree with manifest-derived evidence. Corpus output is a generated
+artifact and belongs in `out/`, not Git.
 
 ## Results so far
 
@@ -109,7 +132,8 @@ Every claimed number below is reproducible from the commands in this README.
 
 | Date | What was measured | Result | What it represents |
 |---|---|---|---|
-| 2026-07-27 | Fault-detection quality of the rule baseline on corpus v1 (115 windows from 5 scenario runs) | **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | The performance floor for fault detection in AEOLUS: what the simplest hand-written rules achieve on the first, small corpus. It is the bar the learned classifier must beat — not a model result and not a deployment claim. |
+| 2026-07-27 | Fault-detection quality of the rule baseline on corpus v1 (115 windows from 5 scenario runs) | **111/115 windows (96.5%)**, zero false alarms on nominal runs; all 4 misses are onset-boundary windows. Detection latency 10 / 5 / 10 ticks (degradation / blocked / frozen). | Historical corpus-v1 baseline only; its labels use declared starts and are not comparable to corpus-v2 scoring. |
+| 2026-07-29 | Gate-2 corpus-v2 contract fixture (3 paired families, 138 windows) | **134/134 scored correct**, 4 transition-excluded; observable onset 21 / 30 / 31 ticks; latency 10 / 9 / 9 ticks (blocked / frozen / degradation). | A contract-validation fixture, not a model-performance or generalisation claim. It proves family splits, observable labels, and transition-aware scoring before the scenario sweep. |
 
 Read the latency column with the accuracy: the baseline is accurate but
 structurally slow, because a rule cannot fire until a fault fills its
@@ -125,8 +149,8 @@ harness and discipline:
    types across seeds, fault starts, fault strengths and targets, with
    demand shapes varied across every class so labels cannot be inferred
    from occupancy patterns.
-2. **Temporal classifier** — trained on swept runs and graded on runs it
-   never saw (train/validation/test split by run, never by window).
+2. **Temporal classifier** — trained on swept families and graded on families
+   it never saw (train/validation/test split by family, never by window).
    Success = baseline-matching accuracy with lower detection latency.
 3. **FP32 ONNX + INT8 quantisation on Arm64** — model size, latency,
    throughput and accuracy delta, FP32 versus INT8, on the declared Azure
