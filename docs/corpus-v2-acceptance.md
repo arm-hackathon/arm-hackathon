@@ -9,8 +9,8 @@ Arm64 performance.
 ## Contract accepted
 
 - The independent split unit is a **scenario family**, never an overlapping
-  window or replay from that family. A reference or fault replay may not appear
-  in more than one split.
+  window. A reference or fault replay may not appear in more than one split,
+  and an exact reference/fault pair may appear in only one family.
 - Every family binds a fault-free reference and exactly one faulty scenario to
   the frozen `model_input_v1` selector/topology contract.
 - A fault becomes label-eligible at the first equal-tick difference between

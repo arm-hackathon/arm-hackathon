@@ -136,10 +136,11 @@ scenario, one exactly-one-fault scenario, a declared class, and exactly one of
 `train`, `validation`, or `test`. The current three families are test-only
 contract fixtures; they do not claim to be a usable training corpus.
 
-`load_family_manifest()` rejects unknown fields, duplicate family IDs, stale or
-malformed Gate-1 metadata, fault-bearing references, multi-fault paired runs,
-class mismatches, and any reference/fault pair that differs outside
-`fault_profiles`. The latter rule requires a true counterfactual: the
+`load_family_manifest()` rejects unknown fields, duplicate family IDs or exact
+reference/fault pairs, source scenarios reused across splits, stale or malformed
+Gate-1 metadata, fault-bearing references, multi-fault paired runs, class
+mismatches, and any reference/fault pair that differs outside `fault_profiles`.
+The latter rule requires a true counterfactual: the
 `frozen_sensor_healthy.json` control preserves the lab demand transition from
 `frozen_sensor.json` and removes only the freeze profile.
 
