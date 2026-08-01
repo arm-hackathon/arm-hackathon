@@ -119,9 +119,10 @@ historical declared-profile labels. Corpus v2 instead uses paired
 `model_input_v1` traces to label first observable onset, persists the frozen
 selector/topology metadata, and excludes onset-straddling windows from scored
 metrics. Evaluation rejects rows whose exact schema, complete reference/fault
-family streams and window inventories, float32-narrowed features, family split,
-role, onset or label disagree with manifest-derived evidence. Corpus output is a
-generated artifact and belongs in `out/`, not Git.
+family streams and window inventories, float32-narrowed features, feature
+values against their recomputed paired replay, family split, role, onset or
+label disagree with manifest-derived evidence. Corpus output is a generated
+artifact and belongs in `out/`, not Git.
 
 ## Results so far
 

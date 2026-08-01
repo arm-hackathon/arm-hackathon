@@ -152,3 +152,11 @@ def test_evaluate_v2_rejects_missing_final_window_from_expected_stream(tmp_path:
 
     with pytest.raises(ValueError, match="window sequence is incomplete"):
         _evaluate(rows, contract, families)
+
+
+def test_evaluate_v2_rejects_finite_feature_tampering(tmp_path: Path):
+    rows, contract, families = _generated_rows(tmp_path)
+    rows[-1]["features"][-1][-1] += 1.0
+
+    with pytest.raises(ValueError, match="features do not match the verified replay"):
+        _evaluate(rows, contract, families)

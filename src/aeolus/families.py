@@ -19,6 +19,7 @@ from aeolus.config import (
     load_scenario,
 )
 from aeolus.model_input import (
+    ModelInputContract,
     build_model_input_contract,
     model_artifact_metadata,
     model_input_v1,
@@ -174,6 +175,8 @@ class ObservableOnset:
     fault_scenario_sha256: str
     reference_trace_ticks: int
     fault_trace_ticks: int
+    reference_model_input_trace: tuple[tuple[float, ...], ...]
+    fault_model_input_trace: tuple[tuple[float, ...], ...]
 
 
 @dataclass(frozen=True)
@@ -188,6 +191,8 @@ class FamilyEvidence:
     fault_scenario_sha256: str
     reference_trace_ticks: int | None = None
     fault_trace_ticks: int | None = None
+    reference_model_input_trace: tuple[tuple[float, ...], ...] | None = None
+    fault_model_input_trace: tuple[tuple[float, ...], ...] | None = None
 
 
 def build_family_evidence(manifest: FamilyManifest) -> Mapping[str, FamilyEvidence]:
@@ -204,6 +209,8 @@ def build_family_evidence(manifest: FamilyManifest) -> Mapping[str, FamilyEviden
             fault_scenario_sha256=onset.fault_scenario_sha256,
             reference_trace_ticks=onset.reference_trace_ticks,
             fault_trace_ticks=onset.fault_trace_ticks,
+            reference_model_input_trace=onset.reference_model_input_trace,
+            fault_model_input_trace=onset.fault_model_input_trace,
         )
     return MappingProxyType(evidence)
 
@@ -236,11 +243,13 @@ def observable_onset(
     fault_records = run_scenario(fault_config)
     if len(reference_records) != len(fault_records):
         raise ValueError("observable onset scenarios have different trace lengths")
-    for reference_record, fault_record in zip(reference_records, fault_records):
+    reference_inputs = _model_input_trace(reference_records, contract)
+    fault_inputs = _model_input_trace(fault_records, contract)
+    for reference_record, fault_record, reference_input, fault_input in zip(
+        reference_records, fault_records, reference_inputs, fault_inputs
+    ):
         if reference_record.tick != fault_record.tick:
             raise ValueError("observable onset scenarios have different tick numbering")
-        reference_input = model_input_v1(reference_record, contract)
-        fault_input = model_input_v1(fault_record, contract)
         if not np.array_equal(reference_input, fault_input):
             return ObservableOnset(
                 family_id=family.family_id,
@@ -254,8 +263,20 @@ def observable_onset(
                 ).hexdigest(),
                 reference_trace_ticks=len(reference_records),
                 fault_trace_ticks=len(fault_records),
+                reference_model_input_trace=reference_inputs,
+                fault_model_input_trace=fault_inputs,
             )
     raise ValueError(f"family {family.family_id!r} never becomes model-input observable")
+
+
+def _model_input_trace(
+    records: list, contract: ModelInputContract
+) -> tuple[tuple[float, ...], ...]:
+    """Freeze a replay's exact float32 model-input vectors for later validation."""
+    return tuple(
+        tuple(float(value) for value in model_input_v1(record, contract))
+        for record in records
+    )
 
 
 def _parse_family(raw_family: object, *, base_dir: Path) -> ScenarioFamily:

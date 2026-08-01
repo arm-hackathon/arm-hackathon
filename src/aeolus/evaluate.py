@@ -293,6 +293,13 @@ def _validate_v2_contract(
         if row["label"] != expected_label:
             raise ValueError("corpus v2 label does not match family evidence")
         feature_ticks = _validate_v2_features(row["features"])
+        _validate_v2_feature_values(
+            row["features"],
+            evidence=evidence,
+            scenario_role=scenario_role,
+            start_tick=row["start_tick"],
+            end_tick=row["end_tick"],
+        )
         if window_ticks is None:
             window_ticks = feature_ticks
         elif feature_ticks != window_ticks:
@@ -369,6 +376,30 @@ def _validate_v2_features(features: object) -> int:
         if not np.isfinite(narrowed).all():
             raise ValueError(f"model-input tick {tick_number} contains a non-finite value")
     return len(features)
+
+
+def _validate_v2_feature_values(
+    features: list[list[float | int]],
+    *,
+    evidence: FamilyEvidence,
+    scenario_role: str,
+    start_tick: int,
+    end_tick: int,
+) -> None:
+    """Reject a finite vector window that differs from its trusted replay slice."""
+    expected_trace = (
+        evidence.reference_model_input_trace
+        if scenario_role == "reference"
+        else evidence.fault_model_input_trace
+    )
+    if expected_trace is None:
+        return
+    expected_window = expected_trace[start_tick - 1 : end_tick]
+    actual_window = tuple(
+        tuple(float(value) for value in vector) for vector in features
+    )
+    if actual_window != expected_window:
+        raise ValueError("corpus v2 features do not match the verified replay")
 
 
 def _is_non_boolean_int(value: object) -> bool:
