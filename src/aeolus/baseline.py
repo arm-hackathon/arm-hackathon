@@ -25,6 +25,7 @@ both are handled explicitly:
 from __future__ import annotations
 
 from aeolus.config import HabitatConfig
+from aeolus.model_input import build_model_input_contract
 
 DELIVERY_RESIDUAL_RATIO = 0.05
 """Relative residual (residual / requested) above which a loop is losing delivery."""
@@ -48,6 +49,8 @@ class RuleBaseline:
     """Streaming rule detector over consecutive windows of one scenario run."""
 
     def __init__(self, config: HabitatConfig) -> None:
+        self._model_input_contract = build_model_input_contract(config)
+        self._processing_zone_id = config.processing_zone().id
         self._loop_connection_pairs = tuple(
             (config.path_to_processing(zone.id).id, config.path_from_processing(zone.id).id)
             for zone in config.non_processing_zones()
@@ -72,6 +75,8 @@ class RuleBaseline:
         """Label one window: nominal, frozen_sensor, blocked_path or degradation."""
         if not features:
             raise ValueError("a window must contain at least one tick")
+        if not isinstance(features[0], dict):
+            features = self._expand_model_input_window(features)
         self._validate_window_topology(features)
         ratios_by_connection = {
             connection_id: [_residual_ratio(tick, connection_id) for tick in features]
@@ -91,6 +96,33 @@ class RuleBaseline:
         if self._max_jump.get(faulty, 0.0) > BLOCK_JUMP_RATIO:
             return "blocked_path"
         return "gradual_primary_fan_degradation"
+
+    def _expand_model_input_window(self, vectors: list[object]) -> list[dict]:
+        """Adapt exact v1 vectors to the baseline's observable rule representation."""
+        ticks: list[dict] = []
+        for tick_number, vector in enumerate(vectors, start=1):
+            if not isinstance(vector, list) or len(vector) != len(self._model_input_contract.fields):
+                raise ValueError(f"model-input tick {tick_number} has an unexpected shape")
+            tick = {
+                "zones": {self._processing_zone_id: {"sensor_co2_concentration": 0.0}},
+                "actuators": {},
+                "connections": {
+                    connection_id: {
+                        "requested_airflow": 0.0,
+                        "delivered_airflow": 0.0,
+                        "airflow_residual": 0.0,
+                    }
+                    for _, connection_id in self._loop_connection_pairs
+                },
+            }
+            for field, value in zip(self._model_input_contract.fields, vector):
+                if not isinstance(value, (int, float)):
+                    raise ValueError(f"model-input tick {tick_number} contains a non-numeric value")
+                group = tick[field.group]
+                entity = group.setdefault(field.entity_id, {})
+                entity[field.field] = float(value)
+            ticks.append(tick)
+        return ticks
 
     def _loop_groups(
         self, ratios_by_connection: dict[str, list[float]]

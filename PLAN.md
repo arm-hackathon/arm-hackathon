@@ -19,7 +19,7 @@ isolated actuator degrades
 AI provides diagnosis and confidence. Deterministic safety logic retains
 control of every actuator command.
 
-## Status — Gate 0 accepted; Gate 1 implemented
+## Status — Gates 0–2 accepted
 
 Landed: the deterministic schema-v7 simulator with separated requested/delivered
 airflow and explicit residuals; five scenarios (nominal, healthy high-demand,
@@ -34,10 +34,14 @@ float32[24] selector, canonical selector/topology hashes, and fail-closed
 artifact metadata validation. It does not add training data, a classifier,
 ONNX, a governor, backup geometry, or cloud resources.
 
-Gate 2 remains the prerequisite for corpus v2: the family manifest,
-paired-reference observable-onset contract, and observable-label rules. No
-classifier, governor, or corpus-v2 implementation starts before Gates 0-2 are
-accepted.
+Gate 2 is accepted. Its strict, topology-bound family manifest binds each
+healthy/fault pair to one split and rejects pairs that differ outside
+`fault_profiles`. Corpus v2 persists the frozen model-input contract and labels
+windows from the first divergent paired `model_input_v1` tensor. Windows that
+straddle that observable onset update stateful detectors but are excluded from
+training and scored metrics. The three current families are contract fixtures,
+not a training corpus; the scenario sweep is the next prerequisite for model
+work.
 
 Not started: the scenario sweep that turns the accepted corpus contract into
 training data, temporal classifier and FP32 ONNX export, INT8 quantisation,
@@ -106,8 +110,10 @@ packaging.
 ### 4. AI diagnosis
 
 - Generate labelled telemetry windows from the simulator. (done for corpus v1;
-  corpus v2 is blocked on Gate 2 and must persist the frozen
-  `model_input_v1` selector/topology hashes alongside its family manifest)
+  for the corpus-v2 contract fixture, each row is schema-validated and bound to
+  immutable family evidence for its split, role, onset and label, plus replayed
+  model-input traces; generated manifests persist frozen Gate-1 metadata, family
+  split counts and a canonical integrity hash.)
 - After Gates 0-2, train a compact temporal classifier and compare it with
   rule-based and threshold baselines. Split train/validation/test by family,
   never by window.

@@ -7,12 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from aeolus.config import parse_scenario
+from aeolus.config import load_scenario, parse_scenario
+from aeolus.model_input import build_model_input_contract, model_input_v1
 from aeolus.corpus import (
     DEFAULT_STRIDE_TICKS,
     DEFAULT_WINDOW_TICKS,
     build_corpus_rows,
     generate_corpus,
+    generate_corpus_v2,
     label_for_window,
     main,
 )
@@ -224,3 +226,81 @@ def test_corpus_cli_writes_corpus_and_manifest(tmp_path):
 def test_corpus_cli_rejects_missing_arguments():
     assert main([]) == 2
     assert main(["only-out-dir"]) == 2
+
+
+def test_corpus_cli_generates_corpus_v2(tmp_path, capsys):
+    out_dir = tmp_path / "corpus-v2"
+
+    exit_code = main(["--v2", str(out_dir), str(SCENARIOS / "families.json")])
+
+    assert exit_code == 0
+    printed = capsys.readouterr().out
+    assert "windows=138" in printed
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["corpus_version"] == 2
+
+
+def test_generate_corpus_v2_uses_observable_family_labels(tmp_path):
+    manifest = generate_corpus_v2(SCENARIOS / "families.json", tmp_path)
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "corpus.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert manifest["corpus_version"] == 2
+    assert manifest["total_windows"] == 138
+    assert manifest["scored_windows"] + manifest["excluded_transition_windows"] == 138
+    assert manifest["observable_onsets"] == {
+        "blocked-path-v1": 30,
+        "degradation-primary-fan-v1": 21,
+        "frozen-sensor-v1": 31,
+    }
+    assert {row["split"] for row in rows} == {"test"}
+    assert all(row["model_input_version"] == "model_input_v1" for row in rows)
+    assert all(len(row["selector_sha256"]) == 64 for row in rows)
+    assert set(manifest["families"]) == {
+        "blocked-path-v1",
+        "degradation-primary-fan-v1",
+        "frozen-sensor-v1",
+    }
+
+    degradation_config = load_scenario(SCENARIOS / "primary_fan_degradation.json")
+    degradation_contract = build_model_input_contract(degradation_config)
+    expected_first_vector = model_input_v1(
+        run_scenario(degradation_config)[0], degradation_contract
+    ).tolist()
+    degradation_first_row = next(
+        row
+        for row in rows
+        if row["family_id"] == "degradation-primary-fan-v1"
+        and row["scenario_role"] == "fault"
+        and row["window_index"] == 0
+    )
+    assert degradation_first_row["features"][0] == expected_first_vector
+    assert len(degradation_first_row["features"][0]) == 24
+    evidence = manifest["families"]["degradation-primary-fan-v1"]
+    assert evidence["fault_scenario_sha256"] == __import__("hashlib").sha256(
+        (SCENARIOS / "primary_fan_degradation.json").read_bytes()
+    ).hexdigest()
+    assert evidence["reference_scenario_sha256"] == __import__("hashlib").sha256(
+        (SCENARIOS / "high_demand_healthy.json").read_bytes()
+    ).hexdigest()
+
+    degradation_fault_rows = [
+        row
+        for row in rows
+        if row["family_id"] == "degradation-primary-fan-v1"
+        and row["scenario_role"] == "fault"
+    ]
+    assert next(row for row in degradation_fault_rows if row["end_tick"] == 20)[
+        "label"
+    ] == "nominal"
+    assert next(row for row in degradation_fault_rows if row["end_tick"] == 25)[
+        "label"
+    ] == "excluded_transition"
+    assert next(row for row in degradation_fault_rows if row["start_tick"] == 21)[
+        "label"
+    ] == "gradual_primary_fan_degradation"
+    assert all(
+        row["label"] == "nominal" for row in rows if row["scenario_role"] == "reference"
+    )

@@ -1,0 +1,29 @@
+{
+  "families": [
+    {
+      "family_id": "blocked-path-v1",
+      "fault_class": "blocked_path",
+      "fault_scenario": "blocked_path.json",
+      "reference_scenario": "high_demand_healthy.json",
+      "split": "test"
+    },
+    {
+      "family_id": "degradation-primary-fan-v1",
+      "fault_class": "gradual_primary_fan_degradation",
+      "fault_scenario": "primary_fan_degradation.json",
+      "reference_scenario": "high_demand_healthy.json",
+      "split": "test"
+    },
+    {
+      "family_id": "frozen-sensor-v1",
+      "fault_class": "frozen_sensor",
+      "fault_scenario": "frozen_sensor.json",
+      "reference_scenario": "frozen_sensor_healthy.json",
+      "split": "test"
+    }
+  ],
+  "model_input_version": "model_input_v1",
+  "schema_version": "aeolus_family_manifest_v1",
+  "selector_sha256": "13feee7bc573ca9630ec935f564d02ed7eee549e421c2db12228dde3f6d70234",
+  "topology_sha256": "43ca296d2b9bc6b7ac15d8df2f7db66ba0c383fd7bce463854b9348a8a732262"
+}
