@@ -81,3 +81,12 @@ Gate 2 authorises the next slice: generate a varied scenario sweep and retain
 family-held-out train/validation/test partitions. It does not authorise model
 quality claims, ONNX export, quantisation claims, Arm benchmarks, or autonomous
 actuator control.
+
+## Subsequent experimental status
+
+Branch `alex/ai-2` now uses this boundary for a schema-v9, 840-family IID/stress
+sweep and validation-selected softmax/temporal-MLP experiment with FP32 ONNX
+export. That later
+work does not revise this historical Gate-2 acceptance receipt. Its held-out
+metrics record `ai_advantage_demonstrated: false`; INT8, Arm benchmark,
+and autonomous-control evidence remain absent.

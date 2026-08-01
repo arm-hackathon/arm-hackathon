@@ -5,11 +5,16 @@ profiles are evaluated from the measured tick, never accumulated into mutable
 state, so the same scenario and seed always reproduce the same trace.
 """
 
+import math
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 
 from aeolus.config import HabitatConfig
-from aeolus.plant import initial_state, step_habitat
+from aeolus.measurement import (
+    deterministic_measurement_drift,
+    deterministic_measurement_sample,
+)
+from aeolus.plant import initial_state, requested_loop_airflow, step_habitat
 from aeolus.trace import TickRecord, TraceWriter
 
 
@@ -107,6 +112,9 @@ def _tick_record(
 ) -> TickRecord:
     """Snapshot sensor, plant and actuator telemetry for every zone and path."""
     processing_id = config.processing_zone().id
+    observed_positions, observed_connections = _observed_loop_telemetry(
+        config, state, airflows
+    )
     zones: dict[str, dict[str, float]] = {}
     for zone in config.zones:
         entry = {
@@ -119,19 +127,12 @@ def _tick_record(
         if zone.id == processing_id:
             entry["captured_co2"] = state.captured_co2
         zones[zone.id] = entry
-    connections = {
-        connection.id: {
-            "requested_airflow": state.requested_airflows[connection.id],
-            "delivered_airflow": airflows[connection.id],
-            "airflow_residual": state.airflow_residuals[connection.id],
-        }
-        for connection in config.connections
-    }
+    connections = observed_connections
     actuators = {
         zone_id: {
             "setpoint": actuator.setpoint,
-            "actual_position": actuator.actual_position,
-            "tracking_residual": actuator.tracking_residual,
+            "actual_position": observed_positions[zone_id],
+            "tracking_residual": actuator.setpoint - observed_positions[zone_id],
             "moving": float(actuator.moving),
             "movement_seconds": actuator.movement_seconds,
             "power": actuator.power,
@@ -147,15 +148,107 @@ def _tick_record(
         system={
             "shared_airflow_capacity": config.air_system.shared_airflow_capacity,
             "total_requested_airflow": sum(
-                state.requested_airflows[connection.id]
+                observed_connections[connection.id]["requested_airflow"]
                 for connection in config.connections
                 if connection.to_zone == processing_id
             ),
             "total_delivered_airflow": sum(
-                airflows[connection.id]
+                observed_connections[connection.id]["delivered_airflow"]
                 for connection in config.connections
                 if connection.to_zone == processing_id
             ),
             "capacity_scale": state.capacity_scale,
         },
     )
+
+
+def _observed_loop_telemetry(
+    config: HabitatConfig, state, physical_airflows: dict[str, float]
+) -> tuple[dict[str, float], dict[str, dict[str, float]]]:
+    """Project hidden plant state into bounded, noisy observable measurements."""
+    settings = config.telemetry
+    observed_positions: dict[str, float] = {}
+    observed_connections: dict[str, dict[str, float]] = {}
+
+    for zone in config.non_processing_zones():
+        actuator = state.actuators[zone.id]
+        position_noise = (
+            settings.actuator_position_noise_fraction
+            * deterministic_measurement_sample(
+                config, zone.id, "actuator_position", state.tick
+            )
+        )
+        observed_position = max(
+            0.0, min(1.0, actuator.actual_position + position_noise)
+        )
+        observed_positions[zone.id] = observed_position
+
+        outbound = config.path_to_processing(zone.id)
+        inbound = config.path_from_processing(zone.id)
+        observed_requested = requested_loop_airflow(
+            outbound, inbound, observed_position
+        )
+        for connection in (outbound, inbound):
+            bias = (
+                connection.max_airflow
+                * settings.airflow_bias_fraction
+                * deterministic_measurement_sample(
+                    config, connection.id, "airflow_bias", 0
+                )
+            )
+            noise = (
+                connection.max_airflow
+                * settings.airflow_noise_fraction
+                * deterministic_measurement_sample(
+                    config, connection.id, "airflow_noise", state.tick
+                )
+            )
+            drift = (
+                connection.max_airflow
+                * settings.airflow_drift_fraction
+                * deterministic_measurement_drift(
+                    config, connection.id, "airflow", state.tick
+                )
+            )
+            observed_delivered = max(
+                0.0,
+                min(
+                    observed_requested,
+                    physical_airflows[connection.id] + bias + drift + noise,
+                ),
+            )
+            observed_connections[connection.id] = {
+                "requested_airflow": observed_requested,
+                "delivered_airflow": observed_delivered,
+                "airflow_residual": observed_requested - observed_delivered,
+            }
+
+    processing_id = config.processing_zone().id
+    outbound_ids = [
+        connection.id
+        for connection in config.connections
+        if connection.to_zone == processing_id
+    ]
+    observed_total = sum(
+        observed_connections[connection_id]["delivered_airflow"]
+        for connection_id in outbound_ids
+    )
+    capacity = config.air_system.shared_airflow_capacity
+    if observed_total > capacity:
+        scale = capacity / observed_total
+        if sum(
+            observed_connections[connection_id]["delivered_airflow"] * scale
+            for connection_id in outbound_ids
+        ) > capacity:
+            scale = math.nextafter(scale, 0.0)
+        for zone in config.non_processing_zones():
+            for connection in (
+                config.path_to_processing(zone.id),
+                config.path_from_processing(zone.id),
+            ):
+                entry = observed_connections[connection.id]
+                entry["delivered_airflow"] *= scale
+                entry["airflow_residual"] = (
+                    entry["requested_airflow"] - entry["delivered_airflow"]
+                )
+    return observed_positions, observed_connections

@@ -20,6 +20,10 @@ from typing import Mapping
 from aeolus.actuator import ActuatorState, RateLimitedActuator
 from aeolus.config import ConnectionSpec, HabitatConfig
 from aeolus.control import CO2SensorReading, ProportionalCO2Controller
+from aeolus.measurement import (
+    deterministic_measurement_drift,
+    deterministic_measurement_sample,
+)
 
 
 @dataclass(frozen=True)
@@ -190,7 +194,7 @@ def step_habitat(
     }
 
     # 2. Sensors, controllers and measured actuator movement.
-    sensor_co2_concentration = {
+    latent_sensor_co2_concentration = {
         zone.id: zone_co2_mass[zone.id] / zone.air_volume
         for zone in config.zones
     }
@@ -199,8 +203,29 @@ def step_habitat(
     frozen_sensor_readings = dict(state.frozen_sensor_readings)
     for zone_id in sorted(frozen_zones):
         if zone_id not in frozen_sensor_readings:
-            frozen_sensor_readings[zone_id] = sensor_co2_concentration[zone_id]
-        sensor_co2_concentration[zone_id] = frozen_sensor_readings[zone_id]
+            frozen_sensor_readings[zone_id] = latent_sensor_co2_concentration[zone_id]
+        latent_sensor_co2_concentration[zone_id] = frozen_sensor_readings[zone_id]
+    sensor_co2_concentration = dict(latent_sensor_co2_concentration)
+    co2_scale = config.control.upper_threshold
+    telemetry = config.telemetry
+    for zone in config.non_processing_zones():
+        bias = co2_scale * telemetry.co2_sensor_bias_fraction * (
+            deterministic_measurement_sample(config, zone.id, "co2_sensor_bias", 0)
+        )
+        drift = co2_scale * telemetry.co2_sensor_drift_fraction * (
+            deterministic_measurement_drift(
+                config, zone.id, "co2_sensor", next_tick
+            )
+        )
+        noise = co2_scale * telemetry.co2_sensor_noise_fraction * (
+            deterministic_measurement_sample(
+                config, zone.id, "co2_sensor_noise", next_tick
+            )
+        )
+        sensor_co2_concentration[zone.id] = max(
+            0.0,
+            latent_sensor_co2_concentration[zone.id] + bias + drift + noise,
+        )
     controller = ProportionalCO2Controller(config.control)
     actuator_model = RateLimitedActuator(config.actuator)
     actuators: dict[str, ActuatorState] = {}

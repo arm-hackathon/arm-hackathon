@@ -19,20 +19,29 @@ isolated actuator degrades
 AI provides diagnosis and confidence. Deterministic safety logic retains
 control of every actuator command.
 
-## Status — Gates 0–2 accepted
+## Status — Gates 0–2 accepted; fair `alex/ai-2` experiment implemented
 
-Landed: the deterministic schema-v7 simulator with separated requested/delivered
+Landed: the deterministic schema-v9 simulator with separated requested/delivered
 airflow and explicit residuals; five scenarios (nominal, healthy high-demand,
 gradual degradation, blocked path, frozen sensor); the telemetry allowlist and
 model-feature projection; the HTML visualiser; the leakage-safe labelled window
 corpus; and the streaming rule baseline with its evaluation harness (111/115
 windows on corpus v1, latencies 10/5/10 ticks).
 
+The experimental branch adds deterministic measurement noise, bias and drift;
+controller-facing imperfect CO2 sensing; an 840-family train/validation/IID
+test/OOD-stress sweep; validation-selected softmax and temporal-MLP candidates
+over `float32[10,24]`; validation-calibrated robust rules; stride-one causal
+latency; and FP32 ONNX export. The locked IID result does not demonstrate an AI
+advantage: temporal-MLP macro-F1 is 0.5765 versus 0.6410 for calibrated rules,
+with substantially more false alarms. The model's 9-tick median latency versus
+11 ticks for rules is below the fixed 20% latency-win threshold. Stress
+evidence also favours rules, so the rule remains preferred.
+
 Gate 0 accepts the R2 semantic contract. Gate 1 adds graph-derived
 outbound/return loop pairing, the exact topology-bound `model_input_v1`
 float32[24] selector, canonical selector/topology hashes, and fail-closed
-artifact metadata validation. It does not add training data, a classifier,
-ONNX, a governor, backup geometry, or cloud resources.
+artifact metadata validation.
 
 Gate 2 is accepted. Its strict, topology-bound family manifest binds each
 healthy/fault pair to one split and rejects pairs that differ outside
@@ -43,10 +52,8 @@ training and scored metrics. The three current families are contract fixtures,
 not a training corpus; the scenario sweep is the next prerequisite for model
 work.
 
-Not started: the scenario sweep that turns the accepted corpus contract into
-training data, temporal classifier and FP32 ONNX export, INT8 quantisation,
-the safety governor and redundant fan, Arm64 benchmarks, and reproducibility
-packaging.
+Not started: INT8 quantisation, the safety governor and redundant fan, Arm64
+benchmarks, and deployment reproducibility packaging.
 
 ## Core objectives
 
@@ -114,14 +121,15 @@ packaging.
   immutable family evidence for its split, role, onset and label, plus replayed
   model-input traces; generated manifests persist frozen Gate-1 metadata, family
   split counts and a canonical integrity hash.)
-- After Gates 0-2, train a compact temporal classifier and compare it with
-  rule-based and threshold baselines. Split train/validation/test by family,
-  never by window.
+- Train a compact temporal classifier and compare it with the rule baseline.
+  (done experimentally with IID and separately reported OOD stress families;
+  split by family, never by window; current locked result favours the rule)
 - Choose the architecture with quantisation in mind: prefer operations that
   survive INT8 cleanly over exotic layers, so quantisation is a design
   input, not an afterthought.
-- Export FP32 and INT8 ONNX models.
-- Report fault class, confidence, detection latency and false alarms.
+- Export FP32 and INT8 ONNX models. (FP32 done; INT8 pending)
+- Report fault class, confidence, detection latency and false alarms. (done for
+  FP32 and rule comparison)
 
 ### 5. Safety governor
 

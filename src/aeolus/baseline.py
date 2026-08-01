@@ -24,6 +24,10 @@ both are handled explicitly:
 
 from __future__ import annotations
 
+import itertools
+import math
+from dataclasses import asdict, dataclass
+
 from aeolus.config import HabitatConfig
 from aeolus.model_input import build_model_input_contract
 
@@ -40,15 +44,80 @@ BLOCK_JUMP_RATIO = 0.2
 """Single-tick jump in relative residual that marks a sudden (blocked) onset."""
 
 FROZEN_RUN_TICKS = 10
-"""Identical consecutive sensor readings that mark a frozen sensor."""
+"""Default consecutive readings used to distinguish a frozen sensor."""
+
+FROZEN_NORMALIZED_RANGE = 0.0
+"""Default tail range, normalised by controller scale, for a frozen sensor."""
+
+RULE_PARAMETER_GRID = {
+    "residual_threshold": (0.04, 0.06, 0.08, 0.10),
+    "isolation_margin": (0.03, 0.05, 0.08),
+    "blockage_jump": (0.10, 0.20, 0.30),
+    "frozen_normalized_range": (0.005, 0.01, 0.02),
+    "persistence_ticks": (3, 5),
+}
 
 _REQUESTED_EPSILON = 1e-9
+
+
+@dataclass(frozen=True, order=True)
+class RuleParameters:
+    """Validation-tuned thresholds for the observable rule detector."""
+
+    residual_threshold: float = DELIVERY_RESIDUAL_RATIO
+    isolation_margin: float = ISOLATION_MARGIN
+    blockage_jump: float = BLOCK_JUMP_RATIO
+    frozen_normalized_range: float = FROZEN_NORMALIZED_RANGE
+    persistence_ticks: int = DELIVERY_PERSISTENCE_TICKS
+
+    def __post_init__(self) -> None:
+        fractions = (
+            self.residual_threshold,
+            self.isolation_margin,
+            self.blockage_jump,
+            self.frozen_normalized_range,
+        )
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < 0.0
+            for value in fractions
+        ):
+            raise ValueError("rule thresholds must be finite and non-negative")
+        if (
+            isinstance(self.persistence_ticks, bool)
+            or not isinstance(self.persistence_ticks, int)
+            or self.persistence_ticks < 2
+        ):
+            raise ValueError("rule persistence_ticks must be an integer of at least two")
+
+    def as_dict(self) -> dict[str, float | int]:
+        """Return a stable JSON-ready parameter record."""
+        return asdict(self)
+
+
+def rule_parameter_grid() -> tuple[RuleParameters, ...]:
+    """Return the committed finite calibration grid in lexicographic order."""
+    keys = tuple(RULE_PARAMETER_GRID)
+    return tuple(
+        RuleParameters(**dict(zip(keys, values)))
+        for values in itertools.product(*(RULE_PARAMETER_GRID[key] for key in keys))
+    )
 
 
 class RuleBaseline:
     """Streaming rule detector over consecutive windows of one scenario run."""
 
-    def __init__(self, config: HabitatConfig) -> None:
+    def __init__(
+        self, config: HabitatConfig, parameters: RuleParameters | None = None
+    ) -> None:
+        self.parameters = parameters or RuleParameters()
+        self._frozen_persistence_ticks = (
+            self.parameters.persistence_ticks
+            if parameters is not None
+            else FROZEN_RUN_TICKS
+        )
         self._model_input_contract = build_model_input_contract(config)
         self._processing_zone_id = config.processing_zone().id
         self._loop_connection_pairs = tuple(
@@ -65,6 +134,7 @@ class RuleBaseline:
         self._expected_actuator_ids = frozenset(
             zone.id for zone in config.non_processing_zones()
         )
+        self._co2_scale = config.control.upper_threshold
         self.reset()
 
     def reset(self) -> None:
@@ -88,12 +158,17 @@ class RuleBaseline:
                 self._max_jump[connection_id] = max(
                     self._max_jump.get(connection_id, 0.0), max(jumps)
                 )
-        if _has_frozen_sensor(features):
+        if _has_frozen_sensor(
+            features,
+            normalized_range=self.parameters.frozen_normalized_range,
+            persistence_ticks=self._frozen_persistence_ticks,
+            scale=self._co2_scale,
+        ):
             return "frozen_sensor"
         faulty = self._isolated_faulty_connection(ratios_by_connection)
         if faulty is None:
             return "nominal"
-        if self._max_jump.get(faulty, 0.0) > BLOCK_JUMP_RATIO:
+        if self._max_jump.get(faulty, 0.0) > self.parameters.blockage_jump:
             return "blocked_path"
         return "gradual_primary_fan_degradation"
 
@@ -174,7 +249,7 @@ class RuleBaseline:
         self, ratios_by_connection: dict[str, list[float]]
     ) -> str | None:
         loops = self._loop_groups(ratios_by_connection)
-        if len(next(iter(loops.values()), [])) < DELIVERY_PERSISTENCE_TICKS:
+        if len(next(iter(loops.values()), [])) < self.parameters.persistence_ticks:
             return None
         # Isolation needs a reference: a one-loop habitat offers no way to
         # tell a faulted loop from shared contention, so it stays nominal.
@@ -182,17 +257,17 @@ class RuleBaseline:
             return None
         candidates: list[tuple[float, str]] = []
         for connection_id, ratios in loops.items():
-            tail = ratios[-DELIVERY_PERSISTENCE_TICKS:]
+            tail = ratios[-self.parameters.persistence_ticks:]
             others = [
                 ratio
                 for other_id, other_ratios in loops.items()
                 if other_id != connection_id
-                for ratio in other_ratios[-DELIVERY_PERSISTENCE_TICKS:]
+                for ratio in other_ratios[-self.parameters.persistence_ticks:]
             ]
             others_peak = max(others, default=0.0)
             if all(
-                ratio > DELIVERY_RESIDUAL_RATIO
-                and ratio - others_peak > ISOLATION_MARGIN
+                ratio > self.parameters.residual_threshold
+                and ratio - others_peak > self.parameters.isolation_margin
                 for ratio in tail
             ):
                 candidates.append((tail[-1], connection_id))
@@ -201,10 +276,16 @@ class RuleBaseline:
         return max(candidates)[1]
 
 
-def _has_frozen_sensor(features: list[dict]) -> bool:
+def _has_frozen_sensor(
+    features: list[dict],
+    *,
+    normalized_range: float,
+    persistence_ticks: int,
+    scale: float,
+) -> bool:
     # Zones with actuators are the real sensor loops; the processing bay has a
     # constant zero reading by construction and must never count as frozen.
-    if len(features) < FROZEN_RUN_TICKS:
+    if len(features) < persistence_ticks:
         return False
     sensor_zones = [
         zone_id
@@ -214,9 +295,11 @@ def _has_frozen_sensor(features: list[dict]) -> bool:
     for zone_id in sensor_zones:
         readings = [
             tick["zones"][zone_id]["sensor_co2_concentration"]
-            for tick in features[-FROZEN_RUN_TICKS:]
+            for tick in features[-persistence_ticks:]
         ]
-        if len(set(readings)) == 1:
+        reading_range = max(readings) - min(readings)
+        normalizer = max(abs(scale), max(abs(value) for value in readings), 1e-9)
+        if reading_range / normalizer <= normalized_range:
             return True
     return False
 

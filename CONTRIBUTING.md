@@ -44,10 +44,12 @@ resolution reproducible. `uv` creates its local environment as needed.
 
 | Path | Purpose |
 |---|---|
-| `scenarios/` | Closed-schema v7 scenario inputs. |
+| `scenarios/` | Closed-schema v9 scenarios and sweep-v1/v2 specifications. |
 | `src/aeolus/config.py` | Scenario parsing and validation. |
 | `src/aeolus/plant.py` | Deterministic plant, airflow and CO₂ mass transfer. |
 | `src/aeolus/scenario.py` | Warm-up, measured runs and fault-profile scheduling. |
+| `src/aeolus/sweep.py` | Deterministic family-held-out scenario generation. |
+| `src/aeolus/detector.py` | Softmax/temporal-MLP training, strict inference and FP32 ONNX export. |
 | `src/aeolus/trace.py` | JSONL writer and allowlisted model-feature projection. |
 | `src/aeolus/visualise.py` | Dependency-free local HTML replay visualiser. |
 | `tests/` | Unit, scenario, replay and visualisation tests. |
@@ -56,7 +58,9 @@ resolution reproducible. `uv` creates its local environment as needed.
 
 ## Current boundaries
 
-AEOLUS currently implements deterministic simulation and replay only. It does
-not include model training or inference, ONNX, quantisation, a governor,
-redundant fan, Arm measurements, a dashboard, API, database, cloud service or
-hardware integration. Do not represent future work as current behaviour.
+AEOLUS currently includes deterministic simulation/replay plus an experimental
+softmax and temporal-MLP training/inference paths with FP32 ONNX export. It does not include
+INT8 quantisation, a governor, redundant fan, Arm measurements, a dashboard,
+API, database, cloud service or hardware integration. The accepted held-out
+evidence does not show an AI advantage; do not represent future work or the
+negative model result as completed deployment evidence.

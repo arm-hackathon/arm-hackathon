@@ -37,13 +37,22 @@ FORBIDDEN_FEATURE_NAMES = {
     "end_effectiveness",
     "random_seed",
     "source_noise",
+    "measurement_noise",
+    "airflow_noise_fraction",
+    "airflow_bias_fraction",
+    "airflow_drift_fraction",
+    "actuator_position_noise_fraction",
+    "co2_sensor_noise_fraction",
+    "co2_sensor_bias_fraction",
+    "co2_sensor_drift_fraction",
+    "telemetry",
     "seed",
     "frozen",
 }
 
 
 def _degradation_config(standard_doc):
-    standard_doc["version"] = 7
+    standard_doc["version"] = 9
     standard_doc["fault_profiles"] = [
         {
             "type": "gradual_primary_fan_degradation",
@@ -75,7 +84,7 @@ def test_label_for_window_marks_fault_active_at_window_end(standard_doc):
 
 
 def test_label_for_window_marks_blocked_and_frozen_from_start_tick(standard_doc):
-    standard_doc["version"] = 7
+    standard_doc["version"] = 9
     standard_doc["fault_profiles"] = [
         {
             "type": "blocked_path",
@@ -91,7 +100,7 @@ def test_label_for_window_marks_blocked_and_frozen_from_start_tick(standard_doc)
 
 
 def test_label_for_window_rejects_multiple_active_faults(standard_doc):
-    standard_doc["version"] = 7
+    standard_doc["version"] = 9
     standard_doc["fault_profiles"] = [
         {
             "type": "gradual_primary_fan_degradation",

@@ -29,7 +29,7 @@ USAGE = (
     "<scenario.json> [scenario.json ...]\n"
     "   or: PYTHONPATH=src python3 -m aeolus.evaluate --v2 <corpus.jsonl> "
     "<families.json> --expected-family-manifest-sha256 <sha256> "
-    "[--split train|validation|test]"
+    "[--split train|validation|test|stress]"
 )
 EXCLUDED_TRANSITION_LABEL = "excluded_transition"
 _V2_CONTRACT_KEYS = frozenset(
@@ -46,7 +46,7 @@ _V2_ROW_KEYS = _V2_CONTRACT_KEYS | {
     "label",
     "features",
 }
-_V2_SPLITS = frozenset({"train", "validation", "test"})
+_V2_SPLITS = frozenset({"train", "validation", "test", "stress"})
 _V2_SCENARIO_ROLES = frozenset({"reference", "fault"})
 
 
@@ -149,7 +149,7 @@ def evaluate_v2(
     target_split: str,
 ) -> dict:
     """Score one corpus-v2 split from trusted observable-onset evidence."""
-    _validate_v2_contract(rows, expected_contract, expected_families)
+    validate_v2_rows(rows, expected_contract, expected_families)
     if target_split not in _V2_SPLITS:
         raise ValueError("corpus v2 target split is unsupported")
     if not isinstance(labeller, _WindowLabeller):
@@ -217,11 +217,12 @@ def evaluate_v2(
     }
 
 
-def _validate_v2_contract(
+def validate_v2_rows(
     rows: list[dict],
     expected_contract: dict[str, str],
     expected_families: Mapping[str, FamilyEvidence],
-) -> None:
+) -> int:
+    """Validate complete corpus-v2 evidence and return its window length."""
     if not rows:
         raise ValueError("corpus v2 evaluation requires at least one row")
     if set(expected_contract) != _V2_CONTRACT_KEYS or any(
@@ -337,6 +338,7 @@ def _validate_v2_contract(
                 trace_ticks=trace_ticks,
                 window_ticks=window_ticks,
             )
+    return window_ticks
 
 
 def _validate_v2_window_sequence(

@@ -1,0 +1,163 @@
+{
+  "schema_version": "aeolus_sweep_v2",
+  "base_scenario": "standard_habitat.json",
+  "targets": ["cabin_a", "cabin_b", "lab"],
+  "splits": {
+    "train": {
+      "seeds": [100, 101, 102, 103, 104, 105],
+      "fault_start_ticks": [25, 55],
+      "operating_profiles": [
+        {
+          "id": "primary-low",
+          "source_multiplier": 0.8,
+          "shared_airflow_capacity": 24.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015
+          }
+        },
+        {
+          "id": "primary-high",
+          "source_multiplier": 1.2,
+          "shared_airflow_capacity": 36.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.035,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "actuator_position_noise_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.03,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02
+          }
+        }
+      ],
+      "gradual_profiles": [
+        {"duration_ticks": 30, "end_effectiveness": 0.75},
+        {"duration_ticks": 60, "end_effectiveness": 0.9}
+      ],
+      "blocked_effectiveness": [0.65, 0.85]
+    },
+    "validation": {
+      "seeds": [500, 501],
+      "fault_start_ticks": [25, 55],
+      "operating_profiles": [
+        {
+          "id": "primary-low",
+          "source_multiplier": 0.8,
+          "shared_airflow_capacity": 24.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015
+          }
+        },
+        {
+          "id": "primary-high",
+          "source_multiplier": 1.2,
+          "shared_airflow_capacity": 36.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.035,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "actuator_position_noise_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.03,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02
+          }
+        }
+      ],
+      "gradual_profiles": [
+        {"duration_ticks": 30, "end_effectiveness": 0.75},
+        {"duration_ticks": 60, "end_effectiveness": 0.9}
+      ],
+      "blocked_effectiveness": [0.65, 0.85]
+    },
+    "test": {
+      "seeds": [1000, 1001, 1002],
+      "fault_start_ticks": [25, 55],
+      "operating_profiles": [
+        {
+          "id": "primary-low",
+          "source_multiplier": 0.8,
+          "shared_airflow_capacity": 24.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015
+          }
+        },
+        {
+          "id": "primary-high",
+          "source_multiplier": 1.2,
+          "shared_airflow_capacity": 36.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.035,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "actuator_position_noise_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.03,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02
+          }
+        }
+      ],
+      "gradual_profiles": [
+        {"duration_ticks": 30, "end_effectiveness": 0.75},
+        {"duration_ticks": 60, "end_effectiveness": 0.9}
+      ],
+      "blocked_effectiveness": [0.65, 0.85]
+    },
+    "stress": {
+      "seeds": [2000, 2001, 2002],
+      "fault_start_ticks": [35, 75],
+      "operating_profiles": [
+        {
+          "id": "stress-low",
+          "source_multiplier": 0.65,
+          "shared_airflow_capacity": 22.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.06,
+            "airflow_bias_fraction": 0.03,
+            "airflow_drift_fraction": 0.04,
+            "actuator_position_noise_fraction": 0.025,
+            "co2_sensor_noise_fraction": 0.05,
+            "co2_sensor_bias_fraction": 0.03,
+            "co2_sensor_drift_fraction": 0.04
+          }
+        },
+        {
+          "id": "stress-high",
+          "source_multiplier": 1.4,
+          "shared_airflow_capacity": 34.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.05,
+            "airflow_bias_fraction": 0.025,
+            "airflow_drift_fraction": 0.035,
+            "actuator_position_noise_fraction": 0.02,
+            "co2_sensor_noise_fraction": 0.045,
+            "co2_sensor_bias_fraction": 0.025,
+            "co2_sensor_drift_fraction": 0.035
+          }
+        }
+      ],
+      "gradual_profiles": [
+        {"duration_ticks": 20, "end_effectiveness": 0.6},
+        {"duration_ticks": 80, "end_effectiveness": 0.95}
+      ],
+      "blocked_effectiveness": [0.45, 0.92]
+    }
+  }
+}

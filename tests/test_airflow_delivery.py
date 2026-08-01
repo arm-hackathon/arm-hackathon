@@ -1,4 +1,4 @@
-"""Observable request-versus-delivery contracts for schema-v7 scenarios."""
+"""Observable request-versus-delivery contracts for schema-v9 scenarios."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def test_requested_loop_airflow_uses_capacity_and_measured_position_not_health()
 
 def test_fault_only_directly_reduces_the_target_loop_without_shared_capacity_coupling():
     healthy_doc = _config_doc()
-    healthy_doc["version"] = 7
+    healthy_doc["version"] = 9
     healthy_doc["fault_profiles"] = []
     healthy_doc["air_system"]["shared_airflow_capacity"] = 40.0
     degraded_doc = copy.deepcopy(healthy_doc)
@@ -88,10 +88,10 @@ def test_fault_only_directly_reduces_the_target_loop_without_shared_capacity_cou
         assert degraded_flows[connection_id] == pytest.approx(healthy_flows[connection_id])
 
 
-def test_standard_scenario_is_v7_and_declares_no_fault_profile():
+def test_standard_scenario_is_v8_and_declares_no_fault_profile():
     config = load_scenario(STANDARD_PATH)
 
-    assert config.version == 7
+    assert config.version == 9
     assert config.fault_profiles == ()
 
 
@@ -105,7 +105,7 @@ def test_paired_high_demand_scenarios_differ_only_by_fault_profiles():
     assert healthy == degraded
 
 
-def test_same_v7_scenario_produces_byte_identical_records_and_traces(tmp_path):
+def test_same_v8_scenario_produces_byte_identical_records_and_traces(tmp_path):
     first = tmp_path / "first.jsonl"
     second = tmp_path / "second.jsonl"
 
