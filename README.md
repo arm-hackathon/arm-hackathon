@@ -92,7 +92,9 @@ PYTHONPATH=src uv run python -m aeolus.corpus \
 
 # Grade only rows that match manifest-derived held-out test-family evidence
 PYTHONPATH=src uv run python -m aeolus.evaluate \
-  --v2 out/corpus-v2/corpus.jsonl scenarios/families.json --split test
+  --v2 out/corpus-v2/corpus.jsonl scenarios/families.json \
+  --expected-family-manifest-sha256 828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541 \
+  --split test
 ```
 
 On Windows PowerShell, set `PYTHONPATH` for the session before running the same commands:

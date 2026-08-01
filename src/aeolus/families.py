@@ -129,19 +129,21 @@ def parse_family_manifest(document: object, *, base_dir: Path) -> FamilyManifest
 
     families: list[ScenarioFamily] = []
     seen_ids: set[str] = set()
-    scenario_splits: dict[Path, str] = {}
-    pair_owners: dict[tuple[Path, Path], str] = {}
+    scenario_splits: dict[str, str] = {}
+    pair_owners: dict[tuple[str, str], str] = {}
     for raw_family in raw_families:
         family = _parse_family(raw_family, base_dir=base_dir)
         if family.family_id in seen_ids:
             raise ValueError(f"duplicate family_id {family.family_id!r}")
         seen_ids.add(family.family_id)
         _validate_family_pair(family, declared_metadata)
-        for scenario_path in (family.reference_path, family.fault_path):
-            existing_split = scenario_splits.setdefault(scenario_path, family.split)
+        reference_identity = _canonical_scenario_sha256(family.reference_path)
+        fault_identity = _canonical_scenario_sha256(family.fault_path)
+        for scenario_identity in (reference_identity, fault_identity):
+            existing_split = scenario_splits.setdefault(scenario_identity, family.split)
             if existing_split != family.split:
-                raise ValueError("scenario is assigned to more than one split")
-        pair = (family.reference_path, family.fault_path)
+                raise ValueError("scenario content is assigned to more than one split")
+        pair = (reference_identity, fault_identity)
         existing_family = pair_owners.setdefault(pair, family.family_id)
         if existing_family != family.family_id:
             raise ValueError("scenario family pair is assigned more than once")
@@ -277,6 +279,19 @@ def _model_input_trace(
         tuple(float(value) for value in model_input_v1(record, contract))
         for record in records
     )
+
+
+def _canonical_scenario_sha256(path: Path) -> str:
+    """Hash canonical scenario JSON so renamed or reformatted copies share identity."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError(f"cannot read scenario {path}: {exc}") from None
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"scenario is not valid JSON: {path}: {exc}") from None
+    if not isinstance(document, dict):
+        raise ValueError(f"scenario must be a JSON object: {path}")
+    return _sha256(_canonical_json(document))
 
 
 def _parse_family(raw_family: object, *, base_dir: Path) -> ScenarioFamily:
