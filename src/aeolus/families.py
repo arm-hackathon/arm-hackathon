@@ -28,7 +28,7 @@ from aeolus.scenario import run_scenario
 
 
 FAMILY_MANIFEST_VERSION = "aeolus_family_manifest_v1"
-_SPLITS = frozenset({"train", "validation", "test"})
+_SPLITS = frozenset({"train", "validation", "test", "stress"})
 _TOP_LEVEL_FIELDS = frozenset(
     {
         "families",
@@ -363,6 +363,7 @@ def _same_non_fault_configuration(
         and reference.control == fault.control
         and reference.actuator == fault.actuator
         and reference.simulation == fault.simulation
+        and reference.telemetry == fault.telemetry
         and reference.air_system == fault.air_system
     )
 

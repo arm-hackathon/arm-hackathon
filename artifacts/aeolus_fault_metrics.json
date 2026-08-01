@@ -1,0 +1,864 @@
+{
+  "artifact_sizes_bytes": {
+    "metrics_json": 22043,
+    "model_json": 70953,
+    "model_onnx": 14009
+  },
+  "candidate_selection": {
+    "candidates": {
+      "softmax_detector": {
+        "serialized_json_size_bytes": 40525,
+        "validation_metrics": {
+          "accuracy": 0.48790549409338085,
+          "brier_score": 0.9620279981020244,
+          "confusion_matrix": [
+            [
+              1605,
+              390,
+              0,
+              1557
+            ],
+            [
+              74,
+              421,
+              100,
+              106
+            ],
+            [
+              10,
+              334,
+              375,
+              1
+            ],
+            [
+              134,
+              25,
+              0,
+              201
+            ]
+          ],
+          "cross_entropy": 4.971823846443313,
+          "detection_latency_ticks": {
+            "causal_stride_ticks": 5,
+            "overall_median": 10.0,
+            "per_class": {
+              "blocked_path": {
+                "detected_families": 39,
+                "maximum": 60,
+                "median": 10.0,
+                "missed_families": 9
+              },
+              "frozen_sensor": {
+                "detected_families": 21,
+                "maximum": 69,
+                "median": 9.0,
+                "missed_families": 3
+              },
+              "gradual_primary_fan_degradation": {
+                "detected_families": 48,
+                "maximum": 54,
+                "median": 20.5,
+                "missed_families": 0
+              }
+            }
+          },
+          "macro_f1": 0.4638813115169091,
+          "nominal_false_alarm_rate": 0.5481418918918919,
+          "nominal_false_alarms": 1947,
+          "per_class": {
+            "blocked_path": {
+              "f1": 0.6276150627615064,
+              "precision": 0.7894736842105263,
+              "recall": 0.5208333333333334,
+              "support": 720
+            },
+            "frozen_sensor": {
+              "f1": 0.1806741573033708,
+              "precision": 0.10777479892761394,
+              "recall": 0.5583333333333333,
+              "support": 360
+            },
+            "gradual_primary_fan_degradation": {
+              "f1": 0.45002672367717794,
+              "precision": 0.3598290598290598,
+              "recall": 0.6005706134094151,
+              "support": 701
+            },
+            "nominal": {
+              "f1": 0.5972093023255814,
+              "precision": 0.8804168952276468,
+              "recall": 0.4518581081081081,
+              "support": 3552
+            }
+          },
+          "samples": 5333
+        }
+      },
+      "temporal_mlp_detector": {
+        "serialized_json_size_bytes": 70953,
+        "validation_metrics": {
+          "accuracy": 0.6731670729420589,
+          "brier_score": 0.4581045483316072,
+          "confusion_matrix": [
+            [
+              2406,
+              390,
+              0,
+              756
+            ],
+            [
+              65,
+              412,
+              192,
+              32
+            ],
+            [
+              0,
+              209,
+              510,
+              1
+            ],
+            [
+              85,
+              11,
+              2,
+              262
+            ]
+          ],
+          "cross_entropy": 0.7439410622356263,
+          "detection_latency_ticks": {
+            "causal_stride_ticks": 5,
+            "overall_median": 10.0,
+            "per_class": {
+              "blocked_path": {
+                "detected_families": 48,
+                "maximum": 30,
+                "median": 10.0,
+                "missed_families": 0
+              },
+              "frozen_sensor": {
+                "detected_families": 24,
+                "maximum": 29,
+                "median": 14.0,
+                "missed_families": 0
+              },
+              "gradual_primary_fan_degradation": {
+                "detected_families": 48,
+                "maximum": 43,
+                "median": 13.0,
+                "missed_families": 0
+              }
+            }
+          },
+          "macro_f1": 0.5884287120067866,
+          "nominal_false_alarm_rate": 0.32263513513513514,
+          "nominal_false_alarms": 1146,
+          "per_class": {
+            "blocked_path": {
+              "f1": 0.7162921348314607,
+              "precision": 0.7244318181818182,
+              "recall": 0.7083333333333334,
+              "support": 720
+            },
+            "frozen_sensor": {
+              "f1": 0.371367824238129,
+              "precision": 0.24928639391056137,
+              "recall": 0.7277777777777777,
+              "support": 360
+            },
+            "gradual_primary_fan_degradation": {
+              "f1": 0.4782356355194428,
+              "precision": 0.40313111545988256,
+              "recall": 0.5877318116975749,
+              "support": 701
+            },
+            "nominal": {
+              "f1": 0.7878192534381139,
+              "precision": 0.9413145539906104,
+              "recall": 0.6773648648648649,
+              "support": 3552
+            }
+          },
+          "samples": 5333
+        }
+      }
+    },
+    "selected_candidate": "temporal_mlp_detector",
+    "selected_validation_metrics": {
+      "accuracy": 0.6731670729420589,
+      "brier_score": 0.4581045483316072,
+      "confusion_matrix": [
+        [
+          2406,
+          390,
+          0,
+          756
+        ],
+        [
+          65,
+          412,
+          192,
+          32
+        ],
+        [
+          0,
+          209,
+          510,
+          1
+        ],
+        [
+          85,
+          11,
+          2,
+          262
+        ]
+      ],
+      "cross_entropy": 0.7439410622356263,
+      "detection_latency_ticks": {
+        "causal_stride_ticks": 5,
+        "overall_median": 10.0,
+        "per_class": {
+          "blocked_path": {
+            "detected_families": 48,
+            "maximum": 30,
+            "median": 10.0,
+            "missed_families": 0
+          },
+          "frozen_sensor": {
+            "detected_families": 24,
+            "maximum": 29,
+            "median": 14.0,
+            "missed_families": 0
+          },
+          "gradual_primary_fan_degradation": {
+            "detected_families": 48,
+            "maximum": 43,
+            "median": 13.0,
+            "missed_families": 0
+          }
+        }
+      },
+      "macro_f1": 0.5884287120067866,
+      "nominal_false_alarm_rate": 0.32263513513513514,
+      "nominal_false_alarms": 1146,
+      "per_class": {
+        "blocked_path": {
+          "f1": 0.7162921348314607,
+          "precision": 0.7244318181818182,
+          "recall": 0.7083333333333334,
+          "support": 720
+        },
+        "frozen_sensor": {
+          "f1": 0.371367824238129,
+          "precision": 0.24928639391056137,
+          "recall": 0.7277777777777777,
+          "support": 360
+        },
+        "gradual_primary_fan_degradation": {
+          "f1": 0.4782356355194428,
+          "precision": 0.40313111545988256,
+          "recall": 0.5877318116975749,
+          "support": 701
+        },
+        "nominal": {
+          "f1": 0.7878192534381139,
+          "precision": 0.9413145539906104,
+          "recall": 0.6773648648648649,
+          "support": 3552
+        }
+      },
+      "samples": 5333
+    },
+    "selection_order": [
+      "macro_f1_descending",
+      "cross_entropy_ascending",
+      "serialized_json_size_ascending",
+      "candidate_name_lexicographic"
+    ],
+    "selection_split": "validation"
+  },
+  "class_names": [
+    "nominal",
+    "gradual_primary_fan_degradation",
+    "blocked_path",
+    "frozen_sensor"
+  ],
+  "contract_metadata": {
+    "model_input_version": "model_input_v1",
+    "selector_sha256": "13feee7bc573ca9630ec935f564d02ed7eee549e421c2db12228dde3f6d70234",
+    "topology_sha256": "43ca296d2b9bc6b7ac15d8df2f7db66ba0c383fd7bce463854b9348a8a732262"
+  },
+  "evidence_conclusion": {
+    "ai_advantage_demonstrated": false,
+    "criterion": "macro-F1 error reduction >= 25% with false-alarm regression <= 0.01 and every fault recall within 0.02, or latency reduction >= 20% with macro-F1 within 0.01, every fault recall within 0.02, and false-alarm regression <= 0.01",
+    "fault_recall_deltas": {
+      "blocked_path": -0.18425925925925923,
+      "frozen_sensor": 0.7240740740740741,
+      "gradual_primary_fan_degradation": 0.012416427889207271
+    },
+    "latency_reduction_fraction": 0.18181818181818182,
+    "macro_f1_error_reduction_fraction": -0.17965051722335895,
+    "macro_f1_gain": -0.06448941337511871,
+    "nominal_false_alarm_regression": 0.32826576576576577,
+    "preferred_method": "rule_baseline"
+  },
+  "families_by_split": {
+    "stress": 180,
+    "test": 180,
+    "train": 360,
+    "validation": 120
+  },
+  "family_manifest_sha256": "28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465",
+  "feature_width": 24,
+  "format": "aeolus_detector_evidence_v2",
+  "latency_reference": "observable_onset_tick_stride_one_causal_windows",
+  "model": {
+    "accuracy": 0.6531582238899312,
+    "brier_score": 0.4383294126517993,
+    "confusion_matrix": [
+      [
+        3444,
+        645,
+        0,
+        1239
+      ],
+      [
+        99,
+        622,
+        287,
+        39
+      ],
+      [
+        0,
+        328,
+        751,
+        1
+      ],
+      [
+        105,
+        29,
+        1,
+        405
+      ]
+    ],
+    "cross_entropy": 0.7110994618615586,
+    "detection_latency_ticks": {
+      "causal_stride_ticks": 1,
+      "overall_median": 9.0,
+      "per_class": {
+        "blocked_path": {
+          "detected_families": 72,
+          "maximum": 17,
+          "median": 9.0,
+          "missed_families": 0
+        },
+        "frozen_sensor": {
+          "detected_families": 36,
+          "maximum": 27,
+          "median": 4.0,
+          "missed_families": 0
+        },
+        "gradual_primary_fan_degradation": {
+          "detected_families": 72,
+          "maximum": 32,
+          "median": 7.0,
+          "missed_families": 0
+        }
+      },
+      "transition_windows_eligible": true
+    },
+    "macro_f1": 0.5765390992512089,
+    "nominal_false_alarm_rate": 0.3536036036036036,
+    "nominal_false_alarms": 1884,
+    "per_class": {
+      "blocked_path": {
+        "f1": 0.7088249174138745,
+        "precision": 0.7228103946102021,
+        "recall": 0.6953703703703704,
+        "support": 1080
+      },
+      "frozen_sensor": {
+        "f1": 0.3642086330935252,
+        "precision": 0.24049881235154394,
+        "recall": 0.75,
+        "support": 540
+      },
+      "gradual_primary_fan_degradation": {
+        "f1": 0.4657431673530512,
+        "precision": 0.3830049261083744,
+        "recall": 0.5940783190066857,
+        "support": 1047
+      },
+      "nominal": {
+        "f1": 0.767379679144385,
+        "precision": 0.944078947368421,
+        "recall": 0.6463963963963963,
+        "support": 5328
+      }
+    },
+    "samples": 7995
+  },
+  "observable_features_only": true,
+  "onnx_parity": {
+    "max_absolute_probability_error": 1.2569836379539012e-06,
+    "samples_checked": 512
+  },
+  "rule_baseline": {
+    "accuracy": 0.8462789243277048,
+    "confusion_matrix": [
+      [
+        5193,
+        0,
+        0,
+        135
+      ],
+      [
+        342,
+        609,
+        47,
+        49
+      ],
+      [
+        3,
+        79,
+        950,
+        48
+      ],
+      [
+        526,
+        0,
+        0,
+        14
+      ]
+    ],
+    "detection_latency_ticks": {
+      "causal_stride_ticks": 1,
+      "overall_median": 11.0,
+      "per_class": {
+        "blocked_path": {
+          "detected_families": 66,
+          "maximum": 4,
+          "median": 4.0,
+          "missed_families": 6
+        },
+        "frozen_sensor": {
+          "detected_families": 31,
+          "maximum": 73,
+          "median": 24.0,
+          "missed_families": 5
+        },
+        "gradual_primary_fan_degradation": {
+          "detected_families": 69,
+          "maximum": 63,
+          "median": 25.0,
+          "missed_families": 3
+        }
+      },
+      "transition_windows_eligible": true
+    },
+    "macro_f1": 0.6410285126263277,
+    "nominal_false_alarm_rate": 0.02533783783783784,
+    "nominal_false_alarms": 135,
+    "per_class": {
+      "blocked_path": {
+        "f1": 0.91478093403948,
+        "precision": 0.9528585757271816,
+        "recall": 0.8796296296296297,
+        "support": 1080
+      },
+      "frozen_sensor": {
+        "f1": 0.03562340966921119,
+        "precision": 0.056910569105691054,
+        "recall": 0.025925925925925925,
+        "support": 540
+      },
+      "gradual_primary_fan_degradation": {
+        "f1": 0.7020172910662824,
+        "precision": 0.8851744186046512,
+        "recall": 0.5816618911174785,
+        "support": 1047
+      },
+      "nominal": {
+        "f1": 0.9116924157303371,
+        "precision": 0.8563654353562006,
+        "recall": 0.9746621621621622,
+        "support": 5328
+      }
+    },
+    "samples": 7995
+  },
+  "rule_calibration": {
+    "classification_tied_candidates": 1,
+    "grid_size": 216,
+    "selected_parameters": {
+      "blockage_jump": 0.1,
+      "frozen_normalized_range": 0.01,
+      "isolation_margin": 0.03,
+      "persistence_ticks": 5,
+      "residual_threshold": 0.04
+    },
+    "selected_validation_latency": 9.0,
+    "selected_validation_metrics": {
+      "accuracy": 0.8679917494843428,
+      "confusion_matrix": [
+        [
+          3462,
+          0,
+          0,
+          90
+        ],
+        [
+          231,
+          463,
+          0,
+          7
+        ],
+        [
+          0,
+          12,
+          696,
+          12
+        ],
+        [
+          352,
+          0,
+          0,
+          8
+        ]
+      ],
+      "detection_latency_ticks": {
+        "causal_stride_ticks": 1,
+        "overall_median": 9.0,
+        "per_class": {
+          "blocked_path": {
+            "detected_families": 47,
+            "maximum": 5,
+            "median": 4.0,
+            "missed_families": 1
+          },
+          "frozen_sensor": {
+            "detected_families": 15,
+            "maximum": 91,
+            "median": 48.0,
+            "missed_families": 9
+          },
+          "gradual_primary_fan_degradation": {
+            "detected_families": 47,
+            "maximum": 54,
+            "median": 17.0,
+            "missed_families": 1
+          }
+        },
+        "transition_windows_eligible": true
+      },
+      "macro_f1": 0.6788552975036647,
+      "nominal_false_alarm_rate": 0.02533783783783784,
+      "nominal_false_alarms": 90,
+      "per_class": {
+        "blocked_path": {
+          "f1": 0.983050847457627,
+          "precision": 1.0,
+          "recall": 0.9666666666666667,
+          "support": 720
+        },
+        "frozen_sensor": {
+          "f1": 0.033542976939203356,
+          "precision": 0.06837606837606838,
+          "recall": 0.022222222222222223,
+          "support": 360
+        },
+        "gradual_primary_fan_degradation": {
+          "f1": 0.7874149659863946,
+          "precision": 0.9747368421052631,
+          "recall": 0.6604850213980028,
+          "support": 701
+        },
+        "nominal": {
+          "f1": 0.9114123996314334,
+          "precision": 0.8558714462299135,
+          "recall": 0.9746621621621622,
+          "support": 3552
+        }
+      },
+      "samples": 5333
+    },
+    "selection_order": [
+      "macro_f1_descending",
+      "nominal_false_alarm_rate_ascending",
+      "causal_latency_ascending",
+      "parameters_lexicographic"
+    ],
+    "selection_split": "validation"
+  },
+  "split_evidence": {
+    "stress": {
+      "excluded_transition_rows": 285,
+      "families": 180,
+      "label_counts": {
+        "blocked_path": 864,
+        "excluded_transition": 285,
+        "frozen_sensor": 432,
+        "gradual_primary_fan_degradation": 827,
+        "nominal": 5872
+      },
+      "rows": 8280,
+      "scored_rows": 7995
+    },
+    "test": {
+      "excluded_transition_rows": 285,
+      "families": 180,
+      "label_counts": {
+        "blocked_path": 1080,
+        "excluded_transition": 285,
+        "frozen_sensor": 540,
+        "gradual_primary_fan_degradation": 1047,
+        "nominal": 5328
+      },
+      "rows": 8280,
+      "scored_rows": 7995
+    },
+    "train": {
+      "excluded_transition_rows": 535,
+      "families": 360,
+      "label_counts": {
+        "blocked_path": 2160,
+        "excluded_transition": 535,
+        "frozen_sensor": 1080,
+        "gradual_primary_fan_degradation": 2129,
+        "nominal": 10656
+      },
+      "rows": 16560,
+      "scored_rows": 16025
+    },
+    "validation": {
+      "excluded_transition_rows": 187,
+      "families": 120,
+      "label_counts": {
+        "blocked_path": 720,
+        "excluded_transition": 187,
+        "frozen_sensor": 360,
+        "gradual_primary_fan_degradation": 701,
+        "nominal": 3552
+      },
+      "rows": 5520,
+      "scored_rows": 5333
+    }
+  },
+  "stress_model": {
+    "accuracy": 0.36848030018761724,
+    "brier_score": 1.017460931270757,
+    "confusion_matrix": [
+      [
+        1974,
+        3025,
+        180,
+        693
+      ],
+      [
+        56,
+        496,
+        274,
+        1
+      ],
+      [
+        6,
+        402,
+        455,
+        1
+      ],
+      [
+        123,
+        270,
+        18,
+        21
+      ]
+    ],
+    "cross_entropy": 3.204997401789846,
+    "detection_latency_ticks": {
+      "causal_stride_ticks": 1,
+      "overall_median": 8.0,
+      "per_class": {
+        "blocked_path": {
+          "detected_families": 69,
+          "maximum": 84,
+          "median": 9.0,
+          "missed_families": 3
+        },
+        "frozen_sensor": {
+          "detected_families": 14,
+          "maximum": 42,
+          "median": 4.0,
+          "missed_families": 22
+        },
+        "gradual_primary_fan_degradation": {
+          "detected_families": 72,
+          "maximum": 26,
+          "median": 0.0,
+          "missed_families": 0
+        }
+      },
+      "transition_windows_eligible": true
+    },
+    "macro_f1": 0.30847150811202073,
+    "nominal_false_alarm_rate": 0.6638283378746594,
+    "nominal_false_alarms": 3898,
+    "per_class": {
+      "blocked_path": {
+        "f1": 0.5080960357342267,
+        "precision": 0.49083063646170444,
+        "recall": 0.5266203703703703,
+        "support": 864
+      },
+      "frozen_sensor": {
+        "f1": 0.036585365853658534,
+        "precision": 0.029329608938547486,
+        "recall": 0.04861111111111111,
+        "support": 432
+      },
+      "gradual_primary_fan_degradation": {
+        "f1": 0.19760956175298805,
+        "precision": 0.1182923920820415,
+        "recall": 0.599758162031439,
+        "support": 827
+      },
+      "nominal": {
+        "f1": 0.4915950691072095,
+        "precision": 0.9143121815655396,
+        "recall": 0.3361716621253406,
+        "support": 5872
+      }
+    },
+    "samples": 7995
+  },
+  "stress_rule_baseline": {
+    "accuracy": 0.8036272670419012,
+    "confusion_matrix": [
+      [
+        5842,
+        0,
+        0,
+        30
+      ],
+      [
+        415,
+        136,
+        270,
+        6
+      ],
+      [
+        380,
+        34,
+        443,
+        7
+      ],
+      [
+        427,
+        0,
+        1,
+        4
+      ]
+    ],
+    "detection_latency_ticks": {
+      "causal_stride_ticks": 1,
+      "overall_median": 4.0,
+      "per_class": {
+        "blocked_path": {
+          "detected_families": 48,
+          "maximum": 79,
+          "median": 4.0,
+          "missed_families": 24
+        },
+        "frozen_sensor": {
+          "detected_families": 6,
+          "maximum": 70,
+          "median": 44.0,
+          "missed_families": 30
+        },
+        "gradual_primary_fan_degradation": {
+          "detected_families": 18,
+          "maximum": 48,
+          "median": 7.0,
+          "missed_families": 54
+        }
+      },
+      "transition_windows_eligible": true
+    },
+    "macro_f1": 0.4385514909984601,
+    "nominal_false_alarm_rate": 0.005108991825613079,
+    "nominal_false_alarms": 30,
+    "per_class": {
+      "blocked_path": {
+        "f1": 0.561470215462611,
+        "precision": 0.6204481792717087,
+        "recall": 0.5127314814814815,
+        "support": 864
+      },
+      "frozen_sensor": {
+        "f1": 0.016701461377870562,
+        "precision": 0.0851063829787234,
+        "recall": 0.009259259259259259,
+        "support": 432
+      },
+      "gradual_primary_fan_degradation": {
+        "f1": 0.2728184553660983,
+        "precision": 0.8,
+        "recall": 0.16444981862152358,
+        "support": 827
+      },
+      "nominal": {
+        "f1": 0.9032158317872604,
+        "precision": 0.8270101925254814,
+        "recall": 0.9948910081743869,
+        "support": 5872
+      }
+    },
+    "samples": 7995
+  },
+  "training": {
+    "softmax_detector": {
+      "class_weight_total_per_class": 0.25,
+      "epochs_requested": 600,
+      "l2_penalty": 0.0001,
+      "learning_rate": 0.5,
+      "selected_epoch": 530,
+      "training_class_counts": {
+        "blocked_path": 2160,
+        "frozen_sensor": 1080,
+        "gradual_primary_fan_degradation": 2129,
+        "nominal": 10656
+      },
+      "training_rows": 16025,
+      "validation_cross_entropy": 4.971823846443313,
+      "validation_macro_f1": 0.4638813115169091,
+      "validation_rows": 5333
+    },
+    "temporal_mlp_detector": {
+      "adam_beta1": 0.9,
+      "adam_beta2": 0.999,
+      "adam_epsilon": 1e-08,
+      "architecture": [
+        135,
+        16,
+        4
+      ],
+      "class_weight_total_per_class": 0.25,
+      "epochs_requested": 300,
+      "initialization_seed": 0,
+      "l2_penalty": 0.0001,
+      "learning_rate": 0.01,
+      "selected_epoch": 55,
+      "training_class_counts": {
+        "blocked_path": 2160,
+        "frozen_sensor": 1080,
+        "gradual_primary_fan_degradation": 2129,
+        "nominal": 10656
+      },
+      "training_rows": 16025,
+      "transform_version": "temporal_summary_v1",
+      "validation_cross_entropy": 0.7439410622356263,
+      "validation_macro_f1": 0.5884287120067866,
+      "validation_rows": 5333
+    }
+  },
+  "window_ticks": 10
+}

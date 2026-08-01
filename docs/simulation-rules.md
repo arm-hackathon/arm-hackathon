@@ -17,18 +17,19 @@ All values are abstract units:
   rate;
 - actuator power — an abstract reporting value, not an electrical measurement.
 
-## Schema v7
+## Schema v9
 
 A scenario is closed-schema JSON with exactly these top-level keys:
 
 | Key | Meaning |
 |---|---|
-| `version` | Must be `7`. |
+| `version` | Must be `9`. |
 | `zones` | Zone specifications. Exactly one must be `air_processing`. |
 | `connections` | Directed paths in the hub layout. |
 | `control` | CO₂ thresholds and actuator command bounds. |
 | `actuator` | Full-stroke duration and abstract power values. |
 | `simulation` | Deterministic source-noise seed. |
+| `telemetry` | Deterministic measurement-noise and bias fractions. |
 | `air_system` | Shared delivery capacity and scrubber removal fraction. |
 | `fault_profiles` | Explicit list of deterministic fault profiles; `[]` means healthy. |
 
@@ -39,6 +40,13 @@ Every zone contains `id`, `label`, `preset`,
 Every connection contains `id`, `from`, `to`, `max_airflow` and `health`.
 Connection health is a hidden static physical constraint in `0.0..1.0`; it is
 not emitted in replay telemetry.
+
+`telemetry` contains exactly `airflow_noise_fraction`,
+`airflow_bias_fraction`, `airflow_drift_fraction`,
+`actuator_position_noise_fraction`, `co2_sensor_noise_fraction`,
+`co2_sensor_bias_fraction`, and `co2_sensor_drift_fraction`. Each is a finite
+number in `0.0..1.0`. Missing or unknown settings are rejected. Zero for all
+seven preserves the earlier numerical behaviour. Schema-v8 input is rejected.
 
 The layout is intentionally narrow:
 
@@ -101,10 +109,12 @@ A sudden blockage: effectiveness is `1.0` before `start_tick` and
 }
 ```
 
-From `start_tick` onward the target zone's sensor holds the reading it showed
-on the first frozen tick. The true concentration keeps evolving underneath;
-the held reading is all the controller can see, and it remains ordinary
-observable telemetry. The target must be an existing non-processing zone.
+From `start_tick` onward the target zone's sensor holds its latent physical
+reading from the first frozen tick. The true concentration keeps evolving
+underneath. Fixed bias, bounded drift and per-tick readout noise are then
+applied downstream of the held value, and that measured value drives the
+controller and appears in telemetry. The target must be an existing
+non-processing zone.
 
 Shared rules:
 
@@ -127,15 +137,16 @@ visible trace tick.
 Time advances in fixed one-second ticks.
 
 1. Each zone adds its occupancy-scaled, seeded and correlated CO₂ source.
-2. Sensors read `co2_mass / air_volume` after source addition. A zone with an
-   active `frozen_sensor` profile instead holds the reading it showed on its
-   first frozen tick; the true concentration keeps evolving underneath.
-3. Each non-processing-zone controller maps its sensor value to a bounded
-   setpoint.
+2. A latent sensor reads `co2_mass / air_volume` after source addition. An
+   active `frozen_sensor` holds that latent value from its first frozen tick.
+3. CO2 measurement adds fixed per-zone bias, bounded piecewise-linear drift
+   and per-tick readout noise. Effects are scaled by the controller upper
+   threshold and the result is clamped non-negative. The measured value—not
+   latent truth—drives each non-processing-zone controller.
 4. Its actuator moves towards that setpoint by at most
    `1 / full_stroke_seconds` of a stroke.
-5. Each circulation loop computes **requested airflow** from only nominal
-   physical capacity and measured actuator position:
+5. Each circulation loop computes **physical requested airflow** from only
+   nominal physical capacity and physical actuator position:
 
    ```text
    requested = min(outbound.max_airflow, inbound.max_airflow) * actual_position
@@ -171,6 +182,21 @@ Time advances in fixed one-second ticks.
 9. All zones extract CO₂ from the same pre-transfer state. Extraction mixes in
    the processing bay; the scrubber captures its configured fraction and the
    rest returns in proportion to delivered loop airflow.
+
+10. After the physical step, actuator/airflow projection creates replay telemetry.
+    Samples are SHA-256-derived uniform values in `[-1, 1)`, keyed by scenario
+    seed, entity, channel, and tick. Bias uses tick zero. Drift linearly
+    interpolates independently keyed samples at 20-tick anchors. Actuator
+    position receives bounded per-tick noise. Each airflow meter receives a
+    fixed connection bias, bounded drift and independent per-tick noise.
+    Observable request is recomputed from observable position;
+    observable delivery is clamped to `0..request`; residual is recomputed; and
+    saturated observations are proportionally scaled to shared capacity. This
+    this projection never mutates mass, actuator, controller, physical airflow,
+    or fault state; independently metered paired legs may report different
+    noisy observations. CO2 measurement occurs earlier because it is a genuine
+    controller input; it can therefore change subsequent control and physical
+    evolution without directly rewriting latent mass.
 
 CO₂ is conserved: generated mass is split only between airborne zone mass and
 the processing bay's captured store.
@@ -211,9 +237,9 @@ visualiser independently rejects undeclared connection telemetry. The visualiser
 can consume generated traces from all five shipped scenarios and plots
 requested/delivered airflow plus residuals.
 
-Fault state, fault effectiveness, static health, random seed and source-noise
-state are deliberately absent from trace telemetry. `model_feature_row()` has
-its own strict projection:
+Fault state, fault effectiveness, static health, random seed, source-noise
+state and measurement-noise state are deliberately absent from trace
+telemetry. `model_feature_row()` has its own strict projection:
 
 - zone sensor CO₂ concentration;
 - actuator setpoint, actual position, tracking residual and power;
@@ -249,6 +275,15 @@ uv run python -m aeolus.evaluate --v2 out/corpus-v2/corpus.jsonl \
   scenarios/families.json \
   --expected-family-manifest-sha256 828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541 \
   --split test
+uv run python -m aeolus.sweep scenarios/sweep-v2.json out/sweep
+uv run python -m aeolus.corpus --v2 out/sweep-corpus out/sweep/families.json
+uv run --extra ml python -m aeolus.detector train \
+  out/sweep-corpus/corpus.jsonl out/sweep/families.json \
+  28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465 \
+  artifacts/aeolus_fault_detector.json artifacts/aeolus_fault_detector.onnx \
+  artifacts/aeolus_fault_metrics.json
+uv run python -m aeolus.detector predict \
+  artifacts/aeolus_fault_detector.json scenarios/standard_habitat.json
 ```
 
 `aeolus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a
@@ -259,6 +294,6 @@ detection-latency metrics as JSON. See
 
 ## Deliberately absent
 
-AEOLUS currently has no model or ONNX path, quantisation, governor, redundant
-fan, recovery controller, Arm benchmark, dashboard, API, cloud service or
-hardware connection.
+AEOLUS has experimental softmax and temporal-MLP training plus FP32 ONNX export. It has no
+INT8 quantisation, governor, redundant fan, recovery controller, Arm benchmark,
+dashboard, API, cloud service or hardware connection.

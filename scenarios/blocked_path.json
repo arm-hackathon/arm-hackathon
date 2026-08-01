@@ -1,7 +1,16 @@
 {
-  "version": 7,
+  "version": 9,
   "simulation": {
     "random_seed": 17
+  },
+  "telemetry": {
+    "airflow_noise_fraction": 0.0,
+    "airflow_bias_fraction": 0.0,
+    "airflow_drift_fraction": 0.0,
+    "actuator_position_noise_fraction": 0.0,
+    "co2_sensor_noise_fraction": 0.0,
+    "co2_sensor_bias_fraction": 0.0,
+    "co2_sensor_drift_fraction": 0.0
   },
   "air_system": {
     "shared_airflow_capacity": 40.0,

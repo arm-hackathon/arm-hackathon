@@ -233,7 +233,11 @@ def generate_corpus_v2(
     label_counts: dict[str, int] = {}
     for row in all_rows:
         label_counts[row["label"]] = label_counts.get(row["label"], 0) + 1
-    family_counts_by_split = {split: 0 for split in ("train", "validation", "test")}
+    split_order = ("train", "validation", "test")
+    present_splits = {evidence.split for evidence in evidence_by_family.values()}
+    family_counts_by_split = {split: 0 for split in split_order}
+    if "stress" in present_splits:
+        family_counts_by_split["stress"] = 0
     for evidence in evidence_by_family.values():
         family_counts_by_split[evidence.split] += 1
     manifest = {

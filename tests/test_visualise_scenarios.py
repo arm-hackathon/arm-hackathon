@@ -1,4 +1,4 @@
-"""Scenario-v7 trace acceptance and malformed-telemetry rejection for the visualiser."""
+"""Scenario-v8 trace acceptance and malformed-telemetry rejection for the visualiser."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ SCENARIO_NAMES = (
 
 
 @pytest.mark.parametrize("scenario_name", SCENARIO_NAMES)
-def test_visualiser_accepts_each_v7_scenario_trace(scenario_name, tmp_path):
+def test_visualiser_accepts_each_v8_scenario_trace(scenario_name, tmp_path):
     trace_path = tmp_path / f"{scenario_name}.jsonl"
     report_path = tmp_path / f"{scenario_name}.html"
     scenario_path = REPO_ROOT / "scenarios" / scenario_name

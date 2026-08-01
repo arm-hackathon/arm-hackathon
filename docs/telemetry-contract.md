@@ -5,7 +5,7 @@ binding for trace writers, model-facing projections and visualisation changes.
 
 ## Fault target semantics
 
-Schema-v7 keeps PR #9's `connection_id` for connection faults (the gradual
+Schema-v9 keeps PR #9's `connection_id` for connection faults (the gradual
 primary-fan and blocked-path profiles). The value is an **outbound loop
 metering identifier**, not a claim that the JSON edge is a physical fan or
 duct. Each non-processing zone has one stable outbound meter into the
@@ -45,16 +45,17 @@ delivered_airflow
 airflow_residual
 ```
 
-`requested_airflow` describes controller demand at the measured actuator
-position. `delivered_airflow` describes the physical loop result after static
-health, deterministic degradation and shared-capacity allocation.
-`airflow_residual` is request minus delivery.
+`requested_airflow` describes controller demand recomputed from measured
+actuator position. `delivered_airflow` describes the bounded observation of the
+physical loop after static health, fault effectiveness, shared-capacity
+allocation, fixed meter bias and per-tick measurement noise.
+`airflow_residual` is always measured request minus measured delivery.
 
-System telemetry contains shared capacity, total requested delivery, total
-delivered airflow and capacity scale. Zone records contain replay/presentation
-values such as CO₂ mass, sensor concentration, generated source mass and
-occupancy multiplier. Actuator records contain setpoint, measured position,
-tracking residual, movement and power.
+System telemetry contains shared capacity, total measured requested airflow,
+total measured delivered airflow and the physical capacity scale. Zone records
+contain replay/presentation values such as CO₂ mass, sensor concentration,
+generated source mass and occupancy multiplier. Actuator records contain
+setpoint, measured position, tracking residual, movement and power.
 
 ## Gate 1: topology-bound model input
 
@@ -116,11 +117,11 @@ for both boundaries:
   sorted-key, compact UTF-8 JSON bytes.
 
 `model_artifact_metadata(contract)` emits exactly `model_input_version`,
-`selector_sha256`, and `topology_sha256`. No model artifact loader exists in
-Gate 1. Every future artifact-load or inference-setup path must call
-`assert_model_contract_compatible(metadata, contract)` before use; missing,
-extra, non-string, stale, or mismatched metadata is rejected. The contract also
-self-validates its canonical JSON and hashes before a tensor is built.
+`selector_sha256`, and `topology_sha256`. The detector JSON and ONNX artifacts
+embed those values. The prediction path builds the scenario's contract and
+rejects missing, extra, non-string, stale, or mismatched metadata before
+inference. The contract also self-validates its canonical JSON and hashes
+before a tensor is built.
 
 `RuleBaseline` receives the validated `HabitatConfig` at construction and
 pairs outbound/return legs from graph direction. It fails closed when a feature
@@ -133,7 +134,8 @@ agree.
 `scenarios/families.json` defines the unit that future training and evaluation
 splits must keep independent. Each family names one fault-free reference
 scenario, one exactly-one-fault scenario, a declared class, and exactly one of
-`train`, `validation`, or `test`. The current three families are test-only
+`train`, `validation`, `test`, or `stress`. The current three checked-in fixture
+families are test-only
 contract fixtures; they do not claim to be a usable training corpus.
 
 `load_family_manifest()` rejects unknown fields, duplicate family IDs or exact
@@ -147,6 +149,11 @@ The latter rule requires a true counterfactual: the
 The manifest is canonical sorted-key compact JSON with a SHA-256 identity. Its
 family list is ordered by `family_id` for hashing, so source-file ordering does
 not alter the contract.
+
+Schema-v9 family equality includes the complete `telemetry` settings. A paired
+reference and fault scenario must therefore use identical demand, seed,
+measurement-noise and measurement-bias configuration and differ only in
+`fault_profiles`.
 
 `observable_onset(family, metadata)` replays the validated pair and finds the
 first equal-tick difference between their `model_input_v1` float32 vectors. It
@@ -162,6 +169,47 @@ exclude transition windows from training and from scored accuracy, confusion,
 class support, and latency totals. They reject mixed, missing, or stale
 model-input contract metadata.
 
+## Sweep-v2 and detector artifacts
+
+`scenarios/sweep-v2.json` is the committed specification for the current
+experimental evidence. `aeolus.sweep` strictly validates it, assigns disjoint
+seeds to train, validation, IID test and OOD stress, creates paired v9 scenarios
+under `out/`, and writes a family manifest plus receipt. Primary train,
+validation and test share the same operating/fault distributions; stress is
+reported separately and never controls selection. Split assignment is by
+family; references and exact scenario identities never cross splits.
+
+Both learned candidates consume exact ten-row `model_input_v1 float32[24]`
+windows. Softmax flattens to 240 values. `TemporalMLPDetector` embeds
+`temporal_summary_v1`: five summaries of each channel and three safe loop
+residual/request ratios, producing 135 values for a 16-unit ReLU hidden layer.
+Normalization is calculated from training rows only. Training is
+class-balanced and excludes transition rows. Validation macro-F1,
+cross-entropy and then artifact size select the candidate. Test and stress are
+evaluated only after selection.
+
+The robust `RuleBaseline` is selected independently on validation from a fixed
+216-point grid. Classification still excludes onset-straddling windows, while
+causal latency uses stride-one rolling windows and permits a correct detection
+from `end_tick >= observable_onset_tick`. The fixed advantage policy compares
+macro-F1 error reduction or causal latency subject to false-alarm and
+per-fault-recall guards.
+
+The exact prediction classes are `nominal`,
+`gradual_primary_fan_degradation`, `blocked_path`, and `frozen_sensor`.
+Both detector classes implement `predict_window()` and return the selected
+label, confidence, and named probabilities. The rolling CLI emits those values
+with each `end_tick`.
+
+The strict JSON loader rejects unknown artifact fields, wrong input shape,
+class-vocabulary drift, non-finite parameters, invalid normalization scales,
+and selector/topology mismatch. The FP32 ONNX graph embeds the same metadata.
+The metrics artifact includes confusion matrices, per-class
+precision/recall/F1, macro-F1, nominal false alarms, Brier score,
+stride-one observable-onset latency, split evidence, candidate selection,
+calibrated rule parameters, IID and stress comparisons, artifact sizes, and
+Python/ONNX parity.
+
 ## Forbidden hidden truth
 
 The following must not enter model features or replay telemetry:
@@ -172,6 +220,7 @@ The following must not enter model features or replay telemetry:
 - static connection health;
 - random seed;
 - internal source-noise state;
+- internal measurement-noise samples or bias state;
 - which zone or connection a declared fault targets;
 - a zone's frozen-sensor state or stored freeze value (the held sensor reading
   itself is telemetry; the fact that it is held is not);
@@ -184,8 +233,8 @@ forbidden fields.
 
 ## Corpus boundary
 
-`aeolus.corpus` builds the labelled window corpus for the future fault
-classifier. Its leakage rules are strict:
+`aeolus.corpus` builds the labelled window corpus for the fault classifier. Its
+leakage rules are strict:
 
 - corpus v1 feature rows remain exactly `model_feature_row()` output for each
   tick; corpus v2 uses exact `model_input_v1()` float32 values plus persisted

@@ -1,0 +1,81 @@
+{
+  "schema_version": "aeolus_sweep_v1",
+  "base_scenario": "standard_habitat.json",
+  "targets": ["cabin_a", "cabin_b", "lab"],
+  "splits": {
+    "train": {
+      "seeds": [100, 101, 102, 103, 104, 105],
+      "fault_start_ticks": [25, 55],
+      "operating_profiles": [
+        {
+          "id": "low-demand",
+          "source_multiplier": 0.8,
+          "shared_airflow_capacity": 24.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.005,
+            "airflow_bias_fraction": 0.002,
+            "actuator_position_noise_fraction": 0.005
+          }
+        },
+        {
+          "id": "high-demand",
+          "source_multiplier": 1.2,
+          "shared_airflow_capacity": 40.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.015,
+            "airflow_bias_fraction": 0.005,
+            "actuator_position_noise_fraction": 0.01
+          }
+        }
+      ],
+      "gradual_end_effectiveness": [0.4, 0.7],
+      "blocked_effectiveness": [0.05, 0.3]
+    },
+    "validation": {
+      "seeds": [500, 501],
+      "fault_start_ticks": [35],
+      "operating_profiles": [
+        {
+          "id": "mid-demand",
+          "source_multiplier": 1.0,
+          "shared_airflow_capacity": 30.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.01,
+            "airflow_bias_fraction": 0.004,
+            "actuator_position_noise_fraction": 0.008
+          }
+        }
+      ],
+      "gradual_end_effectiveness": [0.55],
+      "blocked_effectiveness": [0.15]
+    },
+    "test": {
+      "seeds": [1000, 1001, 1002],
+      "fault_start_ticks": [45, 75],
+      "operating_profiles": [
+        {
+          "id": "edge-low",
+          "source_multiplier": 0.7,
+          "shared_airflow_capacity": 24.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.02
+          }
+        },
+        {
+          "id": "edge-high",
+          "source_multiplier": 1.3,
+          "shared_airflow_capacity": 36.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.02,
+            "airflow_bias_fraction": 0.008,
+            "actuator_position_noise_fraction": 0.015
+          }
+        }
+      ],
+      "gradual_end_effectiveness": [0.3, 0.8],
+      "blocked_effectiveness": [0.1, 0.5]
+    }
+  }
+}

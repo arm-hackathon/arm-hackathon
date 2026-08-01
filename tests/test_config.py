@@ -20,7 +20,7 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
 ):
     config = load_scenario(standard_scenario_path)
 
-    assert config.version == 7
+    assert config.version == 9
     assert len(config.zones) == 4
     assert len(config.connections) == 6
     assert {z.id for z in config.zones} == ZONE_IDS
@@ -33,15 +33,22 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
     assert config.actuator.moving_power == 1.0
     assert config.actuator.holding_power == 0.05
     assert config.simulation.random_seed == 7
+    assert config.telemetry.airflow_noise_fraction == 0.0
+    assert config.telemetry.airflow_bias_fraction == 0.0
+    assert config.telemetry.airflow_drift_fraction == 0.0
+    assert config.telemetry.actuator_position_noise_fraction == 0.0
+    assert config.telemetry.co2_sensor_noise_fraction == 0.0
+    assert config.telemetry.co2_sensor_bias_fraction == 0.0
+    assert config.telemetry.co2_sensor_drift_fraction == 0.0
     assert config.air_system.shared_airflow_capacity == 24.0
     assert config.air_system.scrubber_removal_fraction == 0.5
     assert config.fault_profiles == ()
 
 
-def test_version_five_scenarios_are_rejected(standard_doc):
-    standard_doc["version"] = 5
+def test_version_eight_scenarios_are_rejected(standard_doc):
+    standard_doc["version"] = 8
 
-    with pytest.raises(ValueError, match="unsupported version 5; expected 7"):
+    with pytest.raises(ValueError, match="unsupported version 8; expected 9"):
         parse_scenario(standard_doc)
 
 
@@ -117,6 +124,41 @@ INVALID_CASES = [
         lambda d: d.pop("simulation"),
         "simulation",
         id="missing_simulation",
+    ),
+    pytest.param(
+        lambda d: d.pop("telemetry"),
+        "telemetry",
+        id="missing_telemetry",
+    ),
+    pytest.param(
+        lambda d: d["telemetry"].pop("airflow_noise_fraction"),
+        "airflow_noise_fraction",
+        id="missing_telemetry_field",
+    ),
+    pytest.param(
+        lambda d: d["telemetry"].update(airflow_noise_fraction=1.1),
+        "airflow_noise_fraction",
+        id="telemetry_fraction_above_one",
+    ),
+    pytest.param(
+        lambda d: d["telemetry"].update(airflow_bias_fraction=-0.1),
+        "airflow_bias_fraction",
+        id="negative_telemetry_fraction",
+    ),
+    pytest.param(
+        lambda d: d["telemetry"].update(actuator_position_noise_fraction=True),
+        "actuator_position_noise_fraction",
+        id="non_numeric_telemetry_fraction",
+    ),
+    pytest.param(
+        lambda d: d["telemetry"].pop("co2_sensor_drift_fraction"),
+        "co2_sensor_drift_fraction",
+        id="missing_co2_telemetry_field",
+    ),
+    pytest.param(
+        lambda d: d["telemetry"].update(co2_sensor_noise_fraction=float("nan")),
+        "finite",
+        id="non_finite_co2_telemetry_fraction",
     ),
     pytest.param(
         lambda d: d.pop("air_system"),
@@ -468,6 +510,13 @@ def test_rejects_unknown_zone_field(standard_doc):
     standard_doc["zones"][0]["co2_generation_epslion"] = 0.1
 
     with pytest.raises(ValueError, match="unexpected field 'co2_generation_epslion'"):
+        parse_scenario(standard_doc)
+
+
+def test_rejects_unknown_telemetry_field(standard_doc):
+    standard_doc["telemetry"]["airflow_noice_fraction"] = 0.1
+
+    with pytest.raises(ValueError, match="unexpected field 'airflow_noice_fraction'"):
         parse_scenario(standard_doc)
 
 

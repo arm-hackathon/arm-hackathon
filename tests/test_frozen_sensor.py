@@ -10,7 +10,7 @@ from aeolus.scenario import run_scenario
 
 
 def _frozen_lab_doc(standard_doc: dict, start_tick: int) -> dict:
-    standard_doc["version"] = 7
+    standard_doc["version"] = 9
     standard_doc["fault_profiles"] = [
         {"type": "frozen_sensor", "zone_id": "lab", "start_tick": start_tick}
     ]

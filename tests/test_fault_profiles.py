@@ -1,4 +1,4 @@
-"""Schema-v7 fault-profile contracts for the converged simulator."""
+"""Schema-v8 fault-profile contracts for the converged simulator."""
 
 from __future__ import annotations
 
@@ -29,16 +29,16 @@ def _profile(**overrides):
     return profile
 
 
-def _v7(doc: dict, profiles: list[dict] | None = None) -> dict:
-    doc["version"] = 7
+def _v8(doc: dict, profiles: list[dict] | None = None) -> dict:
+    doc["version"] = 9
     doc["fault_profiles"] = [] if profiles is None else profiles
     return doc
 
 
-def test_v7_parses_gradual_primary_fan_degradation_at_exact_boundaries(standard_doc):
-    config = parse_scenario(_v7(standard_doc, [_profile()]))
+def test_v8_parses_gradual_primary_fan_degradation_at_exact_boundaries(standard_doc):
+    config = parse_scenario(_v8(standard_doc, [_profile()]))
 
-    assert config.version == 7
+    assert config.version == 9
     assert config.fault_profiles == (
         GradualPrimaryFanDegradation(
             connection_id="cabin_a_to_processing",
@@ -72,8 +72,8 @@ def test_v7_parses_gradual_primary_fan_degradation_at_exact_boundaries(standard_
         ([_profile(), _profile(end_effectiveness=0.2)], "more than one fault profile"),
     ],
 )
-def test_v7_rejects_malformed_fault_profiles(standard_doc, profiles, match):
-    standard_doc["version"] = 7
+def test_v8_rejects_malformed_fault_profiles(standard_doc, profiles, match):
+    standard_doc["version"] = 9
     if profiles is None:
         standard_doc.pop("fault_profiles")
     else:
@@ -84,7 +84,7 @@ def test_v7_rejects_malformed_fault_profiles(standard_doc, profiles, match):
 
 
 def test_fault_target_must_be_the_outbound_loop_metering_connection(standard_doc):
-    config = parse_scenario(_v7(standard_doc, [_profile()]))
+    config = parse_scenario(_v8(standard_doc, [_profile()]))
 
     profile = config.fault_profiles[0]
     target = next(connection for connection in config.connections if connection.id == profile.connection_id)
@@ -113,8 +113,8 @@ def _frozen(**overrides):
     return profile
 
 
-def test_v7_parses_blocked_path_with_step_semantics(standard_doc):
-    config = parse_scenario(_v7(standard_doc, [_blocked()]))
+def test_v8_parses_blocked_path_with_step_semantics(standard_doc):
+    config = parse_scenario(_v8(standard_doc, [_blocked()]))
 
     assert config.fault_profiles == (
         BlockedPath(
@@ -142,26 +142,26 @@ def test_v7_parses_blocked_path_with_step_semantics(standard_doc):
         (_blocked(start_tick=0), "start_tick.*positive"),
     ],
 )
-def test_v7_rejects_malformed_blocked_path_profiles(standard_doc, profile, match):
+def test_v8_rejects_malformed_blocked_path_profiles(standard_doc, profile, match):
     with pytest.raises(ValueError, match=match):
-        parse_scenario(_v7(standard_doc, [profile]))
+        parse_scenario(_v8(standard_doc, [profile]))
 
 
-def test_v7_rejects_blocked_path_missing_required_field(standard_doc):
+def test_v8_rejects_blocked_path_missing_required_field(standard_doc):
     profile = _blocked()
     profile.pop("blocked_effectiveness")
     with pytest.raises(ValueError, match="missing required field"):
-        parse_scenario(_v7(standard_doc, [profile]))
+        parse_scenario(_v8(standard_doc, [profile]))
 
 
-def test_v7_rejects_two_connection_faults_on_one_connection_across_types(standard_doc):
+def test_v8_rejects_two_connection_faults_on_one_connection_across_types(standard_doc):
     profiles = [_profile(), _blocked(connection_id="cabin_a_to_processing")]
     with pytest.raises(ValueError, match="more than one fault profile"):
-        parse_scenario(_v7(standard_doc, profiles))
+        parse_scenario(_v8(standard_doc, profiles))
 
 
-def test_v7_parses_frozen_sensor_with_membership_semantics(standard_doc):
-    config = parse_scenario(_v7(standard_doc, [_frozen()]))
+def test_v8_parses_frozen_sensor_with_membership_semantics(standard_doc):
+    config = parse_scenario(_v8(standard_doc, [_frozen()]))
 
     assert config.fault_profiles == (
         FrozenSensor(zone_id="lab", start_tick=40),
@@ -182,26 +182,26 @@ def test_v7_parses_frozen_sensor_with_membership_semantics(standard_doc):
         (_frozen(end_tick=90), "unexpected field"),
     ],
 )
-def test_v7_rejects_malformed_frozen_sensor_profiles(standard_doc, profile, match):
+def test_v8_rejects_malformed_frozen_sensor_profiles(standard_doc, profile, match):
     with pytest.raises(ValueError, match=match):
-        parse_scenario(_v7(standard_doc, [profile]))
+        parse_scenario(_v8(standard_doc, [profile]))
 
 
-def test_v7_rejects_frozen_sensor_missing_required_field(standard_doc):
+def test_v8_rejects_frozen_sensor_missing_required_field(standard_doc):
     profile = _frozen()
     profile.pop("zone_id")
     with pytest.raises(ValueError, match="missing required field"):
-        parse_scenario(_v7(standard_doc, [profile]))
+        parse_scenario(_v8(standard_doc, [profile]))
 
 
-def test_v7_rejects_two_frozen_sensors_on_one_zone(standard_doc):
+def test_v8_rejects_two_frozen_sensors_on_one_zone(standard_doc):
     profiles = [_frozen(), _frozen(start_tick=60)]
     with pytest.raises(ValueError, match="more than one fault profile"):
-        parse_scenario(_v7(standard_doc, profiles))
+        parse_scenario(_v8(standard_doc, profiles))
 
 
 def test_config_exposes_connection_and_sensor_fault_views(standard_doc):
-    config = parse_scenario(_v7(standard_doc, [_profile(), _frozen()]))
+    config = parse_scenario(_v8(standard_doc, [_profile(), _frozen()]))
 
     assert config.connection_faults() == (
         GradualPrimaryFanDegradation(

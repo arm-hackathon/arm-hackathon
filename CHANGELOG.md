@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-08-01 — fair schema-v9 temporal experiment
+
+- Added deterministic airflow drift and controller-facing CO2 sensor noise,
+  bias and drift. Frozen faults now hold latent readings while downstream
+  readout effects continue, removing the exact-constant shortcut.
+- Added `sweep-v2` with 360 train, 120 validation, 180 IID test and 180 OOD
+  stress families sharing fixed primary distributions and disjoint seeds.
+- Added `temporal_summary_v1`, a deterministic 135-16-4 NumPy MLP, validation
+  selection against softmax, and an embedded FP32 ONNX transform/model graph.
+- Added validation-only calibration for the 216-point robust rule grid and
+  stride-one causal latency. Replaced the impossible advantage target with a
+  fixed error-reduction-or-latency policy.
+- Added `aeolus.experiment` for one-command sweep, corpus, training, evaluation
+  and artifact export.
+- The honest IID result remains negative: temporal-MLP macro-F1 0.5765 versus
+  calibrated-rule 0.6410, with 35.36% versus 2.53% nominal false alarms. The
+  model is faster by median latency (9 versus 11 ticks) but misses the fixed
+  20% threshold. Stress evidence also favours rules. No INT8 or Arm claim is
+  made.
+
+## 2026-08-01 — schema-v8 noise and experimental fault detector
+
+- Added required schema-v8 telemetry settings and deterministic SHA-256-derived
+  actuator/airflow measurement noise and bias without mutating physical state
+  or expanding the replay/model feature allowlists.
+- Added `sweep-v1` generation for 558 family-held-out training, validation and
+  test families, with paired scenarios differing only in `fault_profiles`.
+- Added deterministic class-balanced four-class softmax training over
+  `float32[10,24]` corpus-v2 windows, strict JSON loading, rolling prediction,
+  and FP32 ONNX export with contract metadata and probability parity checks.
+- Added reproducible model and metrics artifacts. Held-out evidence does
+  not demonstrate an AI advantage: macro-F1 is 0.5503 versus 0.9872 for the
+  rule baseline, so the recorded preferred method remains the rule.
+- No INT8 or Arm performance claim is made.
+
 ## 2026-07-27 — rule baseline and evaluation harness
 
 - Added `aeolus.baseline.RuleBaseline`: a streaming rule detector over

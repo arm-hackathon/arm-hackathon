@@ -25,7 +25,7 @@ from typing import Any
 from aeolus.actuator import ActuatorSettings
 from aeolus.control import CO2ControlSettings
 
-SUPPORTED_SCENARIO_VERSION = 7
+SUPPORTED_SCENARIO_VERSION = 9
 
 ALLOWED_PRESETS = frozenset({"crew_cabin", "lab", "air_processing", "storage"})
 
@@ -48,6 +48,15 @@ _CONTROL_FIELDS = (
 )
 _ACTUATOR_FIELDS = ("full_stroke_seconds", "moving_power", "holding_power")
 _SIMULATION_FIELDS = ("random_seed",)
+_TELEMETRY_FIELDS = (
+    "airflow_noise_fraction",
+    "airflow_bias_fraction",
+    "airflow_drift_fraction",
+    "actuator_position_noise_fraction",
+    "co2_sensor_noise_fraction",
+    "co2_sensor_bias_fraction",
+    "co2_sensor_drift_fraction",
+)
 _AIR_SYSTEM_FIELDS = ("shared_airflow_capacity", "scrubber_removal_fraction")
 _OCCUPANCY_FIELDS = ("start_tick", "end_tick", "multiplier")
 _GRADUAL_FAULT_FIELDS = (
@@ -78,6 +87,7 @@ _TOP_LEVEL_FIELDS = (
     "control",
     "actuator",
     "simulation",
+    "telemetry",
     "air_system",
     "fault_profiles",
 )
@@ -111,6 +121,19 @@ class SimulationSettings:
     """Settings that make variable scenario inputs exactly replayable."""
 
     random_seed: int
+
+
+@dataclass(frozen=True)
+class TelemetrySettings:
+    """Replayable measurement-noise settings for observable telemetry."""
+
+    airflow_noise_fraction: float
+    airflow_bias_fraction: float
+    airflow_drift_fraction: float
+    actuator_position_noise_fraction: float
+    co2_sensor_noise_fraction: float
+    co2_sensor_bias_fraction: float
+    co2_sensor_drift_fraction: float
 
 
 @dataclass(frozen=True)
@@ -191,6 +214,7 @@ class HabitatConfig:
     control: CO2ControlSettings
     actuator: ActuatorSettings
     simulation: SimulationSettings
+    telemetry: TelemetrySettings
     air_system: AirSystemSettings
     fault_profiles: tuple[FaultProfile, ...]
 
@@ -279,6 +303,7 @@ def parse_scenario(data: Any) -> HabitatConfig:
     control = _parse_control(data)
     actuator = _parse_actuator(data)
     simulation = _parse_simulation(data)
+    telemetry = _parse_telemetry(data)
     air_system = _parse_air_system(data)
     fault_profiles = _parse_fault_profiles(
         data,
@@ -296,6 +321,7 @@ def parse_scenario(data: Any) -> HabitatConfig:
         control=control,
         actuator=actuator,
         simulation=simulation,
+        telemetry=telemetry,
         air_system=air_system,
         fault_profiles=fault_profiles,
     )
@@ -382,6 +408,26 @@ def _parse_simulation(data: dict) -> SimulationSettings:
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("simulation random_seed must be an integer")
     return SimulationSettings(random_seed=seed)
+
+
+def _parse_telemetry(data: dict) -> TelemetrySettings:
+    if "telemetry" not in data:
+        raise ValueError("scenario must define 'telemetry'")
+    raw = data["telemetry"]
+    if not isinstance(raw, dict):
+        raise ValueError("'telemetry' must be an object")
+    _reject_unknown_fields(raw, _TELEMETRY_FIELDS, "telemetry")
+    for field_name in _TELEMETRY_FIELDS:
+        if field_name not in raw:
+            raise ValueError(f"telemetry is missing required field {field_name!r}")
+    values = {
+        field_name: _require_number(raw[field_name], f"telemetry {field_name}")
+        for field_name in _TELEMETRY_FIELDS
+    }
+    for field_name, value in values.items():
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"telemetry {field_name} must be in 0.0..1.0")
+    return TelemetrySettings(**values)
 
 
 def _parse_air_system(data: dict) -> AirSystemSettings:

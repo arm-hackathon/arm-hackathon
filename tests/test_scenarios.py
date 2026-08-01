@@ -5,9 +5,15 @@ import json
 import pytest
 
 from aeolus.__main__ import main
-from aeolus.config import load_scenario
+from aeolus.config import load_scenario, parse_scenario
 from aeolus.plant import initial_state, step_habitat
-from aeolus.scenario import RunSpec, STANDARD_RUN, run_scenario
+from aeolus.measurement import deterministic_measurement_drift
+from aeolus.scenario import (
+    RunSpec,
+    STANDARD_RUN,
+    deterministic_measurement_sample,
+    run_scenario,
+)
 
 
 def test_run_produces_one_record_per_tick_in_tick_order(standard_scenario_path):
@@ -112,6 +118,138 @@ def test_seeded_cabin_sources_vary_independently_within_epsilon(
     assert all(0.52 <= source <= 0.88 for source in cabin_a[80:])
     assert len(set(cabin_a)) > 1
     assert cabin_a != cabin_b
+
+
+def test_noisy_measurements_are_deterministic_and_preserve_trace_invariants(
+    standard_doc, tmp_path,
+):
+    clean = run_scenario(parse_scenario(standard_doc))
+    standard_doc["telemetry"] = {
+        "airflow_noise_fraction": 0.015,
+        "airflow_bias_fraction": 0.005,
+        "airflow_drift_fraction": 0.01,
+        "actuator_position_noise_fraction": 0.01,
+        "co2_sensor_noise_fraction": 0.0,
+        "co2_sensor_bias_fraction": 0.0,
+        "co2_sensor_drift_fraction": 0.0,
+    }
+    config = parse_scenario(standard_doc)
+
+    first_path = tmp_path / "first-noisy.jsonl"
+    second_path = tmp_path / "second-noisy.jsonl"
+    first = run_scenario(config, trace_path=first_path)
+    second = run_scenario(config, trace_path=second_path)
+
+    assert first == second
+    assert first_path.read_bytes() == second_path.read_bytes()
+    assert any(
+        record.actuators["cabin_a"]["actual_position"]
+        != clean[index].actuators["cabin_a"]["actual_position"]
+        for index, record in enumerate(first)
+    )
+    for record in first:
+        assert (
+            record.system["total_delivered_airflow"]
+            <= record.system["shared_airflow_capacity"]
+        )
+        for values in record.connections.values():
+            assert 0.0 <= values["delivered_airflow"] <= values["requested_airflow"]
+            assert values["airflow_residual"] == pytest.approx(
+                values["requested_airflow"] - values["delivered_airflow"]
+            )
+
+
+def test_measurement_settings_do_not_change_hidden_plant_state(standard_doc):
+    clean = parse_scenario(standard_doc)
+    standard_doc["telemetry"] = {
+        "airflow_noise_fraction": 0.1,
+        "airflow_bias_fraction": 0.1,
+        "airflow_drift_fraction": 0.1,
+        "actuator_position_noise_fraction": 0.1,
+        "co2_sensor_noise_fraction": 0.0,
+        "co2_sensor_bias_fraction": 0.0,
+        "co2_sensor_drift_fraction": 0.0,
+    }
+    noisy = parse_scenario(standard_doc)
+    clean_state = initial_state(clean)
+    noisy_state = initial_state(noisy)
+
+    for _ in range(20):
+        clean_state, clean_airflows = step_habitat(clean, clean_state)
+        noisy_state, noisy_airflows = step_habitat(noisy, noisy_state)
+
+    assert noisy_state == clean_state
+    assert noisy_airflows == clean_airflows
+
+
+def test_co2_measurement_noise_drives_controller_without_directly_changing_mass(
+    standard_doc,
+):
+    clean = parse_scenario(standard_doc)
+    standard_doc["telemetry"]["co2_sensor_bias_fraction"] = 0.5
+    noisy = parse_scenario(standard_doc)
+    clean_state, _ = step_habitat(clean, initial_state(clean))
+    noisy_state, _ = step_habitat(noisy, initial_state(noisy))
+
+    assert noisy_state.source_co2_mass == clean_state.source_co2_mass
+    assert noisy_state.sensor_co2_concentration != clean_state.sensor_co2_concentration
+    assert any(
+        noisy_state.actuators[zone].setpoint != clean_state.actuators[zone].setpoint
+        for zone in noisy_state.actuators
+    )
+
+
+def test_measurement_samples_are_bounded_and_independent_by_key(standard_doc):
+    first_config = parse_scenario(standard_doc)
+    standard_doc["simulation"]["random_seed"] += 1
+    second_config = parse_scenario(standard_doc)
+    samples = {
+        deterministic_measurement_sample(config, entity, channel, tick)
+        for config in (first_config, second_config)
+        for entity in ("cabin_a", "cabin_b")
+        for channel in ("actuator_position", "airflow_noise", "airflow_bias")
+        for tick in (0, 1, 2)
+    }
+
+    assert len(samples) == 36
+    assert all(-1.0 <= sample < 1.0 for sample in samples)
+
+
+def test_measurement_drift_is_bounded_continuous_and_anchor_exact(standard_scenario_path):
+    config = load_scenario(standard_scenario_path)
+    values = [
+        deterministic_measurement_drift(config, "cabin_a", "co2_sensor", tick)
+        for tick in range(61)
+    ]
+
+    assert all(-1.0 <= value < 1.0 for value in values)
+    assert max(abs(later - earlier) for earlier, later in zip(values, values[1:])) < 0.1
+    for tick in (0, 20, 40, 60):
+        assert values[tick] == deterministic_measurement_sample(
+            config, "cabin_a", "co2_sensor:drift-anchor", tick
+        )
+
+
+def test_frozen_sensor_holds_latent_value_while_readout_noise_continues(standard_doc):
+    standard_doc["telemetry"].update(
+        co2_sensor_noise_fraction=0.05,
+        co2_sensor_bias_fraction=0.02,
+        co2_sensor_drift_fraction=0.03,
+    )
+    config = parse_scenario(standard_doc)
+    state = initial_state(config)
+    readings = []
+    truths = []
+    latent_values = []
+    for _ in range(8):
+        state, _ = step_habitat(config, state, frozen_zones={"lab"})
+        readings.append(state.sensor_co2_concentration["lab"])
+        truths.append(state.zone_co2_mass["lab"])
+        latent_values.append(state.frozen_sensor_readings["lab"])
+
+    assert len(set(readings)) > 1
+    assert len(set(latent_values)) == 1
+    assert len(set(truths)) > 1
 
 
 def test_trace_proves_co2_sensor_controls_actuator(standard_scenario_path):
