@@ -120,6 +120,34 @@ def test_seeded_cabin_sources_vary_independently_within_epsilon(
     assert cabin_a != cabin_b
 
 
+def test_noisy_measurements_without_writer_preserve_shared_capacity(standard_doc):
+    standard_doc["telemetry"] = {
+        "airflow_noise_fraction": 0.015,
+        "airflow_bias_fraction": 0.005,
+        "airflow_drift_fraction": 0.01,
+        "actuator_position_noise_fraction": 0.01,
+        "co2_sensor_noise_fraction": 0.0,
+        "co2_sensor_bias_fraction": 0.0,
+        "co2_sensor_drift_fraction": 0.0,
+    }
+    config = parse_scenario(standard_doc)
+    processing_id = config.processing_zone().id
+
+    for record in run_scenario(config):
+        total_delivered = sum(
+            record.connections[connection.id]["delivered_airflow"]
+            for connection in config.connections
+            if connection.to_zone == processing_id
+        )
+        assert total_delivered <= record.system["shared_airflow_capacity"]
+        assert record.system["total_delivered_airflow"] == total_delivered
+        for values in record.connections.values():
+            assert 0.0 <= values["delivered_airflow"] <= values["requested_airflow"]
+            assert values["airflow_residual"] == pytest.approx(
+                values["requested_airflow"] - values["delivered_airflow"]
+            )
+
+
 def test_noisy_measurements_are_deterministic_and_preserve_trace_invariants(
     standard_doc, tmp_path,
 ):

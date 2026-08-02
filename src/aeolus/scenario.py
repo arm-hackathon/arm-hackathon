@@ -236,7 +236,7 @@ def _observed_loop_telemetry(
     capacity = config.air_system.shared_airflow_capacity
     if observed_total > capacity:
         scale = capacity / observed_total
-        if sum(
+        while sum(
             observed_connections[connection_id]["delivered_airflow"] * scale
             for connection_id in outbound_ids
         ) > capacity:
