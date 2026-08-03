@@ -94,6 +94,8 @@ def response_latency_ticks(
     opts into the loose any-zone definition.
     """
     scope = tuple(affected_zone_ids) or None
+    if onset_tick is None:
+        return None
     for tick_index, rationale in enumerate(rationale_history):
         measured_tick = tick_index + 1
         if measured_tick < onset_tick:
@@ -265,7 +267,7 @@ def _aggregate(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     time_deltas = [row["fault"]["time_above_ceiling"]["delta"] for row in rows]
     excursion_deltas = [row["fault"]["max_excursion"]["delta"] for row in rows]
     energy_overheads = [
-        row["fault"]["energy"]["overhead_fraction"] for row in rows
+        row["fault"]["energy"].get("overhead_fraction", 0.0) for row in rows
     ]
     latencies = [row["response_latency_ticks"] for row in rows]
     latency_values = [latency for latency in latencies if latency is not None]

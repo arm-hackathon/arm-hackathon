@@ -215,3 +215,27 @@ def test_conclusion_reports_invariant_violations_from_aggregate():
 
     text = _conclusion([_row(0.0, 0.0, baseline_violations=1, governed_violations=2)])
     assert "1 baseline / 2 governed invariant violations" in text
+
+
+def test_response_latency_handles_missing_onset():
+    history = [{"cabin_a": {"reason": "nominal", "commanded": 0.1}}]
+    assert response_latency_ticks(history, onset_tick=None) is None
+
+
+def test_aggregate_tolerates_zero_baseline_energy():
+    from aeolus.response_evidence import _aggregate
+
+    row = {
+        "fault": {
+            "time_above_ceiling": {"delta": 0.0},
+            "max_excursion": {"delta": 0.0},
+            "energy": {"baseline": 0.0, "governed": 0.0, "delta": 0.0},
+            "invariant_violations": {"baseline": 0, "governed": 0},
+        },
+        "reference": {"time_above_ceiling": {"delta": 0.0}},
+        "governed_action_ticks": {"nominal": 1},
+        "response_latency_ticks": None,
+    }
+    aggregate = _aggregate([row])
+    assert aggregate["energy"]["mean_overhead_fraction"] == 0.0
+    assert aggregate["energy"]["median_overhead_fraction"] == 0.0
