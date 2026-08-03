@@ -14,6 +14,7 @@ from aeolus.measurement import (
     deterministic_measurement_drift,
     deterministic_measurement_sample,
 )
+from aeolus.model_input import build_model_input_contract, model_input_v1
 from aeolus.plant import initial_state, requested_loop_airflow, step_habitat
 from aeolus.trace import TickRecord, TraceWriter
 
@@ -55,6 +56,38 @@ def run_scenario(
     When ``trace_path`` is given, each record is also appended to that file
     as one JSONL row, immediately after its tick is computed.
     """
+    return _run_scenario(config, run=run, trace_path=trace_path, governor=None)
+
+
+def run_governed_scenario(
+    config: HabitatConfig,
+    governor,
+    *,
+    run: RunSpec = STANDARD_RUN,
+    trace_path=None,
+) -> list[TickRecord]:
+    """Run one scenario under an external bounded-response governor.
+
+    The governor is a causal decision maker: before each measured tick it
+    returns bounded per-zone commands via :meth:`next_commands` using only
+    ``model_input_v1`` vectors of completed ticks (fed through
+    :meth:`observe`). It never sees hidden fault truth, so its behaviour is
+    observable-only by construction. ``governor.reset()`` is called before the
+    run, mirroring the streaming evaluator contract.
+    """
+    reset = getattr(governor, "reset", None)
+    if callable(reset):
+        reset()
+    return _run_scenario(config, run=run, trace_path=trace_path, governor=governor)
+
+
+def _run_scenario(
+    config: HabitatConfig,
+    *,
+    run: RunSpec,
+    trace_path,
+    governor,
+) -> list[TickRecord]:
     state = initial_state(config)
     # Warm up under the first declared occupancy conditions. Negative source
     # ticks give the pre-roll its own deterministic noise sequence, while the
@@ -70,6 +103,33 @@ def run_scenario(
     # or captured-CO2 accounting in the replay.
     state = replace(state, tick=0, captured_co2=0.0)
     records: list[TickRecord] = []
+    contract = build_model_input_contract(config) if governor is not None else None
+    if governor is not None:
+        # Pre-seed the governor's causal window with the warm-up observations
+        # so its first measured command uses the same observation basis as the
+        # baseline controller at measured tick 1 (no artificial edge lag).
+        warmup_state = initial_state(config)
+        warmup_window: list[list[float]] = []
+        for warmup_index in range(run.warmup_ticks):
+            warmup_state, warmup_airflows = step_habitat(
+                config,
+                warmup_state,
+                source_tick=warmup_index - run.warmup_ticks,
+                occupancy_tick=1,
+            )
+            warmup_window.append(
+                model_input_v1(
+                    _tick_record(config, warmup_state, warmup_airflows), contract
+                ).tolist()
+            )
+        seeding_window = getattr(governor, "settings", None)
+        keep = (
+            seeding_window.window_ticks
+            if seeding_window is not None
+            else run.warmup_ticks
+        )
+        for vector in warmup_window[-min(keep, len(warmup_window)) :]:
+            governor.observe(vector)
 
     writer_context = (
         TraceWriter(trace_path) if trace_path is not None else nullcontext(None)
@@ -77,14 +137,20 @@ def run_scenario(
     with writer_context as writer:
         while state.tick < run.total_ticks:
             next_tick = state.tick + 1
+            override_commands = None
+            if governor is not None:
+                override_commands, _ = governor.next_commands()
             state, airflows = step_habitat(
                 config,
                 state,
                 connection_effectiveness=_connection_effectiveness(config, next_tick),
                 frozen_zones=_frozen_sensor_zones(config, next_tick),
+                override_commands=override_commands,
             )
             record = _tick_record(config, state, airflows)
             records.append(record)
+            if governor is not None:
+                governor.observe(model_input_v1(record, contract).tolist())
             if writer is not None:
                 writer.write(record)
     return records
