@@ -48,6 +48,11 @@
   read `yarofix2`, the README deferred-work bullet no longer defers the
   implemented governor, and the README margin table reports 128/129 instead
   of 129/129.
+- Hardened the harness against two latent crashes: `_aggregate` no longer
+  KeyErrors when a run has zero baseline energy (`overhead_fraction` is only
+  emitted for positive baselines, so the metric now defaults to 0.0), and
+  `response_latency_ticks` returns `None` for a family with no fault onset
+  instead of comparing against `None`.
 - Full suite: 343 tests passed at review-fix commit time.
 
 ## 2026-08-03 — protocol-v3 frozen final evaluation
