@@ -127,3 +127,51 @@ def test_experiment_rejects_nonempty_artifact_output_without_creating_output(tmp
 def test_experiment_cli_rejects_wrong_arity(capsys):
     assert main([]) == 2
     assert "Usage:" in capsys.readouterr().err
+
+
+def test_run_experiment_rejects_v3_development_split_layout(tmp_path):
+    base_name = "standard_habitat.json"
+    (tmp_path / base_name).write_bytes(
+        (REPO_ROOT / "scenarios" / base_name).read_bytes()
+    )
+    profile = {
+        "id": "primary-low",
+        "source_multiplier": 0.8,
+        "shared_airflow_capacity": 24.0,
+        "telemetry": {
+            "airflow_noise_fraction": 0.02,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.01,
+        },
+    }
+    item = {
+        "seeds": [10],
+        "fault_start_ticks": [25],
+        "operating_profiles": [profile],
+        "gradual_profiles": [{"duration_ticks": 30, "end_effectiveness": 0.75}],
+        "blocked_effectiveness": [0.65],
+    }
+    item_validation = {
+        **item,
+        "seeds": [500],
+    }
+    spec = tmp_path / "dev-sweep.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema_version": "aeolus_sweep_v3",
+                "base_scenario": base_name,
+                "targets": ["cabin_a"],
+                "suite_role": "development",
+                "splits": {"train": item, "validation": item_validation},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="v2 run_experiment path requires"):
+        run_experiment(spec, tmp_path / "experiment", tmp_path / "artifacts")
+    assert not (tmp_path / "experiment").exists()
