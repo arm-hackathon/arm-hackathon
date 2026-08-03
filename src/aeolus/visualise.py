@@ -75,12 +75,27 @@ def _validate_schema(
             raise ValueError(f"trace line {line_number} {field} do not match line 1")
 
 
+def _validate_exact_fields(
+    actual_fields: set[str], expected_fields: set[str], context: str
+) -> None:
+    """Reject undeclared or missing fields before they can enter report payloads."""
+    if actual_fields == expected_fields:
+        return
+    unexpected = sorted(actual_fields - expected_fields)
+    if unexpected:
+        raise ValueError(f"{context} has unexpected field {unexpected[0]!r}")
+    missing = sorted(expected_fields - actual_fields)
+    raise ValueError(f"{context} is missing {missing[0]!r}")
+
+
 def _validate_row(row: Any, line_number: int) -> None:
     if not isinstance(row, dict):
         raise ValueError(f"trace line {line_number} must be a JSON object")
-    for field in ("tick", "zones", "connections", "actuators", "system"):
-        if field not in row:
-            raise ValueError(f"trace line {line_number} is missing {field!r}")
+    _validate_exact_fields(
+        set(row),
+        {"tick", "zones", "connections", "actuators", "system"},
+        f"trace line {line_number}",
+    )
     tick = row["tick"]
     if isinstance(tick, bool) or not isinstance(tick, int) or tick < 1:
         raise ValueError(f"trace line {line_number} tick must be a positive integer")
@@ -93,30 +108,30 @@ def _validate_row(row: Any, line_number: int) -> None:
     if not isinstance(row["system"], dict):
         raise ValueError(f"trace line {line_number} 'system' must be an object")
 
+    zone_fields = {
+        "co2_mass",
+        "co2_concentration",
+        "sensor_co2_concentration",
+        "source_co2_mass",
+        "occupancy_multiplier",
+    }
     for zone_id, readings in row["zones"].items():
         if not isinstance(readings, dict):
             raise ValueError(
                 f"trace line {line_number} zone {zone_id!r} must be an object"
             )
-        for field in (
-            "co2_mass",
-            "co2_concentration",
-            "sensor_co2_concentration",
-            "source_co2_mass",
-            "occupancy_multiplier",
-        ):
-            if field not in readings:
-                raise ValueError(
-                    f"trace line {line_number} zone {zone_id!r} is missing {field!r}"
-                )
+        expected_fields = zone_fields | (
+            {"captured_co2"} if "captured_co2" in readings else set()
+        )
+        _validate_exact_fields(
+            set(readings),
+            expected_fields,
+            f"trace line {line_number} zone {zone_id!r}",
+        )
+        for field in expected_fields:
             _finite_number(
                 readings[field],
                 f"trace line {line_number} zone {zone_id!r} {field}",
-            )
-        if "captured_co2" in readings:
-            _finite_number(
-                readings["captured_co2"],
-                f"trace line {line_number} zone {zone_id!r} captured_co2",
             )
 
     for connection_id, readings in row["connections"].items():
@@ -190,27 +205,27 @@ def _validate_row(row: Any, line_number: int) -> None:
                 f"trace line {line_number} actuator {actuator_id!r} "
                 "must be an object"
             )
+        _validate_exact_fields(
+            set(readings),
+            set(actuator_fields),
+            f"trace line {line_number} actuator {actuator_id!r}",
+        )
         for field in actuator_fields:
-            if field not in readings:
-                raise ValueError(
-                    f"trace line {line_number} actuator {actuator_id!r} "
-                    f"is missing {field!r}"
-                )
             _finite_number(
                 readings[field],
                 f"trace line {line_number} actuator {actuator_id!r} {field}",
             )
 
-    for field in (
+    system_fields = {
         "shared_airflow_capacity",
         "total_requested_airflow",
         "total_delivered_airflow",
         "capacity_scale",
-    ):
-        if field not in row["system"]:
-            raise ValueError(
-                f"trace line {line_number} system is missing {field!r}"
-            )
+    }
+    _validate_exact_fields(
+        set(row["system"]), system_fields, f"trace line {line_number} system"
+    )
+    for field in system_fields:
         _finite_number(
             row["system"][field], f"trace line {line_number} system {field}"
         )

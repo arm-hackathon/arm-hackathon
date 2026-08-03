@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from aeolus.trace import TickRecord, TraceWriter
 from aeolus.visualise import load_trace, main, write_visualisation
 
@@ -275,3 +277,26 @@ def test_load_trace_rejects_undeclared_connection_telemetry(tmp_path):
         assert "unexpected field 'health'" in str(exc)
     else:
         raise AssertionError("undeclared connection telemetry should be rejected")
+
+
+@pytest.mark.parametrize(
+    ("path", "field"),
+    (
+        ((), "hidden_truth"),
+        (("zones", "cabin"), "hidden_effectiveness"),
+        (("actuators", "cabin"), "hidden_health"),
+        (("system",), "random_seed"),
+    ),
+)
+def test_load_trace_rejects_undeclared_telemetry_fields(tmp_path, path, field):
+    trace = tmp_path / "trace.jsonl"
+    _write_trace(trace)
+    rows = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    target = rows[0]
+    for key in path:
+        target = target[key]
+    target[field] = 1.0
+    trace.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=rf"trace line 1.*unexpected field '{field}'"):
+        load_trace(trace)
