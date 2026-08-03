@@ -104,6 +104,37 @@ def test_response_latency_uses_onset_window():
     assert response_latency_ticks(history, onset_tick=10) is None
 
 
+def test_response_latency_scoped_to_affected_zones():
+    history = [
+        {"cabin_a": {"reason": "nominal", "commanded": 0.1},
+         "cabin_b": {"reason": "nominal", "commanded": 0.1}},
+        {"cabin_a": {"reason": "nominal", "commanded": 0.1},
+         "cabin_b": {"reason": "degraded_spare_release", "commanded": 0.05}},
+    ]
+    assert response_latency_ticks(
+        history, onset_tick=1, affected_zone_ids=("cabin_a",)
+    ) is None
+    assert response_latency_ticks(
+        history, onset_tick=1, affected_zone_ids=("cabin_b",)
+    ) == 1
+    assert response_latency_ticks(
+        history, onset_tick=1, affected_zone_ids=("cabin_a", "cabin_b")
+    ) == 1
+
+
+def test_response_latency_ignores_rate_limits_on_healthy_zones():
+    history = [
+        {"cabin_a": {"reason": "bounded_rate", "commanded": 0.1}},
+        {"cabin_a": {"reason": "nominal", "commanded": 0.1}},
+    ]
+    assert response_latency_ticks(
+        history, onset_tick=1, affected_zone_ids=("cabin_a",)
+    ) == 0
+    assert response_latency_ticks(
+        history, onset_tick=1, affected_zone_ids=("cabin_b",)
+    ) is None
+
+
 def test_end_to_end_receipt_is_canonical(tmp_path, standard_scenario_path):
     spec_path = _write_mini_sweep(tmp_path, standard_scenario_path)
     output = tmp_path / "evidence"
@@ -146,3 +177,41 @@ def test_output_dir_must_be_empty(tmp_path, standard_scenario_path):
 
     with pytest.raises(ValueError, match="not empty"):
         run_response_evidence(spec_path, output)
+
+
+def _row(time_delta, reference_delta, baseline_violations=0, governed_violations=0):
+    return {
+        "family_id": "f",
+        "fault_class": "gradual_primary_fan_degradation",
+        "split": "train",
+        "fault": {
+            "time_above_ceiling": {"baseline": 0.0, "governed": float(time_delta), "delta": float(time_delta)},
+            "max_excursion": {"delta": 0.0},
+            "energy": {"baseline": 1.0, "governed": 1.0, "overhead_fraction": 0.0},
+            "invariant_violations": {
+                "baseline": baseline_violations,
+                "governed": governed_violations,
+            },
+        },
+        "reference": {"time_above_ceiling": {"delta": float(reference_delta)}},
+        "governed_action_ticks": {"degraded_spare_release": 1},
+        "response_latency_ticks": 64,
+    }
+
+
+def test_conclusion_derives_within_margin_from_aggregate():
+    from aeolus.response_evidence import _aggregate, _conclusion
+
+    rows = [_row(0.0, 0.0), _row(0.0, 0.0), _row(2.0, 0.0)]
+    text = _conclusion(rows)
+    assert "within its 1-tick causality margin on 2/3" in text
+    assert "1 beyond margin" in text
+    assert "all 3" not in text
+    assert _aggregate(rows)["causality_margin"]["fault_families_exceeding_margin"] == 1
+
+
+def test_conclusion_reports_invariant_violations_from_aggregate():
+    from aeolus.response_evidence import _conclusion
+
+    text = _conclusion([_row(0.0, 0.0, baseline_violations=1, governed_violations=2)])
+    assert "1 baseline / 2 governed invariant violations" in text
