@@ -39,6 +39,7 @@ FEATURE_WIDTH = MODEL_INPUT_SHAPE[0]
 FLAT_FEATURES = WINDOW_TICKS * FEATURE_WIDTH
 TEMPORAL_FEATURES = 135
 HIDDEN_UNITS = 16
+ONNX_MAX_ABSOLUTE_PROBABILITY_ERROR = 1e-5
 CLASS_NAMES = (
     "nominal",
     "gradual_primary_fan_degradation",
@@ -1049,7 +1050,20 @@ def validate_onnx_parity(
     return {
         "samples_checked": int(len(windows)),
         "max_absolute_probability_error": maximum_error,
+        "maximum_acceptable_probability_error": ONNX_MAX_ABSOLUTE_PROBABILITY_ERROR,
     }
+
+
+def enforce_onnx_parity(parity: Mapping[str, Any]) -> None:
+    """Reject an export whose measured ONNX error exceeds the declared bound."""
+    maximum_error = float(parity["max_absolute_probability_error"])
+    if not math.isfinite(maximum_error):
+        raise ValueError("ONNX parity must be finite")
+    if maximum_error > ONNX_MAX_ABSOLUTE_PROBABILITY_ERROR:
+        raise ValueError(
+            "ONNX parity exceeds maximum absolute probability error "
+            f"{ONNX_MAX_ABSOLUTE_PROBABILITY_ERROR}: {maximum_error}"
+        )
 
 
 def calibrate_rule_baseline(
@@ -1187,6 +1201,8 @@ def train_and_export(
     )
     model_json = save_detector(detector, model_json_path)
     model_onnx = export_onnx(detector, model_onnx_path)
+    onnx_parity = validate_onnx_parity(detector, model_onnx, split_rows["test"])
+    enforce_onnx_parity(onnx_parity)
     model_metrics = evaluate_detector(
         detector,
         split_rows["test"],
@@ -1258,9 +1274,7 @@ def train_and_export(
         "stress_model": stress_metrics,
         "stress_rule_baseline": stress_rule_metrics,
         "evidence_conclusion": conclusion,
-        "onnx_parity": validate_onnx_parity(
-            detector, model_onnx, split_rows["test"]
-        ),
+        "onnx_parity": onnx_parity,
         "artifact_sizes_bytes": {
             "model_json": model_json.stat().st_size,
             "model_onnx": model_onnx.stat().st_size,

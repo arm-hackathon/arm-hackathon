@@ -1,7 +1,12 @@
 """One-command sweep/corpus/model experiment orchestration."""
 
 import json
+import re
+import sys
 from pathlib import Path
+from typing import cast
+
+import pytest
 
 from aeolus.experiment import main, run_experiment
 
@@ -83,6 +88,40 @@ def test_one_command_experiment_emits_stress_evidence_and_artifacts(tmp_path):
     assert metrics["stress_rule_baseline"] is not None
     assert metrics["candidate_selection"]["selection_split"] == "validation"
     assert metrics["rule_calibration"]["selection_split"] == "validation"
+
+
+def test_experiment_receipt_records_canonical_evidence_environment(tmp_path):
+    output = tmp_path / "experiment"
+    receipt = run_experiment(_reduced_v2_spec(tmp_path), output, tmp_path / "artifacts")
+
+    assert receipt["schema_version"] == "aeolus_experiment_v2"
+    environment = cast(dict[str, object], receipt["environment"])
+    assert environment["python_implementation"] == sys.implementation.name
+    assert cast(str, environment["python_version"]).startswith(
+        f"{sys.version_info.major}.{sys.version_info.minor}."
+    )
+    assert re.fullmatch(r"[0-9a-f]{64}", cast(str, environment["uv_lock_sha256"]))
+    assert re.fullmatch(r"[0-9a-f]{40}", cast(str, environment["source_commit"]))
+    assert isinstance(environment["source_worktree_dirty"], bool)
+    assert cast(int, environment["onnx_ir_version"]) > 0
+    assert {"domain": "", "version": 17} in cast(
+        list[dict[str, object]], environment["onnx_opsets"]
+    )
+
+    stored = json.loads((output / "experiment-receipt.json").read_text(encoding="utf-8"))
+    assert stored == receipt
+
+
+def test_experiment_rejects_nonempty_artifact_output_without_creating_output(tmp_path):
+    output = tmp_path / "experiment"
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "existing.txt").write_text("do not overwrite", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="artifact output directory is not empty"):
+        run_experiment(_reduced_v2_spec(tmp_path), output, artifacts)
+
+    assert not output.exists()
 
 
 def test_experiment_cli_rejects_wrong_arity(capsys):

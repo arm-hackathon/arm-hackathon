@@ -132,16 +132,24 @@ uv sync --extra dev
 uv run --extra dev python -m pytest
 ```
 
-Run the complete experiment from an empty output directory:
+Run the complete canonical experiment from a clean source worktree into new,
+empty ignored directories:
 
 ```bash
-PYTHONPATH=src uv run --extra ml python -m aeolus.experiment \
-  scenarios/sweep-v2.json out/experiment-v2 artifacts
+PYTHONPATH=src uv run --locked --python 3.11 --extra ml python -m aeolus.experiment \
+  scenarios/sweep-v2.json \
+  out/evidence-py311-<run-id> \
+  out/evidence-py311-<run-id>-artifacts
 ```
 
 The command generates sweep scenarios, corpus-v2 evidence, both candidates,
-validation selection, rule calibration, locked IID/stress evaluation and final
-artifacts. The accepted family-manifest hash is:
+validation selection, rule calibration, fixed IID/stress evaluation and final
+candidate artifacts. It rejects non-empty output directories rather than
+overwriting evidence. The generated `experiment-receipt.json` records the
+source revision, source-tree state, lock hash, exporter versions, ONNX
+IR/opset, sweep/corpus hashes and artifact hashes. See the
+[evidence-environment guide](docs/evidence-environment.md) before promoting a
+reviewed candidate into tracked `artifacts/`.
 
 ```text
 28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465
@@ -157,9 +165,9 @@ PYTHONPATH=src uv run python -m aeolus.corpus \
 PYTHONPATH=src uv run --extra ml python -m aeolus.detector train \
   out/corpus-v2/corpus.jsonl out/sweep-v2/families.json \
   28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465 \
-  artifacts/aeolus_fault_detector.json \
-  artifacts/aeolus_fault_detector.onnx \
-  artifacts/aeolus_fault_metrics.json
+  out/manual-model-artifacts/aeolus_fault_detector.json \
+  out/manual-model-artifacts/aeolus_fault_detector.onnx \
+  out/manual-model-artifacts/aeolus_fault_metrics.json
 ```
 
 Run rolling inference on a compatible scenario:
