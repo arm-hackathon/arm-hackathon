@@ -2,7 +2,7 @@
 
 ## Status
 
-Development-stage, evidence-backed design on `ben/bounded-response`. The
+Development-stage, evidence-backed design on `yarofix2`. The
 governor is a deterministic, causal, observable-only decision maker that emits
 bounded per-zone actuator commands with structured rationale. It runs in
 parallel with — never instead of — the deterministic baseline controller.
@@ -74,7 +74,7 @@ operating profiles):
 |---|---|---|
 | v1 boost + priority cut + arbitration | worse on 51/129 (mean +2.5 ticks) | 60/129 overruns |
 | v2 unconditional throttle | worse on 64/129 (mean +8.8 ticks) | 60/129 overruns |
-| v3 spare-capacity release + parity baseline | 117/129 exact, all within margin | 0 beyond margin |
+| v3 spare-capacity release + parity baseline | 117/129 exact, 128/129 within margin (1 at +2 ticks) | 0 beyond margin |
 
 Measured findings that shaped the final policy:
 
@@ -101,8 +101,8 @@ The hashed receipt (`out/response-evidence/response-evidence.json`) binds the
 result to the exact sweep spec, family manifest and response settings via
 SHA-256. Metrics per family and controller: time above the `0.30`
 crew-cabin ceiling, max excursion, response latency from onset to first
-non-nominal action, cumulative actuator energy, invariant violations
-(delivered airflow above shared capacity).
+non-nominal action on the affected loop, cumulative actuator energy,
+invariant violations (delivered airflow above shared capacity).
 
 Frozen receipt: `artifacts/response-evidence.json` (copied from
 `out/response-evidence/response-evidence.json`).

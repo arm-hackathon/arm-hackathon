@@ -9,7 +9,7 @@ The final temporal model losing to the rule baseline is a measured limitation,
 not a reason to reselect against the final suite. The more serious gaps are that
 the project still has no INT8 artifact, no declared Arm target, and no measured
 Arm-specific optimization. A bounded simulated response now exists as
-development-stage, evidence-backed design on `ben/bounded-response` (see
+development-stage, evidence-backed design on `yarofix2` (see
 `docs/bounded-response.md`), but it is not yet final-suite evidence.
 
 This assessment was made against:

@@ -84,15 +84,50 @@ def metrics_for_records(
 def response_latency_ticks(
     rationale_history: Sequence[dict[str, dict[str, Any]]],
     onset_tick: int,
+    affected_zone_ids: Sequence[str] = (),
 ) -> int | None:
-    """Return ticks between onset and the first active mitigation on any zone."""
+    """Return ticks between onset and the first mitigation on an affected loop.
+
+    Only rationale entries for zone IDs that the fault profile actually touches
+    count, so rate limits or holds on unrelated healthy loops are not mistaken
+    for a response to the degraded loop. With no affected zone IDs the caller
+    opts into the loose any-zone definition.
+    """
+    scope = tuple(affected_zone_ids) or None
     for tick_index, rationale in enumerate(rationale_history):
         measured_tick = tick_index + 1
         if measured_tick < onset_tick:
             continue
-        if any(entry["reason"] != "nominal" for entry in rationale.values()):
+        zones = scope if scope is not None else tuple(rationale)
+        if any(
+            rationale[zone_id]["reason"] != "nominal"
+            for zone_id in zones
+            if zone_id in rationale
+        ):
             return measured_tick - onset_tick
     return None
+
+
+def _affected_command_zones(config: Any) -> tuple[str, ...]:
+    """Commanded zone IDs whose loop a fault profile actually degrades.
+
+    Connection faults affect the zone served by that connection (matched on
+    either the outbound or the return path); sensor faults affect the zone
+    whose sensor is frozen. Falls back to every commanded zone when no match
+    is found so the metric never silently goes silent.
+    """
+    commanded = tuple(zone.id for zone in config.non_processing_zones())
+    affected: set[str] = set()
+    for fault in config.connection_faults():
+        for zone_id in commanded:
+            if config.path_to_processing(zone_id).id == fault.connection_id:
+                affected.add(zone_id)
+            if config.path_from_processing(zone_id).id == fault.connection_id:
+                affected.add(zone_id)
+    for fault in config.sensor_faults():
+        if fault.zone_id in commanded:
+            affected.add(fault.zone_id)
+    return tuple(sorted(affected)) or commanded
 
 
 def evaluate_family(
@@ -160,6 +195,7 @@ def evaluate_family(
         "response_latency_ticks": response_latency_ticks(
             governed_fault_rationale,
             _fault_onset_tick(fault_config),
+            affected_zone_ids=_affected_command_zones(fault_config),
         ),
     }
 
@@ -300,20 +336,23 @@ def _conclusion(rows: Sequence[dict[str, Any]]) -> str:
     aggregate = _aggregate(rows)
     total = len(rows)
     matched = aggregate["time_above_ceiling"]["matched"]
-    worse = aggregate["time_above_ceiling"]["worse"]
     margin = aggregate["causality_margin"]
+    within_fault = total - margin["fault_families_exceeding_margin"]
+    within_healthy = total - margin["healthy_families_exceeding_margin"]
+    violations = aggregate["invariant_violations"]
     median_latency = aggregate["response_latency"]["median_ticks"]
     median_overhead = aggregate["energy"]["median_overhead_fraction"]
     spare = aggregate["governed_actions"]["families_with_spare_release"]
     return (
         f"bounded response ran at exact baseline parity on {matched}/{total} fault "
         f"families and within its {margin['margin_ticks']}-tick causality margin on "
-        f"all {total} (max excess {margin['fault_max_excess']} ticks, "
+        f"{within_fault}/{total} (max excess {margin['fault_max_excess']} ticks, "
         f"{margin['fault_families_exceeding_margin']} beyond margin); healthy-reference "
-        f"runs stayed within the same margin on all {total} "
+        f"runs stayed within the same margin on {within_healthy}/{total} "
         f"(max excess {margin['healthy_max_excess']}, "
-        f"{margin['healthy_families_exceeding_margin']} beyond); zero invariant "
-        f"violations under both controllers; median response latency "
+        f"{margin['healthy_families_exceeding_margin']} beyond); "
+        f"{violations['baseline_total']} baseline / {violations['governed_total']} "
+        f"governed invariant violations; median response latency "
         f"{median_latency} ticks; median energy overhead {median_overhead * 100:.2f}% "
         f"with spare-capacity release acting in {spare}/{total} families"
     )

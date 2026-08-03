@@ -78,13 +78,14 @@ ticks from observable onset to first correct causal label.
 
 Protocol v3's final suite is fresh but uses the declared synthetic operating
 profiles; it is not OOD stress, hardware-in-the-loop or physical evidence. No
-INT8 artifact, Arm benchmark, production controller or autonomous actuator
-command is implemented or claimed. See the full
-[protocol v3 acceptance record](docs/protocol-v3-acceptance.md).
+INT8 artifact, Arm benchmark, production controller or on-hardware autonomous
+actuator command is implemented or claimed; the simulated bounded recovery
+governor below is development evidence, not a production control result. See
+the full [protocol v3 acceptance record](docs/protocol-v3-acceptance.md).
 
 ## Bounded recovery response
 
-`ben/bounded-response` adds the deterministic _bounded_ decision layer the
+`yarofix2` adds the deterministic _bounded_ decision layer the
 Arm brief asks for. The `BoundedRecoveryGovernor` is a causal, observable-only
 controller: it consumes the same exact `model_input_v1 float32[24]` windows
 the detector sees, never hidden fault state, and emits bounded per-zone
@@ -99,7 +100,7 @@ causality margin rather than hiding it:
 | 129-family response sweep | Result |
 |---|---:|
 | Fault families at exact baseline parity | 117/129 |
-| Fault families within 1-tick margin | 129/129 |
+| Fault families within the 1-tick causality margin | 128/129 (1 at +2 ticks) |
 | Healthy-reference families beyond margin | 0/129 |
 | Invariant violations (both controllers) | 0 |
 | Median energy overhead | 0.00% |
@@ -215,7 +216,8 @@ Generated scenarios and corpora remain ignored under `out/`.
 - quantify whether a hybrid learned-plus-rule system adds value;
 - only after FP32 value is established, evaluate INT8 and benchmark on a
   declared Arm target;
-- defer governor logic and redundant airflow hardware to a separate slice.
+- redundant-fan actuation and `HAND_BACK`-on-invalid-input remain for the
+  next slice.
 
 See [simulation rules](docs/simulation-rules.md), the
 [telemetry contract](docs/telemetry-contract.md), and the historical

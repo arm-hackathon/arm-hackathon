@@ -23,8 +23,8 @@
       "mean_delta": 6.971692534665376e-05
     },
     "response_latency": {
-      "families_with_response": 36,
-      "median_ticks": 64.0
+      "families_with_response": 23,
+      "median_ticks": 67
     },
     "time_above_ceiling": {
       "improved": 0,
@@ -33,8 +33,8 @@
       "worse": 12
     }
   },
-  "conclusion": "bounded response ran at exact baseline parity on 117/129 fault families and within its 1-tick causality margin on all 129 (max excess 2 ticks, 1 beyond margin); healthy-reference runs stayed within the same margin on all 129 (max excess 1, 0 beyond); zero invariant violations under both controllers; median response latency 64.0 ticks; median energy overhead 0.00% with spare-capacity release acting in 1/129 families",
-  "evidence_sha256": "70a07e6f5454d913b201389243c59e0362940329009b063ec29edbf3034c47e4",
+  "conclusion": "bounded response ran at exact baseline parity on 117/129 fault families and within its 1-tick causality margin on 128/129 (max excess 2 ticks, 1 beyond margin); healthy-reference runs stayed within the same margin on 129/129 (max excess 1, 0 beyond); 0 baseline / 0 governed invariant violations; median response latency 67 ticks; median energy overhead 0.00% with spare-capacity release acting in 1/129 families",
+  "evidence_sha256": "eeb4c718738ecae95a7e175b267c7fa88e519f449bd429f904d2a779a63be5ec",
   "evidence_version": "aeolus_response_evidence_v1",
   "families_evaluated": 129,
   "family_manifest_sha256": "510064369583a85a5712f2d98fce5671308fb029c80194cbfb9f22d570883ea6",
@@ -1777,7 +1777,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 79,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -2624,7 +2624,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 64,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -2737,7 +2737,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 64,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5152,7 +5152,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5209,7 +5209,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5266,7 +5266,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5323,7 +5323,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5380,7 +5380,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5437,7 +5437,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5494,7 +5494,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5551,7 +5551,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5608,7 +5608,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
@@ -5665,7 +5665,7 @@
           "governed": 0
         }
       },
-      "response_latency_ticks": 4,
+      "response_latency_ticks": null,
       "split": "train"
     },
     {
