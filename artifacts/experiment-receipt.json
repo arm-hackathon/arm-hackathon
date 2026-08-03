@@ -1,0 +1,45 @@
+{
+  "ai_advantage_demonstrated": false,
+  "artifact_sha256": {
+    "aeolus_fault_detector.json": "c3b416c77e8b63eca558166cb02ac522af950495e2e8b51837cf2678b1c34344",
+    "aeolus_fault_detector.onnx": "c065becb4f9948d322f9c6204cc5ab72b9fcb58725dc65eb7c1ed6b25e3b4c70",
+    "aeolus_fault_metrics.json": "d0468093e79985f43f6522b28080eb0eb0a322b3b4321437e09ae1287ff9d7d7"
+  },
+  "corpus_manifest_sha256": "f88a5758da6a7b45556e674263e79967b9567fa0bea6a8e927c06b10f231aa58",
+  "environment": {
+    "numpy_version": "2.4.6",
+    "onnx_ir_version": 13,
+    "onnx_opsets": [
+      {
+        "domain": "",
+        "version": 17
+      }
+    ],
+    "onnx_version": "1.22.0",
+    "onnxruntime_version": "1.28.0",
+    "platform": "Linux-6.8.0-136-generic-x86_64-with-glibc2.39",
+    "python_implementation": "cpython",
+    "python_version": "3.11.15",
+    "source_commit": "2b27371b7db728d634601e7b6f2522593352a80a",
+    "source_worktree_dirty": false,
+    "uv_lock_sha256": "2d1ad7175754b3603e111cc00ed465636fed5d5e28a424e8f45b53db8d55a86a"
+  },
+  "schema_version": "aeolus_experiment_v2",
+  "selected_candidate": "temporal_mlp_detector",
+  "sweep": {
+    "families_by_split": {
+      "stress": 180,
+      "test": 180,
+      "train": 360,
+      "validation": 120
+    },
+    "family_manifest_sha256": "28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465",
+    "generated_scenario_files": 868,
+    "model_input_version": "model_input_v1",
+    "schema_version": "aeolus_sweep_v2",
+    "selector_sha256": "13feee7bc573ca9630ec935f564d02ed7eee549e421c2db12228dde3f6d70234",
+    "sweep_spec_sha256": "5bd7918510e63613883262d7e5ab06b062a2289e81d14d7f2fb89aa16652c0c6",
+    "topology_sha256": "43ca296d2b9bc6b7ac15d8df2f7db66ba0c383fd7bce463854b9348a8a732262",
+    "total_families": 840
+  }
+}

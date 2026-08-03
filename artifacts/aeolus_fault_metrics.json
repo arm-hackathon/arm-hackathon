@@ -1,16 +1,16 @@
 {
   "artifact_sizes_bytes": {
-    "metrics_json": 22043,
-    "model_json": 70953,
+    "metrics_json": 22087,
+    "model_json": 70924,
     "model_onnx": 14009
   },
   "candidate_selection": {
     "candidates": {
       "softmax_detector": {
-        "serialized_json_size_bytes": 40525,
+        "serialized_json_size_bytes": 40549,
         "validation_metrics": {
-          "accuracy": 0.48790549409338085,
-          "brier_score": 0.9620279981020244,
+          "accuracy": 0.4944684042752672,
+          "brier_score": 0.9572487166029933,
           "confusion_matrix": [
             [
               1605,
@@ -19,25 +19,25 @@
               1557
             ],
             [
-              74,
-              421,
-              100,
-              106
+              77,
+              457,
+              88,
+              79
             ],
             [
-              10,
-              334,
-              375,
-              1
+              14,
+              332,
+              374,
+              0
             ],
             [
-              134,
-              25,
+              132,
+              27,
               0,
               201
             ]
           ],
-          "cross_entropy": 4.971823846443313,
+          "cross_entropy": 4.82040931582178,
           "detection_latency_ticks": {
             "causal_stride_ticks": 5,
             "overall_median": 10.0,
@@ -50,43 +50,43 @@
               },
               "frozen_sensor": {
                 "detected_families": 21,
-                "maximum": 69,
+                "maximum": 79,
                 "median": 9.0,
                 "missed_families": 3
               },
               "gradual_primary_fan_degradation": {
                 "detected_families": 48,
                 "maximum": 54,
-                "median": 20.5,
+                "median": 18.5,
                 "missed_families": 0
               }
             }
           },
-          "macro_f1": 0.4638813115169091,
+          "macro_f1": 0.4729359046763863,
           "nominal_false_alarm_rate": 0.5481418918918919,
           "nominal_false_alarms": 1947,
           "per_class": {
             "blocked_path": {
-              "f1": 0.6276150627615064,
-              "precision": 0.7894736842105263,
-              "recall": 0.5208333333333334,
+              "f1": 0.6328257191201353,
+              "precision": 0.8095238095238095,
+              "recall": 0.5194444444444445,
               "support": 720
             },
             "frozen_sensor": {
-              "f1": 0.1806741573033708,
-              "precision": 0.10777479892761394,
+              "f1": 0.1829767865270824,
+              "precision": 0.10941752857920523,
               "recall": 0.5583333333333333,
               "support": 360
             },
             "gradual_primary_fan_degradation": {
-              "f1": 0.45002672367717794,
-              "precision": 0.3598290598290598,
-              "recall": 0.6005706134094151,
+              "f1": 0.47928683796539073,
+              "precision": 0.37893864013267,
+              "recall": 0.651925820256776,
               "support": 701
             },
             "nominal": {
-              "f1": 0.5972093023255814,
-              "precision": 0.8804168952276468,
+              "f1": 0.5966542750929368,
+              "precision": 0.8780087527352297,
               "recall": 0.4518581081081081,
               "support": 3552
             }
@@ -95,7 +95,7 @@
         }
       },
       "temporal_mlp_detector": {
-        "serialized_json_size_bytes": 70953,
+        "serialized_json_size_bytes": 70924,
         "validation_metrics": {
           "accuracy": 0.6731670729420589,
           "brier_score": 0.4581045483316072,
@@ -314,7 +314,7 @@
   "latency_reference": "observable_onset_tick_stride_one_causal_windows",
   "model": {
     "accuracy": 0.6531582238899312,
-    "brier_score": 0.4383294126517993,
+    "brier_score": 0.43832941265179926,
     "confusion_matrix": [
       [
         3444,
@@ -341,7 +341,7 @@
         405
       ]
     ],
-    "cross_entropy": 0.7110994618615586,
+    "cross_entropy": 0.7110994618615585,
     "detection_latency_ticks": {
       "causal_stride_ticks": 1,
       "overall_median": 9.0,
@@ -400,7 +400,8 @@
   },
   "observable_features_only": true,
   "onnx_parity": {
-    "max_absolute_probability_error": 1.2569836379539012e-06,
+    "max_absolute_probability_error": 1.256983637842879e-06,
+    "maximum_acceptable_probability_error": 1e-05,
     "samples_checked": 512
   },
   "rule_baseline": {
@@ -646,7 +647,7 @@
   },
   "stress_model": {
     "accuracy": 0.36848030018761724,
-    "brier_score": 1.017460931270757,
+    "brier_score": 1.0174609312707572,
     "confusion_matrix": [
       [
         1974,
@@ -820,7 +821,7 @@
       "epochs_requested": 600,
       "l2_penalty": 0.0001,
       "learning_rate": 0.5,
-      "selected_epoch": 530,
+      "selected_epoch": 360,
       "training_class_counts": {
         "blocked_path": 2160,
         "frozen_sensor": 1080,
@@ -828,8 +829,8 @@
         "nominal": 10656
       },
       "training_rows": 16025,
-      "validation_cross_entropy": 4.971823846443313,
-      "validation_macro_f1": 0.4638813115169091,
+      "validation_cross_entropy": 4.82040931582178,
+      "validation_macro_f1": 0.4729359046763863,
       "validation_rows": 5333
     },
     "temporal_mlp_detector": {
