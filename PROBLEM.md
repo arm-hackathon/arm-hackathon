@@ -2,13 +2,13 @@
 
 ## Bottom line
 
-The schema-v9 experiment is a strong engineering milestone, but AEOLUS is not
-ready to submit against the Arm brief unchanged.
+The schema-v9 / protocol-v3 experiment is a strong engineering milestone, but
+AEOLUS is not ready to submit against the Arm brief unchanged.
 
-The temporal model losing to the rule baseline is moderately problematic and
-recoverable. The more serious gaps are that the project still has no bounded
-simulated response, no INT8 artifact, no declared Arm target, and no measured
-Arm-specific optimization.
+The final temporal model losing to the rule baseline is a measured limitation,
+not a reason to reselect against the final suite. The more serious gaps are that
+the project still has no bounded simulated response, no INT8 artifact, no
+declared Arm target, and no measured Arm-specific optimization.
 
 This assessment was made against:
 
@@ -28,9 +28,9 @@ enough.
 |---|---|---|
 | Simulation is acceptable | Deterministic schema-v9 simulator with imperfect measurements | Strong |
 | Judges can inspect a real implementation | Strict schemas, corpus integrity, tests, artifacts | Strong |
-| Make the project easy to run | One-command experiment and documented reproduction | Strong |
-| Compare honestly with a baseline | Softmax, temporal MLP, calibrated rules, IID and OOD evidence | Strong |
-| AI identifies faults | MLP loses overall and produces too many false alarms | Weak |
+| Make the project easy to run | Documented staged, hash-bound reproduction | Strong |
+| Compare honestly with a baseline | Softmax, temporal MLP and calibrated rules; development-only selection and frozen final evaluation | Strong |
+| AI identifies faults | MLP loses overall and produces too many false alarms on final families | Weak |
 | Diagnosis leads to simulated action | Governor and redundant response remain absent | Missing |
 | Perform a deliberate Arm optimization | Only an FP32 ONNX baseline exists | Missing |
 | Match runtime to a declared Arm target | No target-device benchmark exists | Missing |
@@ -41,51 +41,47 @@ explicitly said they are not judging this as “the best benchmark percentage
 wins.” It becomes a serious product problem when combined with the original
 claim that AI will identify faults and trigger actions.
 
-## What the new experiment fixed
+## What the current experiment fixed
 
-The earlier benchmark strongly favoured deterministic rules: the rule baseline
-scored approximately `0.987` macro-F1 because faults had near-exact simulator
-signatures. Schema v9 introduces downstream sensor noise, bias and drift,
-subtle fault families, IID family-held-out testing, and separate OOD stress.
+Earlier benchmarks favoured deterministic rules because faults had near-exact
+simulator signatures. Schema v9 introduces downstream sensor noise, bias and
+drift, subtle fault families, and controller-facing imperfect CO2 sensing.
+Protocol v3 then separates development selection from final evaluation by
+family, rather than treating an inspected v2 test partition as reusable.
 
-On the new IID benchmark:
-
-| Evidence | Temporal MLP | Calibrated rules |
-|---|---:|---:|
-| Macro-F1 | 0.5765 | 0.6410 |
-| Nominal false-alarm rate | 35.36% | 2.53% |
-| Median causal latency | 9 ticks | 11 ticks |
-
-Rules are no longer effectively perfect. That confirms that the realism work
-removed the original shortcuts and produced a materially harder benchmark.
-The model is faster, but its `18.2%` median latency improvement misses the
-fixed `20%` threshold and is accompanied by an unacceptable false-alarm
-regression. The recorded `ai_advantage_demonstrated` result is therefore
-correctly `false`.
-
-OOD stress is worse for both approaches and still favours the rule baseline:
+On the 180-family final suite:
 
 | Evidence | Temporal MLP | Calibrated rules |
 |---|---:|---:|
-| Macro-F1 | 0.3085 | 0.4386 |
-| Nominal false-alarm rate | 66.38% | 0.51% |
+| Macro-F1 | 0.5754744477098027 | 0.642588422763726 |
+| Nominal false-alarm rate | 38.5698% | 0.5631% |
+| Median detection latency | 9 ticks | 10 ticks |
+
+Rules are no longer effectively perfect, which shows that the measurement model
+removed the original shortcut. The model's 11.1% median-latency reduction misses
+the fixed 20% threshold and comes with a severe false-alarm regression. The
+recorded `ai_advantage_demonstrated` result is correctly `false`.
+
+The previous v2 IID/stress numbers remain historical development context only.
+They are not comparable with, and must not be presented as, protocol-v3 final
+or OOD evidence.
 
 ## Where the model adds value
 
 The per-class evidence reveals a complementary signal rather than a wholly
 failed model:
 
-| IID class | MLP recall | Rule recall |
+| Final class | MLP recall | Rule recall |
 |---|---:|---:|
-| Gradual degradation | 59.4% | 58.2% |
-| Blocked path | 69.5% | 88.0% |
-| Frozen sensor | 75.0% | 2.6% |
+| Gradual degradation | 61.79% | 50.29% |
+| Blocked path | 72.41% | 92.78% |
+| Frozen sensor | 73.89% | 4.44% |
 
 The realistic readout model defeats the old exact-constant frozen-sensor rule,
 while the temporal model retains substantial frozen-sensor recall. This is a
 credible AI contribution.
 
-However, frozen-sensor precision is only `24.1%`, and the overall false-alarm
+However, frozen-sensor precision is only `20.72%`, and the overall false-alarm
 rate is too high for the model to trigger ventilation actions safely. The
 current model should therefore remain experimental rather than being described
 as the preferred fault detector.
@@ -120,13 +116,14 @@ outcomes, but those results do not exist yet.
 
 ### 1. Freeze the current result
 
-Keep schema v9, sweep v2, the IID test, the stress partition, and the negative
-evidence as the development baseline. Do not weaken rules or retune using the
-current test result.
+Keep schema v9, the protocol-v3 development suite, the frozen final suite and
+the negative final evidence as the baseline. Do not weaken rules or retune using
+the final report.
 
-Because the current IID test has now been inspected, subsequent model changes
-must use new predeclared, unseen final-test families. Reusing the current test
-as final evidence would undermine the held-out claim.
+Because the current final suite has now been inspected, subsequent model changes
+must use a new predeclared development protocol and a separate unseen final
+suite. Reusing the current final families as new final evidence would undermine
+the held-out claim.
 
 ### 2. Use AI as a bounded complement
 

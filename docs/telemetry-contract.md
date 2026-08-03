@@ -169,31 +169,39 @@ exclude transition windows from training and from scored accuracy, confusion,
 class support, and latency totals. They reject mixed, missing, or stale
 model-input contract metadata.
 
-## Sweep-v2 and detector artifacts
+## Sweep v3 and frozen policy artifacts
 
-`scenarios/sweep-v2.json` is the committed specification for the current
-experimental evidence. `aeolus.sweep` strictly validates it, assigns disjoint
-seeds to train, validation, IID test and OOD stress, creates paired v9 scenarios
-under `out/`, and writes a family manifest plus receipt. Primary train,
-validation and test share the same operating/fault distributions; stress is
-reported separately and never controls selection. Split assignment is by
-family; references and exact scenario identities never cross splits.
+`scenarios/sweep-v2.json` is historical experimental context. It is not the
+current final-evidence specification. The current specifications are
+`scenarios/sweep-v3-development.json` and `scenarios/sweep-v3-final.json`.
+
+The development specification assigns disjoint scenario families to train and
+validation only. `aeolus.protocol.select_development` trains both learned
+candidates from train rows, selects by validation macro-F1, cross-entropy,
+serialized size and name, calibrates rules on validation from the fixed 216-point
+grid, exports FP32 ONNX and enforces validation parity. It persists the complete
+selection and calibration receipts in a strict frozen policy.
+
+The final specification contains only `final` families. The final evaluator
+requires development and final corpora/manifests, a policy, detector JSON and
+ONNX artifact plus expected hashes. It checks family disjointness and contract
+metadata; reconstructs candidate selection, ONNX parity and rule calibration
+from development rows; verifies the saved validation comparison; then applies
+the frozen policy to final rows once. It does not select a candidate, tune a
+threshold or revise the policy outcome from final evidence.
 
 Both learned candidates consume exact ten-row `model_input_v1 float32[24]`
 windows. Softmax flattens to 240 values. `TemporalMLPDetector` embeds
 `temporal_summary_v1`: five summaries of each channel and three safe loop
 residual/request ratios, producing 135 values for a 16-unit ReLU hidden layer.
 Normalization is calculated from training rows only. Training is
-class-balanced and excludes transition rows. Validation macro-F1,
-cross-entropy and then artifact size select the candidate. Test and stress are
-evaluated only after selection.
+class-balanced and excludes transition rows.
 
 The robust `RuleBaseline` is selected independently on validation from a fixed
-216-point grid. Classification still excludes onset-straddling windows, while
-causal latency uses stride-one rolling windows and permits a correct detection
-from `end_tick >= observable_onset_tick`. The fixed advantage policy compares
-macro-F1 error reduction or causal latency subject to false-alarm and
-per-fault-recall guards.
+216-point grid. Classification excludes onset-straddling windows, while causal
+latency uses stride-one rolling windows and permits a correct detection from
+`end_tick >= observable_onset_tick`. Detection latency is simulator ticks, not
+wall-clock inference performance.
 
 The exact prediction classes are `nominal`,
 `gradual_primary_fan_degradation`, `blocked_path`, and `frozen_sensor`.
@@ -204,11 +212,8 @@ with each `end_tick`.
 The strict JSON loader rejects unknown artifact fields, wrong input shape,
 class-vocabulary drift, non-finite parameters, invalid normalization scales,
 and selector/topology mismatch. The FP32 ONNX graph embeds the same metadata.
-The metrics artifact includes confusion matrices, per-class
-precision/recall/F1, macro-F1, nominal false alarms, Brier score,
-stride-one observable-onset latency, split evidence, candidate selection,
-calibrated rule parameters, IID and stress comparisons, artifact sizes, and
-Python/ONNX parity.
+See [protocol v3 acceptance](protocol-v3-acceptance.md) for the measured result,
+independence boundary and reproduction commands.
 
 ## Forbidden hidden truth
 

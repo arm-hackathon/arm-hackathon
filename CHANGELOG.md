@@ -1,6 +1,23 @@
 # Changelog
 
-## 2026-08-01 — fair schema-v9 temporal experiment
+## 2026-08-03 — protocol-v3 frozen final evaluation
+
+- Retired the inspected v2 test and stress partitions as current decision
+  inputs. Added a 360-family train / 120-family validation development suite and
+  a fresh 180-family final suite with role-specific split validation.
+- Added a strict policy that captures validation-only candidate selection, rule
+  calibration, model/rule comparison and ONNX parity. Final evaluation replays
+  candidate training, selection, ONNX parity and calibration from verified
+  development evidence before it evaluates final rows.
+- Final evidence is negative: temporal MLP macro-F1 `0.5754744477098027` versus
+  rule macro-F1 `0.642588422763726`; nominal false-alarm rate `38.5698%` versus
+  `0.5631%`; median detection latency 9 versus 10 simulator ticks. The frozen
+  preferred method remains `rule_baseline` and no AI advantage is claimed.
+- Documented that 8,000 scored windows are correlated observations within 180
+  final scenario families. No independent-window uncertainty, OOD robustness,
+  wall-clock performance, hardware or deployment claim is made.
+
+## 2026-08-01 — historical schema-v9 temporal experiment (superseded for final evidence)
 
 - Added deterministic airflow drift and controller-facing CO2 sensor noise,
   bias and drift. Frozen faults now hold latent readings while downstream

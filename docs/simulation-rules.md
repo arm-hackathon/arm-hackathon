@@ -275,13 +275,9 @@ uv run python -m aeolus.evaluate --v2 out/corpus-v2/corpus.jsonl \
   scenarios/families.json \
   --expected-family-manifest-sha256 828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541 \
   --split test
-uv run python -m aeolus.sweep scenarios/sweep-v2.json out/sweep
-uv run python -m aeolus.corpus --v2 out/sweep-corpus out/sweep/families.json
-uv run --extra ml python -m aeolus.detector train \
-  out/sweep-corpus/corpus.jsonl out/sweep/families.json \
-  28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465 \
-  artifacts/aeolus_fault_detector.json artifacts/aeolus_fault_detector.onnx \
-  artifacts/aeolus_fault_metrics.json
+# Historical sweep-v2 commands are intentionally omitted here. For the current
+# development-selection → final-evaluation protocol, use:
+# docs/protocol-v3-acceptance.md
 uv run python -m aeolus.detector predict \
   artifacts/aeolus_fault_detector.json scenarios/standard_habitat.json
 ```

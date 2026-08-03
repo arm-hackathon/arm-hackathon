@@ -44,12 +44,13 @@ resolution reproducible. `uv` creates its local environment as needed.
 
 | Path | Purpose |
 |---|---|
-| `scenarios/` | Closed-schema v9 scenarios and sweep-v1/v2 specifications. |
+| `scenarios/` | Closed-schema v9 scenarios and sweep-v1/v2/v3 specifications. |
 | `src/aeolus/config.py` | Scenario parsing and validation. |
 | `src/aeolus/plant.py` | Deterministic plant, airflow and CO₂ mass transfer. |
 | `src/aeolus/scenario.py` | Warm-up, measured runs and fault-profile scheduling. |
 | `src/aeolus/sweep.py` | Deterministic family-held-out scenario generation. |
 | `src/aeolus/detector.py` | Softmax/temporal-MLP training, strict inference and FP32 ONNX export. |
+| `src/aeolus/protocol.py` | Validation-only selection, frozen policy and final-only evaluation. |
 | `src/aeolus/trace.py` | JSONL writer and allowlisted model-feature projection. |
 | `src/aeolus/visualise.py` | Dependency-free local HTML replay visualiser. |
 | `tests/` | Unit, scenario, replay and visualisation tests. |
