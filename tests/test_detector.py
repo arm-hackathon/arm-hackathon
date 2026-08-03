@@ -10,9 +10,11 @@ from aeolus.corpus import generate_corpus_v2
 from aeolus.detector import (
     CLASS_NAMES,
     FEATURE_WIDTH,
+    ONNX_MAX_ABSOLUTE_PROBABILITY_ERROR,
     WINDOW_TICKS,
     SoftmaxDetector,
     TemporalMLPDetector,
+    enforce_onnx_parity,
     evidence_conclusion,
     load_detector,
     main,
@@ -243,6 +245,23 @@ def _integration_spec(tmp_path: Path) -> Path:
     path = tmp_path / "sweep.json"
     path.write_text(json.dumps(spec), encoding="utf-8")
     return path
+
+
+def test_onnx_parity_over_acceptance_bound_is_rejected():
+    with pytest.raises(ValueError, match="ONNX parity exceeds"):
+        enforce_onnx_parity(
+            {
+                "max_absolute_probability_error": (
+                    ONNX_MAX_ABSOLUTE_PROBABILITY_ERROR + 1e-8
+                )
+            }
+        )
+
+
+@pytest.mark.parametrize("error", (float("nan"), float("inf"), -float("inf")))
+def test_onnx_parity_nonfinite_error_is_rejected(error):
+    with pytest.raises(ValueError, match="ONNX parity must be finite"):
+        enforce_onnx_parity({"max_absolute_probability_error": error})
 
 
 def test_train_export_onnx_and_predict_are_reproducible(tmp_path):
