@@ -84,9 +84,10 @@ actuator control.
 
 ## Subsequent experimental status
 
-Branch `alex/ai-2` now uses this boundary for a schema-v9, 840-family IID/stress
-sweep and validation-selected softmax/temporal-MLP experiment with FP32 ONNX
-export. That later
-work does not revise this historical Gate-2 acceptance receipt. Its held-out
-metrics record `ai_advantage_demonstrated: false`; INT8, Arm benchmark,
-and autonomous-control evidence remain absent.
+Branch `alex/ai-2` subsequently used this boundary for the historical schema-v9
+840-family IID/stress experiment. Protocol v3 supersedes that work for current
+selection and final evidence: it uses separate development and fresh final
+family suites with a frozen policy. This historical Gate-2 acceptance receipt
+remains unchanged; it does not establish model quality, ONNX parity, INT8, Arm
+benchmark or autonomous-control evidence. See
+[`protocol-v3-acceptance.md`](protocol-v3-acceptance.md) for current evidence.

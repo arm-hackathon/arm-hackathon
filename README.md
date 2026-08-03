@@ -22,23 +22,18 @@ The branch retains deterministic replay, explicit fault profiles, the
 standalone visualiser, corpus-v2 integrity checks, topology hashes, and the
 frozen `model_input_v1 float32[24]` contract from `main`.
 
-This experiment adds:
+Protocol v3 adds a strict development-to-final decision path:
 
-- closed-schema v9 telemetry settings for airflow noise, bias and drift;
-  actuator-position noise; and CO2 sensor noise, bias and drift;
-- SHA-256-derived uniform innovations in `[-1,1)` plus bounded piecewise-linear
-  drift between deterministic 20-tick anchors;
-- downstream CO2 readout effects: a frozen sensor holds its latent reading
-  while bias, drift and readout noise continue, and the measured value drives
-  the local controller;
-- `sweep-v2`: 840 paired scenario families split into train, validation, IID
-  test and separately reported OOD stress evidence;
-- a softmax baseline and compact `temporal_summary_v1` MLP, selected using
-  validation evidence only;
-- a robust rule baseline selected from a committed 216-point validation grid;
-- stride-one causal latency, an attainable predeclared advantage policy, strict
-  JSON loading, FP32 ONNX export and Python/ONNX parity evidence;
-- a one-command deterministic experiment runner.
+- closed-schema v9 measurement noise, bias and drift, including controller-facing
+  CO2 readout effects;
+- 360 training and 120 validation scenario families used for every learned
+  candidate choice and rule-grid calibration;
+- a separately generated 180-family final suite, never used for selection;
+- softmax and compact `temporal_summary_v1` MLP candidates, a 216-point
+  validation-only rule calibration, strict JSON loading and FP32 ONNX parity;
+- a hash-bound policy whose candidate receipt, calibration receipt, validation
+  comparison and outcome are replayed before final evaluation; and
+- a final report that cannot overwrite an earlier report or reselect a method.
 
 Both learned candidates consume exact `float32[10,24]` corpus-v2 windows. The
 selected MLP summarizes last value, mean, population standard deviation, slope
@@ -57,40 +52,35 @@ frozen_sensor
 Fault truth, schedules, hidden effectiveness, connection health, seeds and
 measurement state never enter telemetry or model features.
 
-## Measured result
+## Current measured result
 
-The temporal MLP won validation selection over softmax (`0.5884` versus
-`0.4639` macro-F1). It did **not** beat the calibrated rules on the locked IID
-test and degrades further under OOD stress.
+The frozen v3 final result is negative: the calibrated rule baseline remains
+preferred over the validation-selected temporal MLP.
 
-| Evidence | Temporal MLP | Calibrated rules |
+| Final-suite evidence | Temporal MLP | Calibrated rules |
 |---|---:|---:|
-| IID test macro-F1 | 0.5765 | 0.6410 |
-| IID nominal false alarms | 35.36% | 2.53% |
-| IID median causal latency | 9 ticks | 11 ticks |
-| OOD stress macro-F1 | 0.3085 | 0.4386 |
-| OOD stress nominal false alarms | 66.38% | 0.51% |
+| Macro-F1 | 0.5754744477098027 | 0.642588422763726 |
+| Nominal false-alarm rate | 38.5698% | 0.5631% |
+| Overall median detection latency | 9 ticks | 10 ticks |
+| Scored windows | 8,000 | 8,000 |
 
-The learned model is 18.2% faster by median IID latency, below the fixed 20%
-latency-win threshold, and the false-alarm regression is material. Therefore
-`ai_advantage_demonstrated` is `false` and `rule_baseline` remains preferred.
-This is a fair negative result, not a tuned AI claim.
+The MLP's median detection latency is 11.1% lower, below the fixed 20%
+latency condition, while macro-F1 is lower and nominal false alarms are much
+higher. `ai_advantage_demonstrated` is therefore `false` and
+`rule_baseline` remains preferred. This is a negative result, not a tuned AI
+claim.
 
-The sweep contains 360 training, 120 validation, 180 IID test and 180 stress
-families. It generates 38,640 windows: 37,348 scored windows plus 1,292
-transition windows retained for causal history but excluded from fitting and
-classification metrics. Python and FP32 ONNX probabilities agree within
-`1.257e-6`, below the `1e-5` bound.
+The 8,000 windows are correlated, stride-one observations from **180** held-out
+scenario families. The family—not a window—is the independent replay unit. No
+confidence interval, independent-window, alert-burden, wall-clock latency or
+deployment claim follows from this result. Detection latency means simulator
+ticks from observable onset to first correct causal label.
 
-Committed compact evidence:
-
-- `artifacts/aeolus_fault_detector.json` — selected transform, normalization,
-  MLP and contract metadata;
-- `artifacts/aeolus_fault_detector.onnx` — FP32 transform and MLP graph;
-- `artifacts/aeolus_fault_metrics.json` — candidate selection, calibrated rule
-  parameters, IID/stress metrics, latency, conclusion, sizes and parity.
-
-No INT8 artifact or Arm performance result is implemented or claimed.
+Protocol v3's final suite is fresh but uses the declared synthetic operating
+profiles; it is not OOD stress, hardware-in-the-loop or physical evidence. No
+INT8 artifact, Arm benchmark, production controller or autonomous actuator
+command is implemented or claimed. See the full
+[protocol v3 acceptance record](docs/protocol-v3-acceptance.md).
 
 ## Schema-v9 measurement semantics
 
@@ -128,47 +118,20 @@ leaving latent CO2 mass untouched by the measurement calculation itself.
 Install dependencies and run all tests:
 
 ```bash
-uv sync --extra dev
-uv run --extra dev python -m pytest
+uv sync --locked --python 3.11 --extra dev
+uv run --locked --python 3.11 --extra dev python -m pytest
 ```
 
-Run the complete canonical experiment from a clean source worktree into new,
-empty ignored directories:
+Use the staged v3 procedure in the
+[protocol v3 acceptance record](docs/protocol-v3-acceptance.md#reproduction).
+It generates a development corpus, selects and freezes a policy, creates a
+separate final corpus, and evaluates the final suite once. All generated output
+belongs under a new ignored `out/` directory; the protocol rejects pre-existing
+final reports rather than overwriting evidence.
 
-```bash
-PYTHONPATH=src uv run --locked --python 3.11 --extra ml python -m aeolus.experiment \
-  scenarios/sweep-v2.json \
-  out/evidence-py311-<run-id> \
-  out/evidence-py311-<run-id>-artifacts
-```
-
-The command generates sweep scenarios, corpus-v2 evidence, both candidates,
-validation selection, rule calibration, fixed IID/stress evaluation and final
-candidate artifacts. It rejects non-empty output directories rather than
-overwriting evidence. The generated `experiment-receipt.json` records the
-source revision, source-tree state, lock hash, exporter versions, ONNX
-IR/opset, sweep/corpus hashes and artifact hashes. See the
-[evidence-environment guide](docs/evidence-environment.md) before promoting a
-reviewed candidate into tracked `artifacts/`.
-
-```text
-28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465
-```
-
-Individual stages remain available:
-
-```bash
-PYTHONPATH=src uv run python -m aeolus.sweep \
-  scenarios/sweep-v2.json out/sweep-v2
-PYTHONPATH=src uv run python -m aeolus.corpus \
-  --v2 out/corpus-v2 out/sweep-v2/families.json
-PYTHONPATH=src uv run --extra ml python -m aeolus.detector train \
-  out/corpus-v2/corpus.jsonl out/sweep-v2/families.json \
-  28db9bed90ab18a8f7b970a80dd72fdb3ecae316157b4b9e3819c2c7471f8465 \
-  out/manual-model-artifacts/aeolus_fault_detector.json \
-  out/manual-model-artifacts/aeolus_fault_detector.onnx \
-  out/manual-model-artifacts/aeolus_fault_metrics.json
-```
+The older `sweep-v2` command path remains in the codebase only for historical
+comparison. Its inspected IID and stress metrics are not current selection or
+final-evaluation evidence.
 
 Run rolling inference on a compatible scenario:
 
@@ -205,7 +168,9 @@ Generated scenarios and corpora remain ignored under `out/`.
 | `scenarios/frozen_sensor.json` | Frozen lab sensor while truth evolves. |
 | `scenarios/families.json` | Small historical corpus-v2 contract fixture. |
 | `scenarios/sweep-v1.json` | Legacy three-way experimental sweep. |
-| `scenarios/sweep-v2.json` | Fair IID plus OOD stress experiment. |
+| `scenarios/sweep-v2.json` | Historical inspected IID/OOD experiment; not current final evidence. |
+| `scenarios/sweep-v3-development.json` | Current train/validation-only policy-selection suite. |
+| `scenarios/sweep-v3-final.json` | Current fresh final-only evaluation suite. |
 
 ## Deferred work
 
