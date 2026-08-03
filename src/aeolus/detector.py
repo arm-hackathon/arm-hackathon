@@ -694,6 +694,11 @@ def _detector_serialized_size(detector: Detector) -> int:
     )
 
 
+def detector_serialized_size(detector: Detector) -> int:
+    """Return the canonical detector JSON size used for deterministic ties."""
+    return _detector_serialized_size(detector)
+
+
 def load_detector(
     path: str | Path, *, expected_contract: Mapping[str, str] | None = None
 ) -> Detector:

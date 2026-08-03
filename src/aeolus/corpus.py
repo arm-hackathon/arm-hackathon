@@ -238,6 +238,8 @@ def generate_corpus_v2(
     family_counts_by_split = {split: 0 for split in split_order}
     if "stress" in present_splits:
         family_counts_by_split["stress"] = 0
+    if "final" in present_splits:
+        family_counts_by_split["final"] = 0
     for evidence in evidence_by_family.values():
         family_counts_by_split[evidence.split] += 1
     manifest = {
