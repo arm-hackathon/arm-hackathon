@@ -29,7 +29,7 @@ USAGE = (
     "<scenario.json> [scenario.json ...]\n"
     "   or: PYTHONPATH=src python3 -m aeolus.evaluate --v2 <corpus.jsonl> "
     "<families.json> --expected-family-manifest-sha256 <sha256> "
-    "[--split train|validation|test|stress]"
+    "[--split train|validation|test|stress|final]"
 )
 EXCLUDED_TRANSITION_LABEL = "excluded_transition"
 _V2_CONTRACT_KEYS = frozenset(
@@ -46,7 +46,7 @@ _V2_ROW_KEYS = _V2_CONTRACT_KEYS | {
     "label",
     "features",
 }
-_V2_SPLITS = frozenset({"train", "validation", "test", "stress"})
+_V2_SPLITS = frozenset({"train", "validation", "test", "stress", "final"})
 _V2_SCENARIO_ROLES = frozenset({"reference", "fault"})
 
 
