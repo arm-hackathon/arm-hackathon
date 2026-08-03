@@ -13,11 +13,20 @@ from typing import Sequence
 
 from aeolus.corpus import generate_corpus_v2
 from aeolus.detector import train_and_export
+from aeolus.protocol import build_final, final_evaluate, select_development
 from aeolus.sweep import generate_sweep
 
 USAGE = (
     "Usage: PYTHONPATH=src python -m aeolus.experiment "
-    "<sweep.json> <experiment-output-dir> <artifacts-dir>"
+    "<sweep.json> <experiment-output-dir> <artifacts-dir>\n"
+    "   or: ... select <corpus.jsonl> <families.json> <expected-manifest-sha256> "
+    "<detector.json> <detector.onnx> <policy.json>\n"
+    "   or: ... build-final <final-sweep.json> <output-dir>\n"
+    "   or: ... final-evaluate <final-corpus.jsonl> <final-families.json> "
+    "<final-manifest-sha256> <development-corpus.jsonl> <development-families.json> "
+    "<development-manifest-sha256> <policy.json> <policy-sha256> "
+    "<detector.json> <detector-sha256> <detector.onnx> <detector-onnx-sha256> "
+    "<report.json>"
 )
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_FILENAMES = (
@@ -116,11 +125,18 @@ def run_experiment(
 
 
 def main(argv: Sequence[str]) -> int:
-    if len(argv) != 3:
-        print(USAGE, file=sys.stderr)
-        return 2
     try:
-        receipt = run_experiment(*argv)
+        if len(argv) == 3 and argv[0] not in {"select", "build-final", "final-evaluate"}:
+            receipt = run_experiment(*argv)
+        elif argv[:1] == ["select"] and len(argv) == 7:
+            receipt = select_development(*argv[1:])
+        elif argv[:1] == ["build-final"] and len(argv) == 3:
+            receipt = build_final(*argv[1:])
+        elif argv[:1] == ["final-evaluate"] and len(argv) == 14:
+            receipt = final_evaluate(*argv[1:])
+        else:
+            print(USAGE, file=sys.stderr)
+            return 2
     except (ValueError, OSError, ImportError, json.JSONDecodeError) as exc:
         print(f"cannot run experiment: {exc}", file=sys.stderr)
         return 2
