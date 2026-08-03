@@ -59,8 +59,11 @@ training and scored metrics. The three current families are contract fixtures,
 not a training corpus; the scenario sweep is the next prerequisite for model
 work.
 
-Not started: INT8 quantisation, the safety governor and redundant fan, Arm64
-benchmarks, and deployment reproducibility packaging.
+Not started: the redundant fan, INT8 quantisation, Arm64 benchmarks, and
+deployment reproducibility packaging. The bounded-response governor slice
+(no-loss parity on 129 development families, `docs/bounded-response.md`) is
+landed in development evidence; the remaining governor items below are future
+slices.
 
 ## Core objectives
 
@@ -139,6 +142,13 @@ benchmarks, and deployment reproducibility packaging.
   FP32 and rule comparison)
 
 ### 5. Safety governor
+
+Landed (development slice): deterministic causal governor
+(`src/aeolus/response.py`) with declared constants, bounded commands,
+structured per-tick rationale, and a 129-family response-evidence harness
+(`src/aeolus/response_evidence.py`, `scenarios/sweep-response.json`).
+
+Remaining slices:
 
 - Require persistent model confidence before intervening.
 - Select healthy redundant capacity using topology and current demand.

@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-03 — bounded recovery response (development evidence)
+
+- Added a pure override hook to `step_habitat` (`override_commands`) that lets
+  an external decision maker issue bounded per-zone commands while the default
+  path stays byte-identical to the previous AEOLUS behaviour; conserved
+  contract that only the physics engine changes plant state.
+- Added `src/aeolus/response.py`: the `BoundedRecoveryGovernor`, a causal,
+  observable-only decision maker over exact `model_input_v1` windows with
+  declared `ResponseSettings`, four bounded rules (proportional demand,
+  frozen-sensor hold, degraded-loop spare-capacity release, rate/energy
+  bounds), and per-tick structured rationale.
+- Added `run_governed_scenario` with warm-up window seeding so the governor's
+  first measured command matches the baseline observation basis.
+- Added `scenarios/sweep-response.json` (v3 development, 129 families across
+  two operating profiles) and `src/aeolus/response_evidence.py`, a hashed
+  evidence harness reporting time-above-ceiling, max excursion, response
+  latency, energy and invariant violations for both controllers.
+- Response evidence: 117/129 fault families at exact baseline parity; all 129
+  within the one-tick causality margin (the baseline is same-tick by design,
+  so the causal governor reports the margin explicitly); healthy-reference
+  runs within the margin on all 129; zero invariant violations under both
+  controllers; median energy overhead 0.00%. Evidence-driven iteration
+  measured that boosting or unconditionally throttling degraded loops both
+  worsen time-above-ceiling; recorded in `docs/bounded-response.md`.
+- Guarded the v2 `run_experiment` path against v3 development sweep layouts
+  (raise a clear error instead of a silent split failure).
+- Full suite: 339 tests passed at commit time.
+
 ## 2026-08-03 — protocol-v3 frozen final evaluation
 
 - Retired the inspected v2 test and stress partitions as current decision

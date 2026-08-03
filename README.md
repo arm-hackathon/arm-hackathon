@@ -82,6 +82,42 @@ INT8 artifact, Arm benchmark, production controller or autonomous actuator
 command is implemented or claimed. See the full
 [protocol v3 acceptance record](docs/protocol-v3-acceptance.md).
 
+## Bounded recovery response
+
+`ben/bounded-response` adds the deterministic _bounded_ decision layer the
+Arm brief asks for. The `BoundedRecoveryGovernor` is a causal, observable-only
+controller: it consumes the same exact `model_input_v1 float32[24]` windows
+the detector sees, never hidden fault state, and emits bounded per-zone
+commands with structured rationale (`nominal`, `frozen_hold`,
+`degraded_spare_release`, `bounded_rate`). Every threshold is a declared
+constant in `ResponseSettings`.
+
+The baseline controller is same-tick by design, so the causal governor is one
+tick behind by construction. Response evidence states this as a one-tick
+causality margin rather than hiding it:
+
+| 129-family response sweep | Result |
+|---|---:|
+| Fault families at exact baseline parity | 117/129 |
+| Fault families within 1-tick margin | 129/129 |
+| Healthy-reference families beyond margin | 0/129 |
+| Invariant violations (both controllers) | 0 |
+| Median energy overhead | 0.00% |
+
+Iteration was evidence-driven: boosting a degraded loop or throttling an
+under-loaded one both measured as _worse_ than baseline, so the final policy
+releases spare capacity only from a degraded loop whose zone is not under
+pressure. Full design, constants, iteration table and reproduction are in
+[docs/bounded-response.md](docs/bounded-response.md); the frozen hashed
+receipt is `artifacts/response-evidence.json`.
+
+Reproduce:
+
+```bash
+PYTHONPATH=src uv run python -m aeolus.response_evidence \
+  scenarios/sweep-response.json out/response-evidence
+```
+
 ## Schema-v9 measurement semantics
 
 Every scenario requires exactly:

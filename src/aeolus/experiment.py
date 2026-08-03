@@ -28,6 +28,19 @@ USAGE = (
     "<detector.json> <detector-sha256> <detector.onnx> <detector-onnx-sha256> "
     "<report.json>"
 )
+
+
+def _require_three_way_spec(splits: object) -> None:
+    """Guard the v2 experiment path against v3 development sweep layouts."""
+    if not isinstance(splits, dict):
+        raise ValueError("sweep splits must be a mapping")
+    missing = sorted({"train", "validation", "test"} - set(splits))
+    if missing:
+        raise ValueError(
+            "the v2 run_experiment path requires train/validation/test splits, "
+            f"missing: {missing}; v3 development sweeps (train+validation only) "
+            "are consumed by the frozen evaluation protocol, not run_experiment"
+        )
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_FILENAMES = (
     "aeolus_fault_detector.json",
@@ -80,6 +93,10 @@ def run_experiment(
     artifacts_dir: str | Path,
 ) -> dict[str, object]:
     """Generate scenarios/corpus, select candidates, and export final evidence."""
+    from aeolus.sweep import load_sweep_spec
+
+    spec = load_sweep_spec(sweep_spec_path)
+    _require_three_way_spec(spec.splits)
     output = Path(experiment_output_dir)
     artifacts = Path(artifacts_dir)
     if output.exists() and any(output.iterdir()):
