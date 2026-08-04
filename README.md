@@ -82,6 +82,26 @@ INT8 artifact, Arm benchmark, production controller or autonomous actuator
 command is implemented or claimed. See the full
 [protocol v3 acceptance record](docs/protocol-v3-acceptance.md).
 
+### Protocol v4 development follow-up
+
+A fresh v4 development cycle separated model fitting, internal calibration and
+single-use validation seed clusters. It compared the temporal MLP, two compact
+causal TCN training policies and calibrated deterministic rules under
+stride-one operational alert metrics.
+
+The balanced TCN achieved the best cluster macro-F1 (`0.704253`), but its
+false-alert burden was `121.622` episodes per 1,000 eligible ticks against a
+fixed ceiling of `10.0`. Gating and lower class weights reduced alerts only by
+reducing fault-detection quality. No learned candidate passed, so
+`selected_candidate` is null, `rule_baseline` remains the bounded fallback, and
+the response layer stays disconnected.
+
+This is development evidence, not a fresh final-suite result. Two corrected
+canonical runs were byte-identical across manifests, corpus, model artifacts and
+the complete report. See the
+[v4 development outcome](docs/evidence/v4-development-outcome.md) and
+[machine reproduction receipt](docs/evidence/v4-reproduction-verification.json).
+
 ## Schema-v9 measurement semantics
 
 Every scenario requires exactly:

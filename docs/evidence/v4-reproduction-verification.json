@@ -1,0 +1,81 @@
+{
+  "all_compared_files_byte_identical": true,
+  "canonical_spec_sha256": "5a631af5e646535b2d35bebe726fd89b36f99feba4c558b29a7afe98bfe309ea",
+  "compared_files": [
+    {
+      "byte_identical": true,
+      "bytes": 580,
+      "relative_path": "sweep/sweep-receipt.json",
+      "sha256": "3a76555aaece744a7a9a32921e55ad6cf7ba6207a9aa06b7d6de438326a26546"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 232445,
+      "relative_path": "sweep/families.json",
+      "sha256": "8d7012b55469b6e170250dc86cb6d5ed5cccd37b1904da94938d5ffdb0f40f9a"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 288619,
+      "relative_path": "corpus/manifest.json",
+      "sha256": "e76f8109387b867226427d903a110a4461c1cceff5acc13f9025d22efab1af4d"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 144826136,
+      "relative_path": "corpus/corpus.jsonl",
+      "sha256": "9ac84c3195e5ee7d092a9d2fbc49571eef38a956eac489a638ee8cc3fa7ec784"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 70832,
+      "relative_path": "models/temporal_mlp_balanced.json",
+      "sha256": "f10f8fb3b7442cadd689738f5f31b5b5659ba8979ed76a262ac8af4fe0b199e7"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 14009,
+      "relative_path": "models/temporal_mlp_balanced.onnx",
+      "sha256": "546743149089be729c32ef4f16ba66a4b887cd8802bf69cdbb5062fa6a2cce1a"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 16445,
+      "relative_path": "models/temporal_cnn_balanced.json",
+      "sha256": "25295233ad3b3ed38e600082159780d284281607376de43d560ffb7f8cf30e1a"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 3570,
+      "relative_path": "models/temporal_cnn_balanced.onnx",
+      "sha256": "2cf94d78c9ad8d34637e0bedcc7775a18fec9dd4c6f3259279aa38313bc75aae"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 16429,
+      "relative_path": "models/temporal_cnn_sqrt.json",
+      "sha256": "11f8b634fe58fa8bea39918b2f4efbecc2f352a1dd5f2792f68ec0b46f2fcc78"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 3574,
+      "relative_path": "models/temporal_cnn_sqrt.onnx",
+      "sha256": "f4c71c2e3574136fdbdc14a0727ecec78399034fcd23f0c2ada4a0456b395137"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 351563,
+      "relative_path": "v4-development-report.json",
+      "sha256": "40d641e8a6ae54d9e6940e980171a45a54de1ad61d4fa2b0aa2f6f2a637f1aed"
+    }
+  ],
+  "development_report_schema_version": "aeolus_v4_development_evidence_v2",
+  "development_report_sha256": "40d641e8a6ae54d9e6940e980171a45a54de1ad61d4fa2b0aa2f6f2a637f1aed",
+  "evidence_role": "development_reproduction_verification",
+  "independent_reproduction_verified": true,
+  "run_a": "out/v4-development-canonical-2026-08-03-reviewed-a",
+  "run_b": "out/v4-development-canonical-2026-08-03-reviewed-b",
+  "runner_invocation": "uv run --extra dev python -c \"from aeolus.model_cycle_v4 import run_v4_development; run_v4_development('scenarios/sweep-v4-development.json', OUTPUT_PATH, mlp_epochs=300, cnn_epochs=300)\"",
+  "schema_version": "aeolus_v4_reproduction_verification_v1",
+  "source_manifest_sha256": "7674c62be16b5ebbafbecb41595de75caab6c74227d338cde809d323783670a2"
+}

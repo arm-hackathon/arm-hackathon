@@ -19,7 +19,7 @@ isolated actuator degrades
 AI provides diagnosis and confidence. Deterministic safety logic retains
 control of every actuator command.
 
-## Status — Gates 0–2 accepted; protocol-v3 experiment implemented
+## Status — Gates 0–2 accepted; protocol-v4 development cycle complete
 
 Landed: the deterministic schema-v9 simulator with separated requested/delivered
 airflow and explicit residuals; five scenarios (nominal, healthy high-demand,
@@ -44,6 +44,17 @@ latency versus 10 ticks for rules is only an 11.1% reduction, below the fixed
 family-held-out results, not independent-window uncertainty, wall-clock
 performance, OOD robustness or Arm evidence; see
 [`docs/protocol-v3-acceptance.md`](docs/protocol-v3-acceptance.md).
+
+Protocol v4 is a development-only recovery cycle with fresh, seed-isolated fit,
+internal-calibration and validation clusters. A compact causal TCN improved
+cluster macro-F1 to `0.704253`, but produced `121.622` false-alert episodes per
+1,000 eligible ticks against the fixed ceiling of `10.0`. Confidence gating and
+square-root class weighting reduced alarm burden only by sacrificing detection
+quality; no learned candidate passed. `rule_baseline` remains the bounded
+fallback, the response layer remains disconnected, and no fresh final suite is
+authorised. Corrected runs A and B were byte-identical and both independent
+reviews returned `READY`; see
+[`docs/evidence/v4-development-outcome.md`](docs/evidence/v4-development-outcome.md).
 
 Gate 0 accepts the R2 semantic contract. Gate 1 adds graph-derived
 outbound/return loop pairing, the exact topology-bound `model_input_v1`

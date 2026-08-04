@@ -19,7 +19,10 @@ from aeolus.model_input import build_model_input_contract, model_artifact_metada
 SWEEP_VERSION = "aeolus_sweep_v1"
 SWEEP_V2_VERSION = "aeolus_sweep_v2"
 SWEEP_V3_VERSION = "aeolus_sweep_v3"
-SUPPORTED_SWEEP_VERSIONS = frozenset({SWEEP_VERSION, SWEEP_V2_VERSION, SWEEP_V3_VERSION})
+SWEEP_V4_VERSION = "aeolus_sweep_v4"
+SUPPORTED_SWEEP_VERSIONS = frozenset(
+    {SWEEP_VERSION, SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION}
+)
 USAGE = "Usage: PYTHONPATH=src python -m aeolus.sweep <sweep.json> <output-dir>"
 _PRIMARY_SPLITS = ("train", "validation", "test")
 _ALL_SPLITS = (*_PRIMARY_SPLITS, "stress")
@@ -29,6 +32,7 @@ _V3_SPLITS_BY_ROLE = {
     "development": ("train", "validation"),
     "final": ("final",),
 }
+_V4_SPLITS_BY_ROLE = {"development": ("train", "validation")}
 _SPLIT_V1_KEYS = frozenset(
     {
         "seeds",
@@ -133,9 +137,10 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
     schema_version = raw.get("schema_version")
     if schema_version not in SUPPORTED_SWEEP_VERSIONS:
         raise ValueError("sweep specification schema_version is unsupported")
+    has_suite_role = schema_version in (SWEEP_V3_VERSION, SWEEP_V4_VERSION)
     _require_exact_keys(
         raw,
-        _V3_TOP_LEVEL_KEYS if schema_version == SWEEP_V3_VERSION else _TOP_LEVEL_KEYS,
+        _V3_TOP_LEVEL_KEYS if has_suite_role else _TOP_LEVEL_KEYS,
         "sweep specification",
     )
     suite_role: str | None = None
@@ -143,6 +148,10 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
         suite_role = raw["suite_role"]
         if suite_role not in _V3_SPLITS_BY_ROLE:
             raise ValueError("sweep v3 suite_role must be development or final")
+    elif schema_version == SWEEP_V4_VERSION:
+        suite_role = raw["suite_role"]
+        if suite_role not in _V4_SPLITS_BY_ROLE:
+            raise ValueError("sweep v4 suite_role must be development")
 
     base_name = raw["base_scenario"]
     if not isinstance(base_name, str) or Path(base_name).name != base_name:
@@ -159,6 +168,9 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
     if schema_version == SWEEP_V3_VERSION:
         assert suite_role is not None
         split_names = _V3_SPLITS_BY_ROLE[suite_role]
+    elif schema_version == SWEEP_V4_VERSION:
+        assert suite_role is not None
+        split_names = _V4_SPLITS_BY_ROLE[suite_role]
     else:
         split_names = _ALL_SPLITS if schema_version == SWEEP_V2_VERSION else _PRIMARY_SPLITS
     _require_exact_keys(raw_splits, frozenset(split_names), "sweep splits")
@@ -409,7 +421,7 @@ def _parse_split(
     raw = _require_mapping(value, f"sweep split {split!r}")
     split_keys = (
         _SPLIT_V2_KEYS
-        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION)
+        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION)
         else _SPLIT_V1_KEYS
     )
     _require_exact_keys(raw, split_keys, f"sweep split {split!r}")
@@ -431,7 +443,7 @@ def _parse_split(
     )
     if len({profile.profile_id for profile in profiles}) != len(profiles):
         raise ValueError(f"sweep split {split!r} operating profile ids must be unique")
-    if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION):
+    if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION):
         gradual_raw = raw["gradual_profiles"]
         if not isinstance(gradual_raw, list) or not gradual_raw:
             raise ValueError(
@@ -479,7 +491,7 @@ def _parse_operating_profile(
     telemetry_raw = _require_mapping(raw["telemetry"], "sweep telemetry profile")
     telemetry_keys = (
         _TELEMETRY_V2_KEYS
-        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION)
+        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION)
         else _TELEMETRY_V1_KEYS
     )
     _require_exact_keys(telemetry_raw, telemetry_keys, "sweep telemetry profile")
