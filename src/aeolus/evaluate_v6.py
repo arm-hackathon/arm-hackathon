@@ -88,6 +88,7 @@ def evaluate_v6(
     _validate_inputs(streams, policy, window_ticks)
     ordered = sorted(streams, key=lambda item: (item.family_id, item.scenario_role))
     healthy_eligible_ticks = 0
+    healthy_policy_windows = 0
     healthy_alert_episode_count = 0
     healthy_alert_stream_count = 0
     healthy_uncertain_windows = 0
@@ -111,7 +112,8 @@ def evaluate_v6(
         policy.reset()
         labels = _replay_stream(stream.records, policy, window_ticks)
         if stream.scenario_role == "reference":
-            healthy_eligible_ticks += len(labels)
+            healthy_eligible_ticks += len(stream.records)
+            healthy_policy_windows += len(labels)
             healthy_uncertain_windows += sum(label == "uncertain" for _, label in labels)
             episodes, alerted = _healthy_alert_episodes(labels)
             healthy_alert_episode_count += episodes
@@ -135,7 +137,12 @@ def evaluate_v6(
         post_onset_windows += len(post_onset)
         post_onset_uncertain_windows += sum(label == "uncertain" for _, label in post_onset)
         first_named_detection = next(
-            (end_tick for end_tick, label in post_onset if label == stream.fault_class),
+            (
+                end_tick
+                for end_tick, label in post_onset
+                if end_tick - window_ticks + 1 >= stream.observable_onset_tick
+                and label == stream.fault_class
+            ),
             None,
         )
         if first_named_detection is None:
@@ -166,6 +173,7 @@ def evaluate_v6(
     return {
         "schema_version": V6_EVALUATION_VERSION,
         "healthy_eligible_ticks": healthy_eligible_ticks,
+        "healthy_policy_windows": healthy_policy_windows,
         "healthy_alert_episode_count": healthy_alert_episode_count,
         "healthy_alert_episodes_per_1000_ticks": (
             1000.0 * healthy_alert_episode_count / healthy_eligible_ticks
@@ -176,7 +184,7 @@ def evaluate_v6(
         "healthy_stream_count": sum(stream.scenario_role == "reference" for stream in streams),
         "healthy_uncertain_windows": healthy_uncertain_windows,
         "healthy_uncertainty_fraction": (
-            healthy_uncertain_windows / healthy_eligible_ticks if healthy_eligible_ticks else 0.0
+            healthy_uncertain_windows / healthy_policy_windows if healthy_policy_windows else 0.0
         ),
         "fault_stream_count": fault_stream_count,
         "named_detection_count": named_detection_count,

@@ -42,11 +42,11 @@ The primary rate is:
 1,000 * healthy_alert_episode_count / healthy_eligible_ticks
 ```
 
-`healthy_eligible_ticks` is the number of complete causal windows replayed on healthy reference streams. The report separately records alerting healthy streams and the fraction of healthy windows marked `uncertain`.
+`healthy_eligible_ticks` is the number of unique raw healthy `TickRecord` ticks, not the number of overlapping policy windows. The report separately records `healthy_policy_windows`, alerting healthy streams, and the fraction of those policy windows marked `uncertain`.
 
 ## Fault detection and abstention
 
-For fault streams, every causal window ending at or after the trusted observable onset contributes to post-onset operational metrics. A detection requires the policy to emit the expected **named** fault class. A concern-only decision or `uncertain` does not establish named recall or latency.
+For fault streams, every causal window ending at or after the trusted observable onset contributes to post-onset operational metrics. A named detection requires both a window beginning at or after that onset and an exact expected **named** fault class. A concern-only decision or `uncertain` does not establish named recall or latency.
 
 The report records:
 

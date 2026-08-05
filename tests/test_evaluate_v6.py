@@ -104,14 +104,15 @@ def test_healthy_overlapping_alerts_are_deduplicated_into_episodes():
     )
 
     assert policy.reset_count == 2
-    assert report["healthy_eligible_ticks"] == 8
+    assert report["healthy_eligible_ticks"] == 10
+    assert report["healthy_policy_windows"] == 8
     assert report["healthy_alert_episode_count"] == 2
-    assert report["healthy_alert_episodes_per_1000_ticks"] == 250.0
+    assert report["healthy_alert_episodes_per_1000_ticks"] == 200.0
     assert report["healthy_alert_stream_count"] == 1
     assert report["healthy_uncertain_windows"] == 1
     assert report["healthy_uncertainty_fraction"] == 0.125
     assert report["named_detection_count"] == 1
-    assert report["detection_latency_ticks"] == {"frozen_sensor": 0.0}
+    assert report["detection_latency_ticks"] == {"frozen_sensor": 2.0}
 
 
 class _InvalidLabelPolicy(_AlwaysUncertain):
