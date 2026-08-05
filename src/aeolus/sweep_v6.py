@@ -198,6 +198,7 @@ def generate_v6_sweep(spec_path: str | Path, output_dir: str | Path) -> dict[str
     context_metadata = spec.room_families[0].context_metadata
     manifest = {
         "schema_version": V6_FAMILY_MANIFEST_VERSION,
+        "sweep_spec_sha256": spec.sha256,
         "observable_context": context_metadata,
         "families": sorted(families, key=lambda item: item["family_id"]),
     }
@@ -346,7 +347,23 @@ def _append_family(destination: Path, families: list[dict[str, str]], names: set
     family_id = f"{room.role}-{room.room_family_id}-s{fault['simulation']['random_seed']}-{start_tick}-{target}-{fault_suffix}"
     fault_name = f"{family_id}.json"
     _write_scenario(destination, fault_name, fault, names)
-    families.append({"family_id": family_id, "room_family_id": room.room_family_id, "role": room.role, "fault_class": fault_class, "reference_scenario": reference_name, "fault_scenario": fault_name, "base_scenario_sha256": room.base_scenario_sha256})
+    families.append(
+        {
+            "family_id": family_id,
+            "room_family_id": room.room_family_id,
+            "role": room.role,
+            "fault_class": fault_class,
+            "reference_scenario": reference_name,
+            "fault_scenario": fault_name,
+            "base_scenario_sha256": room.base_scenario_sha256,
+            "reference_scenario_sha256": hashlib.sha256(
+                (destination / reference_name).read_bytes()
+            ).hexdigest(),
+            "fault_scenario_sha256": hashlib.sha256(
+                (destination / fault_name).read_bytes()
+            ).hexdigest(),
+        }
+    )
 
 
 def _write_scenario(destination: Path, name: str, document: dict[str, Any], names: set[str]) -> None:
