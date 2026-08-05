@@ -94,7 +94,7 @@ def run_v6_development(request: V6DevelopmentRequest) -> dict[str, object]:
     spec = validate_v6_development_request(request)
     repository = Path(__file__).resolve().parents[2]
     provenance = _clean_source_provenance(repository)
-    output = request.output_dir
+    output = request.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
 
     sweep_dir = output / "sweep"
