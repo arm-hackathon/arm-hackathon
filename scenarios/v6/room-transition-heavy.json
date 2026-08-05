@@ -1,0 +1,190 @@
+{
+  "actuator": {
+    "full_stroke_seconds": 30.0,
+    "holding_power": 0.05,
+    "moving_power": 1.0
+  },
+  "air_system": {
+    "scrubber_removal_fraction": 0.5,
+    "shared_airflow_capacity": 28.0
+  },
+  "connections": [
+    {
+      "from": "cabin_a",
+      "health": 1.0,
+      "id": "cabin_a_to_processing",
+      "max_airflow": 9.0,
+      "to": "processing"
+    },
+    {
+      "from": "processing",
+      "health": 1.0,
+      "id": "processing_to_cabin_a",
+      "max_airflow": 9.0,
+      "to": "cabin_a"
+    },
+    {
+      "from": "cabin_b",
+      "health": 1.0,
+      "id": "cabin_b_to_processing",
+      "max_airflow": 12.0,
+      "to": "processing"
+    },
+    {
+      "from": "processing",
+      "health": 1.0,
+      "id": "processing_to_cabin_b",
+      "max_airflow": 12.0,
+      "to": "cabin_b"
+    },
+    {
+      "from": "lab",
+      "health": 1.0,
+      "id": "lab_to_processing",
+      "max_airflow": 6.0,
+      "to": "processing"
+    },
+    {
+      "from": "processing",
+      "health": 1.0,
+      "id": "processing_to_lab",
+      "max_airflow": 6.0,
+      "to": "lab"
+    }
+  ],
+  "control": {
+    "co2_lower_threshold": 0.0,
+    "co2_upper_threshold": 0.2,
+    "maximum_command": 1.0,
+    "minimum_command": 0.1
+  },
+  "fault_profiles": [],
+  "simulation": {
+    "random_seed": 2300
+  },
+  "telemetry": {
+    "actuator_position_noise_fraction": 0.0,
+    "airflow_bias_fraction": 0.0,
+    "airflow_drift_fraction": 0.0,
+    "airflow_noise_fraction": 0.0,
+    "co2_sensor_bias_fraction": 0.0,
+    "co2_sensor_drift_fraction": 0.0,
+    "co2_sensor_noise_fraction": 0.0
+  },
+  "version": 9,
+  "zones": [
+    {
+      "air_volume": 80.0,
+      "co2_generation_epsilon": 0.18,
+      "co2_generation_per_second": 1.0,
+      "co2_noise_correlation": 0.85,
+      "id": "cabin_a",
+      "label": "Crew Cabin A",
+      "occupancy_profile": [
+        {
+          "end_tick": 20,
+          "multiplier": 0.6,
+          "start_tick": 1
+        },
+        {
+          "end_tick": 45,
+          "multiplier": 1.8,
+          "start_tick": 21
+        },
+        {
+          "end_tick": 65,
+          "multiplier": 0.7,
+          "start_tick": 46
+        },
+        {
+          "end_tick": 90,
+          "multiplier": 1.6,
+          "start_tick": 66
+        },
+        {
+          "end_tick": 120,
+          "multiplier": 0.8,
+          "start_tick": 91
+        }
+      ],
+      "preset": "crew_cabin"
+    },
+    {
+      "air_volume": 130.0,
+      "co2_generation_epsilon": 0.18,
+      "co2_generation_per_second": 1.0,
+      "co2_noise_correlation": 0.85,
+      "id": "cabin_b",
+      "label": "Crew Cabin B",
+      "occupancy_profile": [
+        {
+          "end_tick": 30,
+          "multiplier": 1.7,
+          "start_tick": 1
+        },
+        {
+          "end_tick": 55,
+          "multiplier": 0.6,
+          "start_tick": 31
+        },
+        {
+          "end_tick": 85,
+          "multiplier": 1.9,
+          "start_tick": 56
+        },
+        {
+          "end_tick": 120,
+          "multiplier": 0.7,
+          "start_tick": 86
+        }
+      ],
+      "preset": "crew_cabin"
+    },
+    {
+      "air_volume": 65.0,
+      "co2_generation_epsilon": 0.04,
+      "co2_generation_per_second": 0.15,
+      "co2_noise_correlation": 0.8,
+      "id": "lab",
+      "label": "Lab",
+      "occupancy_profile": [
+        {
+          "end_tick": 15,
+          "multiplier": 0.3,
+          "start_tick": 1
+        },
+        {
+          "end_tick": 40,
+          "multiplier": 1.7,
+          "start_tick": 16
+        },
+        {
+          "end_tick": 75,
+          "multiplier": 0.5,
+          "start_tick": 41
+        },
+        {
+          "end_tick": 105,
+          "multiplier": 1.5,
+          "start_tick": 76
+        },
+        {
+          "end_tick": 120,
+          "multiplier": 0.4,
+          "start_tick": 106
+        }
+      ],
+      "preset": "lab"
+    },
+    {
+      "air_volume": 135.0,
+      "co2_generation_epsilon": 0.0,
+      "co2_generation_per_second": 0.0,
+      "co2_noise_correlation": 0.0,
+      "id": "processing",
+      "label": "Air Processing Bay",
+      "occupancy_profile": [],
+      "preset": "air_processing"
+    }
+  ]
+}
