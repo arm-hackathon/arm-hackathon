@@ -48,6 +48,7 @@ class V6EvaluationStream:
     split: str
     scenario_role: Literal["reference", "fault"]
     records: tuple[TickRecord, ...]
+    reference_identity: str | None = None
     fault_class: str | None = None
     observable_onset_tick: int | None = None
 
@@ -67,6 +68,8 @@ class V6EvaluationStream:
             if record.tick != previous_tick + 1:
                 raise ValueError("V6 evaluation stream ticks must be contiguous from one")
             previous_tick = record.tick
+        if self.reference_identity is not None:
+            _require_identifier(self.reference_identity, "reference_identity")
         if self.scenario_role == "reference":
             if self.fault_class is not None or self.observable_onset_tick is not None:
                 raise ValueError("V6 reference stream must not carry fault metadata")
@@ -101,6 +104,7 @@ def evaluate_v6(
     supervised_total = 0
     supervised_excluded_transition_windows = 0
     supervised_confusion: dict[str, dict[str, int]] = {}
+    seen_reference_labels: dict[str, list[tuple[int, str]]] = {}
     named_support: dict[str, int] = {}
     named_correct: dict[str, int] = {}
     specialist_counts = {
@@ -112,6 +116,13 @@ def evaluate_v6(
         policy.reset()
         labels = _replay_stream(stream.records, policy, window_ticks)
         if stream.scenario_role == "reference":
+            reference_identity = stream.reference_identity or stream.family_id
+            prior_labels = seen_reference_labels.get(reference_identity)
+            if prior_labels is not None:
+                if labels != prior_labels:
+                    raise ValueError("V6 duplicate healthy reference replay is inconsistent")
+                continue
+            seen_reference_labels[reference_identity] = labels
             healthy_eligible_ticks += len(stream.records)
             healthy_policy_windows += len(labels)
             healthy_uncertain_windows += sum(label == "uncertain" for _, label in labels)
@@ -181,7 +192,7 @@ def evaluate_v6(
             else 0.0
         ),
         "healthy_alert_stream_count": healthy_alert_stream_count,
-        "healthy_stream_count": sum(stream.scenario_role == "reference" for stream in streams),
+        "healthy_stream_count": len(seen_reference_labels),
         "healthy_uncertain_windows": healthy_uncertain_windows,
         "healthy_uncertainty_fraction": (
             healthy_uncertain_windows / healthy_policy_windows if healthy_policy_windows else 0.0

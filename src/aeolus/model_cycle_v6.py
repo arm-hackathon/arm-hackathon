@@ -219,6 +219,7 @@ def _build_streams(
                     split=role,
                     scenario_role="reference",
                     records=tuple(run_scenario(load_scenario(family.reference_path))),
+                    reference_identity=family.reference_scenario_sha256,
                 ),
                 V6EvaluationStream(
                     family_id=family.family_id,

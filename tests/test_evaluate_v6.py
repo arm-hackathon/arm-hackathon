@@ -18,13 +18,21 @@ def _records(count: int = 10):
     return tuple(run_scenario(load_scenario(STANDARD))[:count])
 
 
-def _stream(*, role: str, fault_class: str | None = None, onset: int | None = None):
+def _stream(
+    *,
+    role: str,
+    fault_class: str | None = None,
+    onset: int | None = None,
+    family_id: str = "validation-room-transition-heavy-s2300-cabin_a-frozen",
+    reference_identity: str | None = None,
+):
     return V6EvaluationStream(
-        family_id="validation-room-transition-heavy-s2300-cabin_a-frozen",
+        family_id=family_id,
         room_family_id="room-transition-heavy",
         split="validation",
         scenario_role=role,
         records=_records(),
+        reference_identity=reference_identity,
         fault_class=fault_class,
         observable_onset_tick=onset,
     )
@@ -113,6 +121,24 @@ def test_healthy_overlapping_alerts_are_deduplicated_into_episodes():
     assert report["healthy_uncertainty_fraction"] == 0.125
     assert report["named_detection_count"] == 1
     assert report["detection_latency_ticks"] == {"frozen_sensor": 2.0}
+
+
+def test_shared_healthy_reference_is_counted_once_across_fault_families():
+    report = evaluate_v6(
+        [
+            _stream(role="reference", family_id="family-a", reference_identity="reference-sha"),
+            _stream(role="fault", family_id="family-a", fault_class="frozen_sensor", onset=4),
+            _stream(role="reference", family_id="family-b", reference_identity="reference-sha"),
+            _stream(role="fault", family_id="family-b", fault_class="blocked_path", onset=4),
+        ],
+        _AlwaysUncertain(),
+        window_ticks=3,
+    )
+
+    assert report["healthy_stream_count"] == 1
+    assert report["healthy_eligible_ticks"] == 10
+    assert report["healthy_policy_windows"] == 8
+    assert report["fault_stream_count"] == 2
 
 
 class _InvalidLabelPolicy(_AlwaysUncertain):
