@@ -1,0 +1,344 @@
+{
+  "schema_version": "aeolus_sweep_v5",
+  "base_scenario": "standard_habitat.json",
+  "targets": [
+    "cabin_a",
+    "cabin_b",
+    "lab"
+  ],
+  "suite_role": "development",
+  "splits": {
+    "train": {
+      "seeds": [
+        1100,
+        1101,
+        1102,
+        1103,
+        1104,
+        1105
+      ],
+      "fault_start_ticks": [
+        20,
+        75
+      ],
+      "operating_profiles": [
+        {
+          "id": "v5-lab-peak-transition",
+          "source_multiplier": 1.05,
+          "shared_airflow_capacity": 32.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.035,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "actuator_position_noise_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.03,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                0.9,
+                1.1,
+                0.9142857142857143
+              ],
+              "cabin_b": [
+                1.1,
+                0.9,
+                1.05,
+                1.0083333333333333
+              ],
+              "lab": [
+                0.7,
+                1.05,
+                0.90625
+              ]
+            }
+          }
+        },
+        {
+          "id": "v5-primary-high-baseline",
+          "source_multiplier": 1.2,
+          "shared_airflow_capacity": 36.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.035,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "actuator_position_noise_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.03,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "cabin_b": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "lab": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "id": "v5-primary-low-baseline",
+          "source_multiplier": 0.8,
+          "shared_airflow_capacity": 24.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "cabin_b": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "lab": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "id": "v5-staggered-load",
+          "source_multiplier": 1.0,
+          "shared_airflow_capacity": 30.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                1.2,
+                0.85,
+                1.0571428571428572
+              ],
+              "cabin_b": [
+                1.2,
+                0.8,
+                1.1,
+                1.0166666666666666
+              ],
+              "lab": [
+                0.8,
+                1.1,
+                0.3125
+              ]
+            }
+          }
+        }
+      ],
+      "gradual_profiles": [
+        {
+          "duration_ticks": 30,
+          "end_effectiveness": 0.75
+        },
+        {
+          "duration_ticks": 60,
+          "end_effectiveness": 0.9
+        }
+      ],
+      "blocked_effectiveness": [
+        0.65,
+        0.85
+      ]
+    },
+    "validation": {
+      "seeds": [
+        1300,
+        1301,
+        1302,
+        1303,
+        1304,
+        1305
+      ],
+      "fault_start_ticks": [
+        20,
+        75
+      ],
+      "operating_profiles": [
+        {
+          "id": "v5-lab-peak-transition",
+          "source_multiplier": 1.05,
+          "shared_airflow_capacity": 32.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.035,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "actuator_position_noise_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.03,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                0.9,
+                1.1,
+                0.9142857142857143
+              ],
+              "cabin_b": [
+                1.1,
+                0.9,
+                1.05,
+                1.0083333333333333
+              ],
+              "lab": [
+                0.7,
+                1.05,
+                0.90625
+              ]
+            }
+          }
+        },
+        {
+          "id": "v5-primary-high-baseline",
+          "source_multiplier": 1.2,
+          "shared_airflow_capacity": 36.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.035,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "actuator_position_noise_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.03,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "cabin_b": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "lab": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "id": "v5-primary-low-baseline",
+          "source_multiplier": 0.8,
+          "shared_airflow_capacity": 24.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "cabin_b": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "lab": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            }
+          }
+        },
+        {
+          "id": "v5-staggered-load",
+          "source_multiplier": 1.0,
+          "shared_airflow_capacity": 30.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.025,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.02,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015
+          },
+          "occupancy_shape": {
+            "zone_period_multipliers": {
+              "cabin_a": [
+                1.2,
+                0.85,
+                1.0571428571428572
+              ],
+              "cabin_b": [
+                1.2,
+                0.8,
+                1.1,
+                1.0166666666666666
+              ],
+              "lab": [
+                0.8,
+                1.1,
+                0.3125
+              ]
+            }
+          }
+        }
+      ],
+      "gradual_profiles": [
+        {
+          "duration_ticks": 30,
+          "end_effectiveness": 0.75
+        },
+        {
+          "duration_ticks": 60,
+          "end_effectiveness": 0.9
+        }
+      ],
+      "blocked_effectiveness": [
+        0.65,
+        0.85
+      ]
+    }
+  }
+}

@@ -574,25 +574,55 @@ def run_v4_development(
     *,
     mlp_epochs: int = 300,
     cnn_epochs: int = 300,
+    protocol_name: str = "v4",
+    expected_schema_version: str | None = None,
+    expected_spec_sha256: str | None = None,
+    fit_seeds: tuple[int, ...] | None = None,
+    calibration_seeds: tuple[int, ...] | None = None,
+    validation_seeds: tuple[int, ...] | None = None,
+    prohibited_seeds: frozenset[int] | None = None,
+    report_schema_version: str = "aeolus_v4_development_evidence_v2",
+    report_filename: str = "v4-development-report.json",
+    source_paths: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Run the predeclared train/validation-only v4 model cycle once."""
+    """Run a predeclared train/validation-only development model cycle.
+
+    The default arguments preserve the frozen v4 protocol. Successor protocols
+    must supply distinct, reviewable identities and seed clusters.
+    """
+    expected_schema_version = expected_schema_version or SWEEP_V4_VERSION
+    expected_spec_sha256 = (
+        expected_spec_sha256 or CANONICAL_V4_DEVELOPMENT_SPEC_SHA256
+    )
+    fit_seeds = fit_seeds or V4_FIT_SEEDS
+    calibration_seeds = calibration_seeds or V4_CALIBRATION_SEEDS
+    validation_seeds = validation_seeds or V4_VALIDATION_SEEDS
+    prohibited_seeds = prohibited_seeds or PROHIBITED_HISTORICAL_SEEDS
     spec = load_sweep_spec(sweep_spec_path)
-    if spec.schema_version != SWEEP_V4_VERSION or spec.suite_role != "development":
-        raise ValueError("v4 model cycle requires an aeolus_sweep_v4 development suite")
+    if spec.schema_version != expected_schema_version or spec.suite_role != "development":
+        raise ValueError(
+            f"{protocol_name} model cycle requires a {expected_schema_version} development suite"
+        )
     if tuple(spec.splits) != ("train", "validation"):
-        raise ValueError("v4 development requires exactly train and validation splits")
-    if spec.sha256 != CANONICAL_V4_DEVELOPMENT_SPEC_SHA256:
-        raise ValueError("v4 development sweep does not match the frozen canonical spec")
-    if spec.splits["train"].seeds != V4_FIT_SEEDS + V4_CALIBRATION_SEEDS:
-        raise ValueError("v4 development train seed clusters drifted from the protocol")
-    if spec.splits["validation"].seeds != V4_VALIDATION_SEEDS:
-        raise ValueError("v4 development validation seed clusters drifted from the protocol")
+        raise ValueError(f"{protocol_name} development requires exactly train and validation splits")
+    if spec.sha256 != expected_spec_sha256:
+        raise ValueError(
+            f"{protocol_name} development sweep does not match the frozen canonical spec"
+        )
+    if spec.splits["train"].seeds != fit_seeds + calibration_seeds:
+        raise ValueError(f"{protocol_name} development train seed clusters drifted from the protocol")
+    if spec.splits["validation"].seeds != validation_seeds:
+        raise ValueError(
+            f"{protocol_name} development validation seed clusters drifted from the protocol"
+        )
     all_seeds = set(spec.splits["train"].seeds + spec.splits["validation"].seeds)
-    if all_seeds & PROHIBITED_HISTORICAL_SEEDS:
-        raise ValueError("v4 development overlaps a prohibited historical seed cluster")
+    if all_seeds & prohibited_seeds:
+        raise ValueError(
+            f"{protocol_name} development overlaps a prohibited historical seed cluster"
+        )
     output = Path(output_dir)
     if output.exists() and any(output.iterdir()):
-        raise ValueError(f"v4 development output directory is not empty: {output}")
+        raise ValueError(f"{protocol_name} development output directory is not empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
     sweep_dir = output / "sweep"
     corpus_dir = output / "corpus"
@@ -609,24 +639,26 @@ def run_v4_development(
         for split in ("train", "validation")
     }
     if not split_rows["train"] or not split_rows["validation"]:
-        raise ValueError("v4 development requires non-empty train and validation rows")
+        raise ValueError(
+            f"{protocol_name} development requires non-empty train and validation rows"
+        )
     evidence = build_family_evidence(manifest)
     family_ids_by_seed: dict[int, set[str]] = {}
     for family_id in evidence:
         seed = _family_seed(family_id)
         family_ids_by_seed.setdefault(seed, set()).add(family_id)
     fit_family_ids = set().union(
-        *(family_ids_by_seed.get(seed, set()) for seed in V4_FIT_SEEDS)
+        *(family_ids_by_seed.get(seed, set()) for seed in fit_seeds)
     )
     calibration_family_ids = set().union(
-        *(family_ids_by_seed.get(seed, set()) for seed in V4_CALIBRATION_SEEDS)
+        *(family_ids_by_seed.get(seed, set()) for seed in calibration_seeds)
     )
     validation_family_ids = set().union(
-        *(family_ids_by_seed.get(seed, set()) for seed in V4_VALIDATION_SEEDS)
+        *(family_ids_by_seed.get(seed, set()) for seed in validation_seeds)
     )
     expected_family_ids = fit_family_ids | calibration_family_ids | validation_family_ids
     if expected_family_ids != set(evidence):
-        raise ValueError("v4 family seed clustering is incomplete or contains drift")
+        raise ValueError(f"{protocol_name} family seed clustering is incomplete or contains drift")
     fit_rows = [row for row in split_rows["train"] if row["family_id"] in fit_family_ids]
     calibration_rows = [
         row
@@ -634,7 +666,9 @@ def run_v4_development(
         if row["family_id"] in calibration_family_ids
     ]
     if not fit_rows or not calibration_rows:
-        raise ValueError("v4 train-internal fit/calibration partitions are empty")
+        raise ValueError(
+            f"{protocol_name} train-internal fit/calibration partitions are empty"
+        )
     calibration_evidence = {
         family_id: evidence[family_id] for family_id in calibration_family_ids
     }
@@ -824,7 +858,7 @@ def run_v4_development(
     )
     retained_method = selected_name if development_gate_passed else "rule_baseline"
     report: dict[str, Any] = {
-        "schema_version": "aeolus_v4_development_evidence_v2",
+        "schema_version": report_schema_version,
         "evidence_role": "development_only",
         "source_sweep_spec_sha256": spec.sha256,
         "family_manifest_sha256": manifest.manifest_sha256,
@@ -835,9 +869,9 @@ def run_v4_development(
             split: len(split_rows[split]) for split in ("train", "validation")
         },
         "cluster_protocol": {
-            "fit_seeds": list(V4_FIT_SEEDS),
-            "train_internal_calibration_seeds": list(V4_CALIBRATION_SEEDS),
-            "single_use_validation_seeds": list(V4_VALIDATION_SEEDS),
+            "fit_seeds": list(fit_seeds),
+            "train_internal_calibration_seeds": list(calibration_seeds),
+            "single_use_validation_seeds": list(validation_seeds),
             "fit_families": len(fit_family_ids),
             "train_internal_calibration_families": len(calibration_family_ids),
             "validation_families": len(validation_family_ids),
@@ -878,9 +912,11 @@ def run_v4_development(
             "python_version": platform.python_version(),
             "platform": platform.platform(),
         },
-        "source_provenance": _source_provenance(Path(__file__).resolve().parents[2]),
+        "source_provenance": _source_provenance(
+            Path(__file__).resolve().parents[2], source_paths=source_paths
+        ),
     }
-    report_path = output / "v4-development-report.json"
+    report_path = output / report_filename
     report_path.write_text(
         json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
@@ -888,9 +924,11 @@ def run_v4_development(
     return report
 
 
-def _source_provenance(repository: Path) -> dict[str, Any]:
+def _source_provenance(
+    repository: Path, *, source_paths: tuple[str, ...] | None = None
+) -> dict[str, Any]:
     """Bind development evidence to exact source bytes and Git state."""
-    relative_paths = (
+    relative_paths = source_paths or (
         "uv.lock",
         "scenarios/sweep-v4-development.json",
         "src/aeolus/sweep.py",

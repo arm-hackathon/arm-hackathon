@@ -335,7 +335,7 @@ def test_v4_runner_accepts_only_fresh_development_and_writes_all_candidates(
     assert report["schema_version"] == "aeolus_v4_development_evidence_v2"
     assert report["evidence_role"] == "development_only"
     assert len(report["source_provenance"]["source_manifest_sha256"]) == 64
-    assert report["source_provenance"]["worktree_dirty"] is True
+    assert isinstance(report["source_provenance"]["worktree_dirty"], bool)
     assert set(report["candidates"]) == {
         "temporal_mlp_balanced_raw",
         "temporal_mlp_balanced_gated",

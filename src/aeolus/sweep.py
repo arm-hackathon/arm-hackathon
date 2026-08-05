@@ -20,8 +20,15 @@ SWEEP_VERSION = "aeolus_sweep_v1"
 SWEEP_V2_VERSION = "aeolus_sweep_v2"
 SWEEP_V3_VERSION = "aeolus_sweep_v3"
 SWEEP_V4_VERSION = "aeolus_sweep_v4"
+SWEEP_V5_VERSION = "aeolus_sweep_v5"
 SUPPORTED_SWEEP_VERSIONS = frozenset(
-    {SWEEP_VERSION, SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION}
+    {
+        SWEEP_VERSION,
+        SWEEP_V2_VERSION,
+        SWEEP_V3_VERSION,
+        SWEEP_V4_VERSION,
+        SWEEP_V5_VERSION,
+    }
 )
 USAGE = "Usage: PYTHONPATH=src python -m aeolus.sweep <sweep.json> <output-dir>"
 _PRIMARY_SPLITS = ("train", "validation", "test")
@@ -33,6 +40,7 @@ _V3_SPLITS_BY_ROLE = {
     "final": ("final",),
 }
 _V4_SPLITS_BY_ROLE = {"development": ("train", "validation")}
+_V5_SPLITS_BY_ROLE = {"development": ("train", "validation")}
 _SPLIT_V1_KEYS = frozenset(
     {
         "seeds",
@@ -55,6 +63,7 @@ _GRADUAL_PROFILE_KEYS = frozenset({"duration_ticks", "end_effectiveness"})
 _PROFILE_KEYS = frozenset(
     {"id", "source_multiplier", "shared_airflow_capacity", "telemetry"}
 )
+_PROFILE_V5_KEYS = _PROFILE_KEYS | {"occupancy_shape"}
 _TELEMETRY_V1_KEYS = frozenset(
     {
         "airflow_noise_fraction",
@@ -82,6 +91,7 @@ class OperatingProfile:
     source_multiplier: float
     shared_airflow_capacity: float
     telemetry: dict[str, float]
+    occupancy_shape: dict[str, tuple[float, ...]]
 
 
 @dataclass(frozen=True)
@@ -137,7 +147,11 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
     schema_version = raw.get("schema_version")
     if schema_version not in SUPPORTED_SWEEP_VERSIONS:
         raise ValueError("sweep specification schema_version is unsupported")
-    has_suite_role = schema_version in (SWEEP_V3_VERSION, SWEEP_V4_VERSION)
+    has_suite_role = schema_version in (
+        SWEEP_V3_VERSION,
+        SWEEP_V4_VERSION,
+        SWEEP_V5_VERSION,
+    )
     _require_exact_keys(
         raw,
         _V3_TOP_LEVEL_KEYS if has_suite_role else _TOP_LEVEL_KEYS,
@@ -152,6 +166,10 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
         suite_role = raw["suite_role"]
         if suite_role not in _V4_SPLITS_BY_ROLE:
             raise ValueError("sweep v4 suite_role must be development")
+    elif schema_version == SWEEP_V5_VERSION:
+        suite_role = raw["suite_role"]
+        if suite_role not in _V5_SPLITS_BY_ROLE:
+            raise ValueError("sweep v5 suite_role must be development")
 
     base_name = raw["base_scenario"]
     if not isinstance(base_name, str) or Path(base_name).name != base_name:
@@ -171,12 +189,18 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
     elif schema_version == SWEEP_V4_VERSION:
         assert suite_role is not None
         split_names = _V4_SPLITS_BY_ROLE[suite_role]
+    elif schema_version == SWEEP_V5_VERSION:
+        assert suite_role is not None
+        split_names = _V5_SPLITS_BY_ROLE[suite_role]
     else:
         split_names = _ALL_SPLITS if schema_version == SWEEP_V2_VERSION else _PRIMARY_SPLITS
     _require_exact_keys(raw_splits, frozenset(split_names), "sweep splits")
     splits = {
         split: _parse_split(
-            raw_splits[split], split=split, schema_version=schema_version
+            raw_splits[split],
+            split=split,
+            schema_version=schema_version,
+            base=base_config,
         )
         for split in split_names
     }
@@ -353,6 +377,10 @@ def _reference_document(
             continue
         zone["co2_generation_per_second"] *= operating.source_multiplier
         zone["co2_generation_epsilon"] *= operating.source_multiplier
+        shape = operating.occupancy_shape.get(zone["id"])
+        if shape is not None:
+            for period, multiplier in zip(zone["occupancy_profile"], shape, strict=True):
+                period["multiplier"] *= multiplier
     parse_scenario(document)
     return document
 
@@ -416,12 +444,13 @@ def _parse_targets(value: object, base: HabitatConfig) -> tuple[str, ...]:
 
 
 def _parse_split(
-    value: object, *, split: str, schema_version: str
+    value: object, *, split: str, schema_version: str, base: HabitatConfig
 ) -> SplitSweep:
     raw = _require_mapping(value, f"sweep split {split!r}")
     split_keys = (
         _SPLIT_V2_KEYS
-        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION)
+        if schema_version
+        in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION, SWEEP_V5_VERSION)
         else _SPLIT_V1_KEYS
     )
     _require_exact_keys(raw, split_keys, f"sweep split {split!r}")
@@ -437,13 +466,18 @@ def _parse_split(
         raise ValueError(f"sweep split {split!r} operating_profiles must be non-empty")
     profiles = tuple(
         _parse_operating_profile(
-            profile, split=split, schema_version=schema_version
+            profile, split=split, schema_version=schema_version, base=base
         )
         for profile in profiles_raw
     )
     if len({profile.profile_id for profile in profiles}) != len(profiles):
         raise ValueError(f"sweep split {split!r} operating profile ids must be unique")
-    if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION):
+    if schema_version in (
+        SWEEP_V2_VERSION,
+        SWEEP_V3_VERSION,
+        SWEEP_V4_VERSION,
+        SWEEP_V5_VERSION,
+    ):
         gradual_raw = raw["gradual_profiles"]
         if not isinstance(gradual_raw, list) or not gradual_raw:
             raise ValueError(
@@ -477,10 +511,14 @@ def _parse_split(
 
 
 def _parse_operating_profile(
-    value: object, *, split: str, schema_version: str
+    value: object, *, split: str, schema_version: str, base: HabitatConfig
 ) -> OperatingProfile:
     raw = _require_mapping(value, f"sweep split {split!r} operating profile")
-    _require_exact_keys(raw, _PROFILE_KEYS, f"sweep split {split!r} operating profile")
+    _require_exact_keys(
+        raw,
+        _PROFILE_V5_KEYS if schema_version == SWEEP_V5_VERSION else _PROFILE_KEYS,
+        f"sweep split {split!r} operating profile",
+    )
     profile_id = raw["id"]
     if not isinstance(profile_id, str) or not _ID_PATTERN.fullmatch(profile_id):
         raise ValueError("sweep operating profile id must be a lowercase slug")
@@ -491,7 +529,8 @@ def _parse_operating_profile(
     telemetry_raw = _require_mapping(raw["telemetry"], "sweep telemetry profile")
     telemetry_keys = (
         _TELEMETRY_V2_KEYS
-        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION)
+        if schema_version
+        in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION, SWEEP_V5_VERSION)
         else _TELEMETRY_V1_KEYS
     )
     _require_exact_keys(telemetry_raw, telemetry_keys, "sweep telemetry profile")
@@ -508,7 +547,55 @@ def _parse_operating_profile(
         )
     if any(not 0.0 <= value <= 1.0 for value in telemetry.values()):
         raise ValueError("sweep telemetry fractions must be in 0.0..1.0")
-    return OperatingProfile(profile_id, source_multiplier, capacity, telemetry)
+    occupancy_shape: dict[str, tuple[float, ...]] = {}
+    if schema_version == SWEEP_V5_VERSION:
+        raw_shape = _require_mapping(raw["occupancy_shape"], "sweep v5 occupancy shape")
+        _require_exact_keys(
+            raw_shape,
+            frozenset({"zone_period_multipliers"}),
+            "sweep v5 occupancy shape",
+        )
+        raw_multipliers = _require_mapping(
+            raw_shape["zone_period_multipliers"], "sweep v5 occupancy shape"
+        )
+        base_zones = {zone.id: zone for zone in base.non_processing_zones()}
+        if set(raw_multipliers) != set(base_zones):
+            raise ValueError(
+                "sweep v5 occupancy shape must cover exactly the non-processing zones"
+            )
+        for zone_id in sorted(base_zones):
+            raw_values = raw_multipliers[zone_id]
+            base_periods = base_zones[zone_id].occupancy_profile
+            if not isinstance(raw_values, list) or len(raw_values) != len(base_periods):
+                raise ValueError(
+                    "sweep v5 occupancy shape must align with every base occupancy period"
+                )
+            multipliers = tuple(
+                _finite_number(value, "sweep v5 occupancy shape multiplier")
+                for value in raw_values
+            )
+            if any(value <= 0.0 for value in multipliers):
+                raise ValueError("sweep v5 occupancy shape multipliers must be positive")
+            base_load = sum(
+                (period.end_tick - period.start_tick + 1) * period.multiplier
+                for period in base_periods
+            )
+            shaped_load = sum(
+                (period.end_tick - period.start_tick + 1) * period.multiplier * multiplier
+                for period, multiplier in zip(base_periods, multipliers, strict=True)
+            )
+            if not math.isclose(base_load, shaped_load, rel_tol=0.0, abs_tol=1e-9):
+                raise ValueError(
+                    "sweep v5 occupancy shape must preserve declared load per zone"
+                )
+            occupancy_shape[zone_id] = multipliers
+    return OperatingProfile(
+        profile_id,
+        source_multiplier,
+        capacity,
+        telemetry,
+        occupancy_shape,
+    )
 
 
 def _parse_gradual_profile(value: object, *, split: str) -> GradualSweepProfile:
