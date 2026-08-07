@@ -1,0 +1,107 @@
+{
+  "schema_version": "aeolus_sweep_v6",
+  "suite_role": "development",
+  "targets": ["cabin_a", "cabin_b", "lab"],
+  "room_families": [
+    {
+      "id": "room-balanced",
+      "role": "fit",
+      "base_scenario": "v6/room-balanced.json",
+      "seeds": [2400, 2401],
+      "fault_start_ticks": [25, 70],
+      "operating_profiles": [
+        {
+          "id": "balanced-nominal",
+          "source_multiplier": 1.0,
+          "shared_airflow_capacity": 30.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.015,
+            "airflow_bias_fraction": 0.005,
+            "airflow_drift_fraction": 0.005,
+            "actuator_position_noise_fraction": 0.005,
+            "co2_sensor_noise_fraction": 0.01,
+            "co2_sensor_bias_fraction": 0.005,
+            "co2_sensor_drift_fraction": 0.005
+          }
+        }
+      ],
+      "gradual_profiles": [{"duration_ticks": 30, "end_effectiveness": 0.75}],
+      "blocked_effectiveness": [0.65]
+    },
+    {
+      "id": "room-volume-asymmetric",
+      "role": "fit",
+      "base_scenario": "v6/room-volume-asymmetric.json",
+      "seeds": [2410, 2411],
+      "fault_start_ticks": [25, 70],
+      "operating_profiles": [
+        {
+          "id": "asymmetric-nominal",
+          "source_multiplier": 1.0,
+          "shared_airflow_capacity": 30.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.015,
+            "airflow_bias_fraction": 0.005,
+            "airflow_drift_fraction": 0.005,
+            "actuator_position_noise_fraction": 0.005,
+            "co2_sensor_noise_fraction": 0.01,
+            "co2_sensor_bias_fraction": 0.005,
+            "co2_sensor_drift_fraction": 0.005
+          }
+        }
+      ],
+      "gradual_profiles": [{"duration_ticks": 30, "end_effectiveness": 0.75}],
+      "blocked_effectiveness": [0.65]
+    },
+    {
+      "id": "room-capacity-constrained",
+      "role": "calibration",
+      "base_scenario": "v6/room-capacity-constrained.json",
+      "seeds": [2420, 2421],
+      "fault_start_ticks": [25, 70],
+      "operating_profiles": [
+        {
+          "id": "constrained-high-demand",
+          "source_multiplier": 1.05,
+          "shared_airflow_capacity": 18.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.02,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.015,
+            "co2_sensor_bias_fraction": 0.005,
+            "co2_sensor_drift_fraction": 0.01
+          }
+        }
+      ],
+      "gradual_profiles": [{"duration_ticks": 30, "end_effectiveness": 0.75}],
+      "blocked_effectiveness": [0.65]
+    },
+    {
+      "id": "room-transition-heavy",
+      "role": "validation",
+      "base_scenario": "v6/room-transition-heavy.json",
+      "seeds": [2600, 2601],
+      "fault_start_ticks": [25, 70],
+      "operating_profiles": [
+        {
+          "id": "transition-heavy-nominal",
+          "source_multiplier": 1.0,
+          "shared_airflow_capacity": 28.0,
+          "telemetry": {
+            "airflow_noise_fraction": 0.02,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "actuator_position_noise_fraction": 0.01,
+            "co2_sensor_noise_fraction": 0.015,
+            "co2_sensor_bias_fraction": 0.005,
+            "co2_sensor_drift_fraction": 0.01
+          }
+        }
+      ],
+      "gradual_profiles": [{"duration_ticks": 30, "end_effectiveness": 0.75}],
+      "blocked_effectiveness": [0.65]
+    }
+  ]
+}
