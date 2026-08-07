@@ -1,7 +1,8 @@
-"""Focused tests for V7 calibration observability and the eval bound."""
+"""Focused tests for V7 calibration observability, the eval bound, and parallel execution."""
 
 from __future__ import annotations
 
+import pickle
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from aeolus import model_cycle_v7
-from aeolus.model_cycle_v7 import _calibrate, _eval_exceeds_bound
+from aeolus.model_cycle_v7 import _calibrate, _calibrate_combo_task, _eval_exceeds_bound
 
 
 def _fake_metrics() -> dict[str, object]:
@@ -21,15 +22,9 @@ def _fake_metrics() -> dict[str, object]:
     }
 
 
-def _patch_calibration_deps(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+def _patch_calibration_deps(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replace runner dependencies with lightweight fakes for grid-shape tests."""
-    calls: dict[str, int] = {"count": 0}
-
-    def fake_evaluate(streams, policy, window_ticks: int) -> dict[str, object]:
-        calls["count"] += 1
-        return _fake_metrics()
-
-    monkeypatch.setattr(model_cycle_v7, "evaluate_v6", fake_evaluate)
+    monkeypatch.setattr(model_cycle_v7, "evaluate_v6", lambda *args, **kwargs: _fake_metrics())
     monkeypatch.setattr(
         model_cycle_v7, "V7EscalatedRulePolicy", lambda config, parameters: object()
     )
@@ -38,7 +33,6 @@ def _patch_calibration_deps(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
         "V7GatedResidualPolicy",
         lambda config, classifier, min_confidence, parameters: object(),
     )
-    return calls
 
 
 def test_calibrate_writes_progress_log(
@@ -47,8 +41,8 @@ def test_calibrate_writes_progress_log(
     _patch_calibration_deps(monkeypatch)
     progress = tmp_path / "calibration-progress.log"
     report = _calibrate(
-        classifier=None,  # type: ignore[arg-type]  # policy constructors are faked
-        reference_config=None,
+        classifier=object(),  # type: ignore[arg-type]  # policy constructors are faked
+        reference_config=object(),
         streams=[],
         window_ticks=10,
         progress_path=progress,
@@ -61,36 +55,97 @@ def test_calibrate_writes_progress_log(
     assert report["candidate_count"] == 180
     assert report["calibration_evals"] == 216
     assert report["calibration_pathological_evals"] == 0
+    assert report["calibration_parallel"] is True
 
 
-def test_calibrate_skips_pathological_confidence_tail(
+def test_calibrate_is_deterministic_across_parallel_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_calibration_deps(monkeypatch)
+    first = _calibrate(
+        classifier=object(),  # type: ignore[arg-type]
+        reference_config=object(),
+        streams=[],
+        window_ticks=10,
+        progress_path=tmp_path / "first.log",
+    )
+    second = _calibrate(
+        classifier=object(),  # type: ignore[arg-type]
+        reference_config=object(),
+        streams=[],
+        window_ticks=10,
+        progress_path=tmp_path / "second.log",
+    )
+    assert first["selected_parameters"] == second["selected_parameters"]
+    assert first["selected_min_confidence"] == second["selected_min_confidence"]
+    assert first["selected_metrics"] == second["selected_metrics"]
+
+
+def test_calibrate_combo_task_applies_bound_within_combo(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(model_cycle_v7, "V7_EVAL_BOUND_MIN_SECONDS", 0.01)
     monkeypatch.setattr(model_cycle_v7, "V7_EVAL_BOUND_FACTOR", 5.0)
-    calls = _patch_calibration_deps(monkeypatch)
+    calls: dict[str, int] = {"count": 0}
 
-    def slow_last_combo_first_confidence(streams, policy, window_ticks: int) -> dict[str, object]:
+    def slow_fifth_eval(streams, policy, window_ticks: int) -> dict[str, object]:
         calls["count"] += 1
-        if calls["count"] == 212:  # last combo's first confidence eval
+        if calls["count"] == 5:  # baseline + confidences 0.0/0.3/0.5 fast, 0.7 slow
             time.sleep(0.05)
         return _fake_metrics()
 
-    monkeypatch.setattr(model_cycle_v7, "evaluate_v6", slow_last_combo_first_confidence)
-    progress = tmp_path / "calibration-progress.log"
-    report = _calibrate(
-        classifier=None,  # type: ignore[arg-type]  # policy constructors are faked
-        reference_config=None,
-        streams=[],
-        window_ticks=10,
-        progress_path=progress,
+    monkeypatch.setattr(model_cycle_v7, "evaluate_v6", slow_fifth_eval)
+    monkeypatch.setattr(
+        model_cycle_v7, "V7EscalatedRulePolicy", lambda config, parameters: object()
     )
-    text = progress.read_text(encoding="utf-8")
-    assert "SKIPPED" in text
-    assert report["calibration_evals"] == 212  # 216 planned, tail of last combo skipped
-    assert report["calibration_pathological_evals"] == 1  # one bound trip ended the combo
-    assert report["candidate_count"] == 176  # 180 candidates minus the 4 skipped
-    assert "eval=216/216" not in text
+    monkeypatch.setattr(
+        model_cycle_v7,
+        "V7GatedResidualPolicy",
+        lambda config, classifier, min_confidence, parameters: object(),
+    )
+    model_cycle_v7._init_worker(
+        object(), object(), [], 10  # type: ignore[arg-type]  # policy constructors are faked
+    )
+
+    combo, candidates, progress, pathological = _calibrate_combo_task(
+        0.3, 0.01, 0.15, 0.05
+    )
+    assert combo == (0.3, 0.01, 0.15, 0.05)
+    assert calls["count"] == 5  # confidence 0.9 was never evaluated
+    assert pathological == 1
+    assert len(candidates) == 4
+    assert len(progress) == 5
+    assert progress[-1]["skipped"] is True
+    assert all(record["skipped"] is False for record in progress[:-1])
+
+
+def test_calibrate_combo_task_requires_initialized_context() -> None:
+    model_cycle_v7._init_worker(None, None, None, 10)
+    with pytest.raises(ValueError, match="worker context"):
+        _calibrate_combo_task(0.2, 0.0025, 0.1, 0.02)
+
+
+def test_calibrate_worker_inputs_are_picklable() -> None:
+    from aeolus.config import load_scenario
+    from aeolus.evaluate_v6 import V6EvaluationStream
+    from aeolus.scenario import run_scenario
+    from aeolus.v7_centroid import V7ResidualCentroid
+
+    config = load_scenario("scenarios/standard_habitat.json")
+    records = tuple(run_scenario(config))
+    stream = V6EvaluationStream(
+        family_id="family-1",
+        room_family_id="room-1",
+        split="calibration",
+        scenario_role="reference",
+        records=records,
+        reference_identity="ref-sha",
+    )
+    classifier = V7ResidualCentroid.fit(
+        [[0.0, 0.0, 0.0, 0.0, 0.0]], ["nominal"], feature_width=5
+    )
+    for value in (config, stream, classifier):
+        pickle.loads(pickle.dumps(value))
 
 
 def test_eval_exceeds_bound_requires_absolute_and_relative_excess() -> None:

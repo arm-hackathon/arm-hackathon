@@ -15,15 +15,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, TypedDict, cast
 
-from aeolus.config import load_scenario
+from aeolus.config import HabitatConfig, load_scenario
 from aeolus.corpus_v6 import generate_v6_corpus, validate_v6_corpus
 from aeolus.evaluate_v6 import V6EvaluationStream, evaluate_v6
 from aeolus.families_v6 import V6FamilyManifest, load_v6_family_manifest
@@ -339,6 +341,159 @@ def _progress_line(
     )
 
 
+class _ProgressRecord(TypedDict):
+    """One completed calibration eval, rendered by the parent into the log."""
+
+    role: str
+    confidence: float | None
+    elapsed_s: float
+    skipped: bool
+
+
+_CalibrationCandidate = tuple[
+    tuple[float, float, float, float],
+    dict[str, object],
+    V7EscalationParameters,
+    float,
+    tuple[float, float, float, float],
+]
+_ComboResult = tuple[
+    tuple[float, float, float, float],
+    list[_CalibrationCandidate],
+    list[_ProgressRecord],
+    int,
+]
+
+_WORKER_CLASSIFIER: V7ResidualCentroid | None = None
+_WORKER_REFERENCE_CONFIG: HabitatConfig | None = None
+_WORKER_STREAMS: Sequence[V6EvaluationStream] | None = None
+_WORKER_WINDOW_TICKS: int = V7_WINDOW_TICKS
+
+
+def _init_worker(
+    classifier: V7ResidualCentroid | None,
+    reference_config: HabitatConfig | None,
+    streams: Sequence[V6EvaluationStream] | None,
+    window_ticks: int,
+) -> None:
+    """Populate the per-process evaluation context for pool workers."""
+    global _WORKER_CLASSIFIER, _WORKER_REFERENCE_CONFIG, _WORKER_STREAMS, _WORKER_WINDOW_TICKS
+    _WORKER_CLASSIFIER = classifier
+    _WORKER_REFERENCE_CONFIG = reference_config
+    _WORKER_STREAMS = streams
+    _WORKER_WINDOW_TICKS = window_ticks
+
+
+def _calibrate_combo_task(
+    settled: float,
+    trend: float,
+    proxy: float,
+    delta: float,
+) -> _ComboResult:
+    """Evaluate one escalation parameter combo: 1 baseline + up to 5 confidence evals.
+
+    Runs inside a pool worker, or directly in the parent when the pool is
+    unavailable. The pathological-eval bound is applied against the combo's own
+    completed evals so one bad setting cannot consume unbounded wall time.
+    """
+    if _WORKER_CLASSIFIER is None or _WORKER_REFERENCE_CONFIG is None or _WORKER_STREAMS is None:
+        raise ValueError("V7 calibration worker context is not initialized")
+    parameters = V7EscalationParameters(
+        sensor_trend_abs_max=trend,
+        expected_change_proxy=proxy,
+        sensor_max_delta=delta,
+        settled_residual_threshold=settled,
+    )
+    baseline = V7EscalatedRulePolicy(_WORKER_REFERENCE_CONFIG, parameters)
+    started = time.monotonic()
+    baseline_metrics = evaluate_v6(_WORKER_STREAMS, baseline, window_ticks=_WORKER_WINDOW_TICKS)
+    combo_elapsed = [time.monotonic() - started]
+    progress: list[_ProgressRecord] = [
+        {"role": "baseline", "confidence": None, "elapsed_s": combo_elapsed[0], "skipped": False}
+    ]
+    candidates: list[_CalibrationCandidate] = []
+    pathological = 0
+    for confidence in V7_CONFIDENCE_GRID:
+        policy = V7GatedResidualPolicy(
+            _WORKER_REFERENCE_CONFIG,
+            _WORKER_CLASSIFIER,
+            min_confidence=confidence,
+            parameters=parameters,
+        )
+        started = time.monotonic()
+        metrics = evaluate_v6(_WORKER_STREAMS, policy, window_ticks=_WORKER_WINDOW_TICKS)
+        elapsed = time.monotonic() - started
+        combo_elapsed.append(elapsed)
+        candidates.append(
+            (
+                _selection_key(metrics, baseline_metrics),
+                metrics,
+                parameters,
+                confidence,
+                (settled, trend, proxy, delta),
+            )
+        )
+        progress.append(
+            {
+                "role": "candidate",
+                "confidence": confidence,
+                "elapsed_s": elapsed,
+                "skipped": False,
+            }
+        )
+        if _eval_exceeds_bound(elapsed, combo_elapsed):
+            pathological += 1
+            progress[-1]["skipped"] = True
+            break
+    return (settled, trend, proxy, delta), candidates, progress, pathological
+
+
+def _run_calibration_grid(
+    grid: Sequence[tuple[float, float, float, float]],
+    classifier: V7ResidualCentroid,
+    reference_config: object,
+    streams: Sequence[V6EvaluationStream],
+    window_ticks: int,
+) -> tuple[list[_ComboResult], bool]:
+    """Evaluate every combo, preferring a process pool with sequential fallback.
+
+    The 36 parameter combos are independent, so they map cleanly onto a pool of
+    one worker per core. Pool-creation failures (unpicklable init args or
+    platform limits) degrade to in-process sequential evaluation; task errors
+    always propagate so a failed eval is never silently replaced.
+    """
+    try:
+        pool = ProcessPoolExecutor(
+            max_workers=min(len(grid), os.cpu_count() or 1),
+            initializer=_init_worker,
+            initargs=(
+                classifier,
+                cast(HabitatConfig | None, reference_config),
+                streams,
+                window_ticks,
+            ),
+        )
+    except Exception:
+        _init_worker(
+            classifier,
+            cast(HabitatConfig | None, reference_config),
+            streams,
+            window_ticks,
+        )
+        return [(_calibrate_combo_task(*combo)) for combo in grid], False
+    futures = [pool.submit(_calibrate_combo_task, *combo) for combo in grid]
+    results: list[_ComboResult] = []
+    try:
+        for future in as_completed(futures):
+            results.append(future.result())
+    except Exception:
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    else:
+        pool.shutdown(wait=True)
+    return results, True
+
+
 def _calibrate(
     classifier: V7ResidualCentroid,
     reference_config: object,
@@ -347,88 +502,49 @@ def _calibrate(
     progress_path: Path | None = None,
 ) -> dict[str, object]:
     """Select escalation parameters and centroid confidence on calibration only."""
-    candidates: list[
-        tuple[tuple[float, float, float, float], dict[str, object], V7EscalationParameters, float]
-    ] = []
-    total_evals = (
-        len(V7_SETTLED_RESIDUAL_GRID)
-        * len(V7_SENSOR_TREND_GRID)
-        * len(V7_PROXY_GRID)
-        * len(V7_SENSOR_DELTA_GRID)
-        * (1 + len(V7_CONFIDENCE_GRID))
+    grid = [
+        (settled, trend, proxy, delta)
+        for settled in V7_SETTLED_RESIDUAL_GRID
+        for trend in V7_SENSOR_TREND_GRID
+        for proxy in V7_PROXY_GRID
+        for delta in V7_SENSOR_DELTA_GRID
+    ]
+    total_evals = len(grid) * (1 + len(V7_CONFIDENCE_GRID))
+    combo_results, parallel = _run_calibration_grid(
+        grid, classifier, reference_config, streams, window_ticks
     )
+    candidates: list[_CalibrationCandidate] = []
     eval_index = 0
     elapsed_list: list[float] = []
     skipped = 0
-    for settled in V7_SETTLED_RESIDUAL_GRID:
-        for trend in V7_SENSOR_TREND_GRID:
-            for proxy in V7_PROXY_GRID:
-                for delta in V7_SENSOR_DELTA_GRID:
-                    parameters = V7EscalationParameters(
-                        sensor_trend_abs_max=trend,
-                        expected_change_proxy=proxy,
-                        sensor_max_delta=delta,
-                        settled_residual_threshold=settled,
-                    )
-                    baseline = V7EscalatedRulePolicy(reference_config, parameters)
-                    started = time.monotonic()
-                    baseline_metrics = evaluate_v6(streams, baseline, window_ticks=window_ticks)
-                    eval_index += 1
-                    elapsed_list.append(time.monotonic() - started)
-                    _append_progress(
-                        progress_path,
-                        _progress_line(
-                            eval_index, total_evals, "baseline",
-                            settled, trend, proxy, delta, None, elapsed_list,
-                        ),
-                    )
-                    if _eval_exceeds_bound(elapsed_list[-1], elapsed_list):
-                        skipped += 1
-                        _append_progress(
-                            progress_path,
-                            _progress_line(
-                                eval_index, total_evals, "baseline",
-                                settled, trend, proxy, delta, None, elapsed_list,
-                                skipped=True,
-                            ),
-                        )
-                        continue
-                    for confidence in V7_CONFIDENCE_GRID:
-                        policy = V7GatedResidualPolicy(
-                            reference_config,
-                            classifier,
-                            min_confidence=confidence,
-                            parameters=parameters,
-                        )
-                        started = time.monotonic()
-                        metrics = evaluate_v6(streams, policy, window_ticks=window_ticks)
-                        eval_index += 1
-                        elapsed_list.append(time.monotonic() - started)
-                        candidates.append(
-                            (_selection_key(metrics, baseline_metrics), metrics, parameters, confidence)
-                        )
-                        _append_progress(
-                            progress_path,
-                            _progress_line(
-                                eval_index, total_evals, "candidate",
-                                settled, trend, proxy, delta, confidence, elapsed_list,
-                            ),
-                        )
-                        if _eval_exceeds_bound(elapsed_list[-1], elapsed_list):
-                            skipped += 1
-                            _append_progress(
-                                progress_path,
-                                _progress_line(
-                                    eval_index, total_evals, "candidate",
-                                    settled, trend, proxy, delta, confidence, elapsed_list,
-                                    skipped=True,
-                                ),
-                            )
-                            break
+    for combo, combo_candidates, progress, combo_pathological in combo_results:
+        candidates.extend(combo_candidates)
+        skipped += combo_pathological
+        settled, trend, proxy, delta = combo
+        for record in progress:
+            eval_index += 1
+            elapsed_list.append(float(record["elapsed_s"]))
+            _append_progress(
+                progress_path,
+                _progress_line(
+                    eval_index,
+                    total_evals,
+                    str(record["role"]),
+                    settled,
+                    trend,
+                    proxy,
+                    delta,
+                    record["confidence"],
+                    elapsed_list,
+                    skipped=bool(record["skipped"]),
+                ),
+            )
     if not candidates:
         raise ValueError("V7 calibration produced no candidates")
-    _, selected_metrics, selected_parameters, selected_confidence = min(
-        candidates, key=lambda item: item[0]
+    # Deterministic selection: rank by the selection key, then by the parameter
+    # combo and confidence, so tie-breaks cannot depend on pool completion order.
+    _, selected_metrics, selected_parameters, selected_confidence, _ = min(
+        candidates, key=lambda item: (item[0], item[4], item[3])
     )
     baseline_metrics = evaluate_v6(
         streams, V7EscalatedRulePolicy(reference_config, selected_parameters), window_ticks=window_ticks
@@ -452,6 +568,7 @@ def _calibrate(
         "candidate_count": len(candidates),
         "calibration_evals": eval_index,
         "calibration_pathological_evals": skipped,
+        "calibration_parallel": parallel,
     }
 
 
