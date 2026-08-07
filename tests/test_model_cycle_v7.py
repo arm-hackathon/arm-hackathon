@@ -48,9 +48,12 @@ def test_calibrate_writes_progress_log(
         progress_path=progress,
     )
     lines = progress.read_text(encoding="utf-8").strip().splitlines()
-    assert len(lines) == 216
-    assert lines[0].startswith("eval=1/216 role=baseline")
-    assert lines[-1].startswith("eval=216/216 role=candidate")
+    eval_lines = [line for line in lines if line.startswith("eval=")]
+    assert lines[0].startswith("calibration_start")
+    assert "workers=" in lines[0]
+    assert len(eval_lines) == 216
+    assert eval_lines[0].startswith("eval=1/216 role=baseline")
+    assert eval_lines[-1].startswith("eval=216/216 role=candidate")
     assert "SKIPPED" not in progress.read_text(encoding="utf-8")
     assert report["candidate_count"] == 180
     assert report["calibration_evals"] == 216
@@ -146,6 +149,18 @@ def test_calibrate_worker_inputs_are_picklable() -> None:
     )
     for value in (config, stream, classifier):
         pickle.loads(pickle.dumps(value))
+
+
+def test_calibration_worker_count_honors_environment_override() -> None:
+    import os
+
+    os.environ["AEOLUS_CALIBRATION_WORKERS"] = "4"
+    try:
+        assert model_cycle_v7._calibration_worker_count(36) == 4
+        assert model_cycle_v7._calibration_worker_count(2) == 2  # capped by grid size
+    finally:
+        del os.environ["AEOLUS_CALIBRATION_WORKERS"]
+    assert model_cycle_v7._calibration_worker_count(36) <= 12
 
 
 def test_eval_exceeds_bound_requires_absolute_and_relative_excess() -> None:

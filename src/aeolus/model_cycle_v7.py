@@ -448,23 +448,38 @@ def _calibrate_combo_task(
     return (settled, trend, proxy, delta), candidates, progress, pathological
 
 
+def _calibration_worker_count(grid_size: int) -> int:
+    """Choose pool workers, bounded for Windows spawn startup cost.
+
+    Windows cannot fork, so every worker re-imports numpy and receives the
+    evaluation streams over IPC; each worker costs seconds to minutes to boot.
+    Default to 12 workers unless the operator overrides with
+    ``AEOLUS_CALIBRATION_WORKERS``.
+    """
+    raw = os.environ.get("AEOLUS_CALIBRATION_WORKERS", "")
+    if raw.isdigit() and int(raw) > 0:
+        return min(int(raw), grid_size)
+    return min(12, os.cpu_count() or 1, grid_size)
+
+
 def _run_calibration_grid(
     grid: Sequence[tuple[float, float, float, float]],
     classifier: V7ResidualCentroid,
     reference_config: object,
     streams: Sequence[V6EvaluationStream],
     window_ticks: int,
+    workers: int,
 ) -> tuple[list[_ComboResult], bool]:
     """Evaluate every combo, preferring a process pool with sequential fallback.
 
     The 36 parameter combos are independent, so they map cleanly onto a pool of
-    one worker per core. Pool-creation failures (unpicklable init args or
+    ``workers`` processes. Pool-creation failures (unpicklable init args or
     platform limits) degrade to in-process sequential evaluation; task errors
     always propagate so a failed eval is never silently replaced.
     """
     try:
         pool = ProcessPoolExecutor(
-            max_workers=min(len(grid), os.cpu_count() or 1),
+            max_workers=workers,
             initializer=_init_worker,
             initargs=(
                 classifier,
@@ -510,8 +525,14 @@ def _calibrate(
         for delta in V7_SENSOR_DELTA_GRID
     ]
     total_evals = len(grid) * (1 + len(V7_CONFIDENCE_GRID))
+    workers = _calibration_worker_count(len(grid))
+    _append_progress(
+        progress_path,
+        f"calibration_start grid_combos={len(grid)} total_evals={total_evals} "
+        f"workers={workers}",
+    )
     combo_results, parallel = _run_calibration_grid(
-        grid, classifier, reference_config, streams, window_ticks
+        grid, classifier, reference_config, streams, window_ticks, workers
     )
     candidates: list[_CalibrationCandidate] = []
     eval_index = 0
