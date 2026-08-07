@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Mapping
 
 import numpy as np
@@ -144,6 +145,7 @@ def _selector_fields(config: HabitatConfig) -> tuple[SelectorField, ...]:
     return tuple(fields)
 
 
+@lru_cache(maxsize=256)
 def _validate_contract(contract: ModelInputContract) -> dict[str, Any]:
     if not isinstance(contract, ModelInputContract):
         raise ValueError("model input requires a ModelInputContract")

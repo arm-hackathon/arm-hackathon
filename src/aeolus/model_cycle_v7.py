@@ -18,6 +18,7 @@ import json
 import platform
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -45,6 +46,12 @@ V7_SETTLED_RESIDUAL_GRID = (0.2, 0.25, 0.3)
 V7_SENSOR_TREND_GRID = (0.0025, 0.005, 0.01)
 V7_PROXY_GRID = (0.1, 0.15)
 V7_SENSOR_DELTA_GRID = (0.02, 0.05)
+# A calibration eval is pathological when it is both slow in absolute terms and
+# far above the completed-eval median. The absolute floor prevents premature
+# skips early in the grid, where the median is small but later combos are
+# legitimately heavier (more concern windows trip the centroid).
+V7_EVAL_BOUND_MIN_SECONDS = 300.0
+V7_EVAL_BOUND_FACTOR = 5.0
 
 
 @dataclass(frozen=True)
@@ -113,6 +120,7 @@ def run_v7_development(request: V7DevelopmentRequest) -> dict[str, object]:
         reference_config,
         streams["calibration"],
         request.window_ticks,
+        progress_path=output / "calibration-progress.log",
     )
 
     baseline_policy = V7EscalatedRulePolicy(
@@ -289,16 +297,69 @@ def _selected_parameters(calibration: dict[str, object]) -> V7EscalationParamete
     )
 
 
+def _append_progress(progress_path: Path | None, line: str) -> None:
+    """Append one flushed progress line so long calibration is observable."""
+    if progress_path is None:
+        return
+    with progress_path.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+        handle.flush()
+
+
+def _eval_exceeds_bound(elapsed_seconds: float, completed: Sequence[float]) -> bool:
+    """Flag an eval that is both slow in absolute terms and far above the median."""
+    if elapsed_seconds < V7_EVAL_BOUND_MIN_SECONDS or not completed:
+        return False
+    ordered = sorted(completed)
+    median_elapsed = ordered[len(ordered) // 2]
+    return elapsed_seconds > V7_EVAL_BOUND_FACTOR * median_elapsed
+
+
+def _progress_line(
+    eval_index: int,
+    total_evals: int,
+    role: str,
+    settled: float,
+    trend: float,
+    proxy: float,
+    delta: float,
+    confidence: float | None,
+    elapsed_list: Sequence[float],
+    skipped: bool = False,
+) -> str:
+    """Render one human-readable calibration progress record."""
+    ordered = sorted(elapsed_list)
+    median_elapsed = ordered[len(ordered) // 2] if ordered else 0.0
+    tag = "SKIPPED " if skipped else ""
+    selector = "baseline" if confidence is None else f"confidence={confidence}"
+    return (
+        f"{tag}eval={eval_index}/{total_evals} role={role} {selector} "
+        f"settled={settled} trend={trend} proxy={proxy} delta={delta} "
+        f"elapsed_s={elapsed_list[-1]:.1f} median_s={median_elapsed:.1f}"
+    )
+
+
 def _calibrate(
     classifier: V7ResidualCentroid,
     reference_config: object,
     streams: Sequence[V6EvaluationStream],
     window_ticks: int,
+    progress_path: Path | None = None,
 ) -> dict[str, object]:
     """Select escalation parameters and centroid confidence on calibration only."""
     candidates: list[
         tuple[tuple[float, float, float, float], dict[str, object], V7EscalationParameters, float]
     ] = []
+    total_evals = (
+        len(V7_SETTLED_RESIDUAL_GRID)
+        * len(V7_SENSOR_TREND_GRID)
+        * len(V7_PROXY_GRID)
+        * len(V7_SENSOR_DELTA_GRID)
+        * (1 + len(V7_CONFIDENCE_GRID))
+    )
+    eval_index = 0
+    elapsed_list: list[float] = []
+    skipped = 0
     for settled in V7_SETTLED_RESIDUAL_GRID:
         for trend in V7_SENSOR_TREND_GRID:
             for proxy in V7_PROXY_GRID:
@@ -310,7 +371,28 @@ def _calibrate(
                         settled_residual_threshold=settled,
                     )
                     baseline = V7EscalatedRulePolicy(reference_config, parameters)
+                    started = time.monotonic()
                     baseline_metrics = evaluate_v6(streams, baseline, window_ticks=window_ticks)
+                    eval_index += 1
+                    elapsed_list.append(time.monotonic() - started)
+                    _append_progress(
+                        progress_path,
+                        _progress_line(
+                            eval_index, total_evals, "baseline",
+                            settled, trend, proxy, delta, None, elapsed_list,
+                        ),
+                    )
+                    if _eval_exceeds_bound(elapsed_list[-1], elapsed_list):
+                        skipped += 1
+                        _append_progress(
+                            progress_path,
+                            _progress_line(
+                                eval_index, total_evals, "baseline",
+                                settled, trend, proxy, delta, None, elapsed_list,
+                                skipped=True,
+                            ),
+                        )
+                        continue
                     for confidence in V7_CONFIDENCE_GRID:
                         policy = V7GatedResidualPolicy(
                             reference_config,
@@ -318,8 +400,31 @@ def _calibrate(
                             min_confidence=confidence,
                             parameters=parameters,
                         )
+                        started = time.monotonic()
                         metrics = evaluate_v6(streams, policy, window_ticks=window_ticks)
-                        candidates.append((_selection_key(metrics, baseline_metrics), metrics, parameters, confidence))
+                        eval_index += 1
+                        elapsed_list.append(time.monotonic() - started)
+                        candidates.append(
+                            (_selection_key(metrics, baseline_metrics), metrics, parameters, confidence)
+                        )
+                        _append_progress(
+                            progress_path,
+                            _progress_line(
+                                eval_index, total_evals, "candidate",
+                                settled, trend, proxy, delta, confidence, elapsed_list,
+                            ),
+                        )
+                        if _eval_exceeds_bound(elapsed_list[-1], elapsed_list):
+                            skipped += 1
+                            _append_progress(
+                                progress_path,
+                                _progress_line(
+                                    eval_index, total_evals, "candidate",
+                                    settled, trend, proxy, delta, confidence, elapsed_list,
+                                    skipped=True,
+                                ),
+                            )
+                            break
     if not candidates:
         raise ValueError("V7 calibration produced no candidates")
     _, selected_metrics, selected_parameters, selected_confidence = min(
@@ -345,6 +450,8 @@ def _calibrate(
         "selected_metrics": selected_metrics,
         "baseline_named_fault_macro_f1": baseline_metrics["named_fault_macro_f1"],
         "candidate_count": len(candidates),
+        "calibration_evals": eval_index,
+        "calibration_pathological_evals": skipped,
     }
 
 

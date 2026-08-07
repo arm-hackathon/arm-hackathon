@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -143,6 +144,7 @@ def _context_fields(model_contract: ModelInputContract) -> tuple[SelectorField, 
     return tuple(fields)
 
 
+@lru_cache(maxsize=256)
 def _validate_contract(contract: ObservableContextContract) -> None:
     if not isinstance(contract, ObservableContextContract):
         raise ValueError("observable context requires an ObservableContextContract")
