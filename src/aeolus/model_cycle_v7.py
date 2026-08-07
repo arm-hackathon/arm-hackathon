@@ -477,6 +477,17 @@ def _run_calibration_grid(
     platform limits) degrade to in-process sequential evaluation; task errors
     always propagate so a failed eval is never silently replaced.
     """
+    if sys.platform == "win32":
+        # Windows spawns workers fresh (no fork); worker startup plus the
+        # stream payload has repeatedly wedged the pool before the first eval,
+        # so Windows evaluation runs sequentially in-process instead.
+        _init_worker(
+            classifier,
+            cast(HabitatConfig | None, reference_config),
+            streams,
+            window_ticks,
+        )
+        return [(_calibrate_combo_task(*combo)) for combo in grid], False
     try:
         pool = ProcessPoolExecutor(
             max_workers=workers,
@@ -529,7 +540,7 @@ def _calibrate(
     _append_progress(
         progress_path,
         f"calibration_start grid_combos={len(grid)} total_evals={total_evals} "
-        f"workers={workers}",
+        f"workers={workers} platform={sys.platform}",
     )
     combo_results, parallel = _run_calibration_grid(
         grid, classifier, reference_config, streams, window_ticks, workers
