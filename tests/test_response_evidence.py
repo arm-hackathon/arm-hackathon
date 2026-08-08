@@ -1,6 +1,10 @@
 """Response-evidence harness tests."""
 
+import hashlib
 import json
+import subprocess
+import sys
+from pathlib import Path
 from typing import get_type_hints
 
 from aeolus.response import BoundedRecoveryGovernor, ResponseSettings
@@ -189,6 +193,7 @@ def test_receipt_binds_custom_factory_settings(tmp_path, standard_scenario_path)
     )
     assert receipt["response_settings"]["governor_factory"] == "custom_factory"
     assert receipt["response_settings"]["max_command_delta"] == 0.03
+    assert receipt["config"]["response_settings"] == receipt["response_settings"]
 
 
 def test_output_dir_must_be_empty(tmp_path, standard_scenario_path):
@@ -262,3 +267,73 @@ def test_aggregate_tolerates_zero_baseline_energy():
     aggregate = _aggregate([row])
     assert aggregate["energy"]["mean_overhead_fraction"] == 0.0
     assert aggregate["energy"]["median_overhead_fraction"] == 0.0
+
+
+def test_receipt_binds_exact_source_config_and_sweep_bytes(
+    tmp_path, standard_scenario_path
+):
+    spec_path = _write_mini_sweep(tmp_path, standard_scenario_path)
+    receipt = run_response_evidence(spec_path, tmp_path / "evidence")
+
+    source = receipt["source"]
+    source_file_hashes = source["files_sha256"]
+    response_evidence_path = Path(__file__).resolve().parents[1] / "src" / "aeolus" / "response_evidence.py"
+    assert source_file_hashes["src/aeolus/response_evidence.py"] == hashlib.sha256(
+        response_evidence_path.read_bytes()
+    ).hexdigest()
+    assert source["manifest_sha256"] == hashlib.sha256(
+        json.dumps(
+            source_file_hashes,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    config = receipt["config"]
+    assert config["base_scenario_bytes_sha256"] == hashlib.sha256(
+        (tmp_path / "standard_habitat.json").read_bytes()
+    ).hexdigest()
+    assert len(config["run_spec_sha256"]) == 64
+    assert len(config["response_settings_sha256"]) == 64
+
+    sweep = receipt["sweep"]
+    assert sweep["bytes_sha256"] == hashlib.sha256(spec_path.read_bytes()).hexdigest()
+    assert sweep["canonical_sha256"] == receipt["sweep_spec_sha256"]
+    assert len(sweep["generated_scenarios_manifest_sha256"]) == 64
+
+    expected_dirty = bool(
+        subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=Path(__file__).resolve().parents[1],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    assert receipt["environment"]["source_worktree_dirty"] == expected_dirty
+    assert receipt["environment"]["python_implementation"] == sys.implementation.name
+
+
+def test_receipt_changes_when_only_raw_sweep_bytes_change(
+    tmp_path, standard_scenario_path
+):
+    first_dir = tmp_path / "first"
+    first_dir.mkdir()
+    first_spec = _write_mini_sweep(first_dir, standard_scenario_path)
+    second_dir = tmp_path / "second"
+    second_dir.mkdir()
+    (second_dir / "standard_habitat.json").write_bytes(
+        (tmp_path / "first" / "standard_habitat.json").read_bytes()
+    )
+    second_spec = second_dir / "sweep.json"
+    second_spec.write_text(
+        json.dumps(MINI_SWEEP, indent=4) + "\n", encoding="utf-8"
+    )
+
+    first = run_response_evidence(first_spec, tmp_path / "first-output")
+    second = run_response_evidence(second_spec, tmp_path / "second-output")
+
+    assert first["sweep_spec_sha256"] == second["sweep_spec_sha256"]
+    assert first["sweep"]["bytes_sha256"] != second["sweep"]["bytes_sha256"]
+    assert first["evidence_sha256"] != second["evidence_sha256"]

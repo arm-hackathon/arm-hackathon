@@ -97,15 +97,31 @@ PYTHONPATH=src uv run python -m aeolus.response_evidence \
   scenarios/sweep-response.json out/response-evidence
 ```
 
-The hashed receipt (`out/response-evidence/response-evidence.json`) binds the
-result to the exact sweep spec, family manifest and response settings via
-SHA-256. Metrics per family and controller: time above the `0.30`
-crew-cabin ceiling, max excursion, response latency from onset to first
-non-nominal action on the affected loop, cumulative actuator energy,
-invariant violations (delivered airflow above shared capacity).
+The receipt (`out/response-evidence/response-evidence.json`) binds the result to
+more than the canonical sweep and family-manifest identities:
 
-Frozen receipt: `artifacts/response-evidence.json` (copied from
-`out/response-evidence/response-evidence.json`).
+- `environment` follows the experiment receipt convention and records the
+  Python/platform versions, `uv.lock` hash, source commit and the actual
+  `source_worktree_dirty` Git-status flag.
+- `source.files_sha256` records exact bytes for every repository `src/aeolus`
+  module, with a deterministic `source.manifest_sha256` over that map.
+- `config` records exact `pyproject.toml`, `uv.lock` and base-scenario bytes,
+  plus canonical hashes of the fixed run and response settings.
+- `sweep` records the exact sweep-spec bytes, its canonical JSON hash and
+  exact hashes for generated scenario files and their deterministic manifest.
+
+Only repository-relative logical names occur in these manifests. Output
+locations are not included in receipt values or canonical hashes, so moving
+an output directory cannot change the receipt. A dirty worktree is recorded as
+`true`; it is never reported as clean merely because the generated metrics are
+reproducible. The tracked receipt in `artifacts/response-evidence.json` is the
+frozen historical artifact and is regenerated separately when its provenance
+is intentionally refreshed.
+
+Metrics per family and controller: time above the `0.30` crew-cabin ceiling,
+max excursion, response latency from onset to first non-nominal action on the
+affected loop, cumulative actuator energy, and invariant violations (delivered
+airflow above shared capacity).
 
 ## Scope
 
