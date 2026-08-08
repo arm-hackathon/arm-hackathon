@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aeolus.config import HabitatConfig
+
 
 _ZONE_FIELDS = frozenset(
     {
@@ -47,6 +49,56 @@ _MODEL_ACTUATOR_FIELDS = (
     "tracking_residual",
     "power",
 )
+RECOVERY_TRACE_VERSION = "aeolus_recovery_trace_v1"
+_RESERVE_TOP_LEVEL_FIELDS = frozenset({"connections", "actuators", "system"})
+_RESERVE_ACTUATOR_FIELDS = _ACTUATOR_FIELDS - {"direction"}
+_RESERVE_SYSTEM_FIELDS = frozenset(
+    {
+        "reserve_airflow_capacity",
+        "total_requested_airflow",
+        "total_delivered_airflow",
+        "capacity_scale",
+        "total_power",
+    }
+)
+_AUTHORITY_FIELDS = frozenset(
+    {
+        "run_id",
+        "authority_epoch",
+        "decision_tick",
+        "sequence",
+        "state",
+        "reserve_command_owner",
+        "target_zone_id",
+        "reason",
+        "dwell_ticks",
+        "observation_tick",
+        "command_digest",
+        "applied_command_digest",
+    }
+)
+RECOVERY_AUTHORITY_REASONS = frozenset(
+    {
+        "cold_start",
+        "no_concern",
+        "unique_concern",
+        "entry_persistence_met",
+        "target_changed",
+        "ambiguous_concern",
+        "observation_unavailable",
+        "degraded_clear",
+        "protect_hold",
+        "protect_increase",
+        "recovery_clear",
+        "handback_start",
+        "handback_ramp",
+        "handback_abort",
+        "handback_complete",
+        "reserve_delivery_failure",
+        "reserve_failure_shutdown",
+        "failure_latched",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +110,16 @@ class TickRecord:
     connections: dict[str, dict[str, float]] = field(default_factory=dict)
     actuators: dict[str, dict[str, float]] = field(default_factory=dict)
     system: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RecoveryTickRecord:
+    """Versioned recovery row with an unchanged legacy plant projection."""
+
+    plant: TickRecord
+    reserve: dict[str, Any]
+    authority: dict[str, Any]
+    schema_version: str = RECOVERY_TRACE_VERSION
 
 
 class TraceWriter:
@@ -84,19 +146,53 @@ class TraceWriter:
         return False
 
 
-def model_feature_row(record: TickRecord) -> dict[str, dict[str, dict[str, float]]]:
+class RecoveryTraceWriter:
+    """Write strict versioned recovery rows without widening legacy traces."""
+
+    def __init__(self, path, config: HabitatConfig) -> None:
+        if not isinstance(config, HabitatConfig) or config.version != 10:
+            raise ValueError("RecoveryTraceWriter requires a validated v10 habitat config")
+        self._path = Path(path)
+        self._config = config
+        self._handle = None
+
+    def __enter__(self):
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = self._path.open("w", encoding="utf-8")
+        return self
+
+    def write(self, record: RecoveryTickRecord) -> None:
+        if self._handle is None:
+            raise RuntimeError(
+                "RecoveryTraceWriter.write() called outside a 'with' block"
+            )
+        _validate_recovery_telemetry(record, self._config)
+        self._handle.write(
+            json.dumps(asdict(record), sort_keys=True, allow_nan=False) + "\n"
+        )
+
+    def __exit__(self, *exc_info):
+        if self._handle is not None:
+            self._handle.close()
+        return False
+
+
+def model_feature_row(
+    record: TickRecord | RecoveryTickRecord,
+) -> dict[str, dict[str, dict[str, float]]]:
     """Return only the explicit model-observable projection of a trace record."""
-    _validate_observable_telemetry(record)
+    plant = record.plant if isinstance(record, RecoveryTickRecord) else record
+    _validate_observable_telemetry(plant)
     return {
         "zones": {
             zone_id: {"sensor_co2_concentration": values["sensor_co2_concentration"]}
-            for zone_id, values in sorted(record.zones.items())
+            for zone_id, values in sorted(plant.zones.items())
         },
         "actuators": {
             actuator_id: {
                 field_name: values[field_name] for field_name in _MODEL_ACTUATOR_FIELDS
             }
-            for actuator_id, values in sorted(record.actuators.items())
+            for actuator_id, values in sorted(plant.actuators.items())
         },
         "connections": {
             connection_id: {
@@ -107,9 +203,183 @@ def model_feature_row(record: TickRecord) -> dict[str, dict[str, dict[str, float
                     "airflow_residual",
                 )
             }
-            for connection_id, values in sorted(record.connections.items())
+            for connection_id, values in sorted(plant.connections.items())
         },
     }
+
+
+def _validate_recovery_telemetry(
+    record: RecoveryTickRecord, config: HabitatConfig
+) -> None:
+    if record.schema_version != RECOVERY_TRACE_VERSION:
+        raise ValueError("recovery trace schema_version is unsupported")
+    _validate_observable_telemetry(record.plant)
+    expected_zone_ids = {zone.id for zone in config.non_processing_zones()}
+    expected_all_zone_ids = {zone.id for zone in config.zones}
+    expected_primary_ids = {connection.id for connection in config.connections}
+    expected_reserve_ids = {
+        connection.id for connection in config.reserve_connections
+    }
+    if (
+        set(record.plant.zones) != expected_all_zone_ids
+        or set(record.plant.connections) != expected_primary_ids
+        or set(record.plant.actuators) != expected_zone_ids
+    ):
+        raise ValueError("recovery plant telemetry does not match config topology")
+    _validate_mapping(record.reserve, "reserve")
+    _validate_mapping(record.authority, "authority")
+    if set(record.reserve) != _RESERVE_TOP_LEVEL_FIELDS:
+        raise ValueError("reserve telemetry has unexpected fields")
+
+    connections = record.reserve["connections"]
+    actuators = record.reserve["actuators"]
+    system = record.reserve["system"]
+    _validate_mapping(connections, "reserve connections")
+    _validate_mapping(actuators, "reserve actuators")
+    _validate_mapping(system, "reserve system")
+    if set(connections) != expected_reserve_ids or set(actuators) != expected_zone_ids:
+        raise ValueError("reserve telemetry does not match config topology")
+    for connection_id, values in connections.items():
+        _validate_mapping(values, f"reserve connection {connection_id!r}")
+        if set(values) != _CONNECTION_FIELDS:
+            raise ValueError(
+                f"reserve connection {connection_id!r} has unexpected telemetry fields"
+            )
+        for field_name, value in values.items():
+            _require_finite_non_negative(
+                value, f"reserve connection {connection_id!r} {field_name}"
+            )
+        if values["delivered_airflow"] > values["requested_airflow"]:
+            raise ValueError("reserve connection delivery exceeds request")
+        expected = values["requested_airflow"] - values["delivered_airflow"]
+        if not math.isclose(values["airflow_residual"], expected, abs_tol=1e-12):
+            raise ValueError("reserve connection residual is inconsistent")
+
+    for zone_id in sorted(expected_zone_ids):
+        outbound = connections[config.reserve_path_to_processing(zone_id).id]
+        inbound = connections[config.reserve_path_from_processing(zone_id).id]
+        if outbound != inbound:
+            raise ValueError("reserve path pair telemetry is inconsistent")
+
+    for actuator_id, values in actuators.items():
+        _validate_mapping(values, f"reserve actuator {actuator_id!r}")
+        if set(values) != _RESERVE_ACTUATOR_FIELDS:
+            raise ValueError(
+                f"reserve actuator {actuator_id!r} has unexpected telemetry fields"
+            )
+        moving = values["moving"]
+        if not isinstance(moving, bool):
+            raise ValueError(f"reserve actuator {actuator_id!r} moving must be boolean")
+        for field_name, value in values.items():
+            if field_name == "moving":
+                continue
+            _require_finite(value, f"reserve actuator {actuator_id!r} {field_name}")
+        for field_name in ("setpoint", "actual_position"):
+            if not 0.0 <= values[field_name] <= 1.0:
+                raise ValueError(
+                    f"reserve actuator {actuator_id!r} {field_name} must be in 0.0..1.0"
+                )
+        for field_name in ("movement_seconds", "power"):
+            if values[field_name] < 0.0:
+                raise ValueError(
+                    f"reserve actuator {actuator_id!r} {field_name} must not be negative"
+                )
+        expected_tracking = values["setpoint"] - values["actual_position"]
+        if not math.isclose(
+            values["tracking_residual"], expected_tracking, abs_tol=1e-12
+        ):
+            raise ValueError("reserve actuator tracking residual is inconsistent")
+        if values["moving"] != (values["movement_seconds"] > 0.0):
+            raise ValueError("reserve actuator moving state is inconsistent")
+
+    if set(system) != _RESERVE_SYSTEM_FIELDS:
+        raise ValueError("reserve system has unexpected telemetry fields")
+    for field_name, value in system.items():
+        _require_finite_non_negative(value, f"reserve system {field_name}")
+    if system["reserve_airflow_capacity"] <= 0.0:
+        raise ValueError("reserve system capacity must be positive")
+    if not 0.0 <= system["capacity_scale"] <= 1.0:
+        raise ValueError("reserve system capacity_scale must be in 0.0..1.0")
+    if system["total_delivered_airflow"] > system["reserve_airflow_capacity"]:
+        raise ValueError("reserve system delivered airflow exceeds capacity")
+    if not math.isclose(
+        system["reserve_airflow_capacity"],
+        config.air_system.reserve_airflow_capacity,
+        abs_tol=1e-12,
+    ):
+        raise ValueError("reserve system capacity does not match config")
+    outbound_rows = [
+        connections[config.reserve_path_to_processing(zone_id).id]
+        for zone_id in sorted(expected_zone_ids)
+    ]
+    expected_requested = math.fsum(row["requested_airflow"] for row in outbound_rows)
+    expected_delivered = math.fsum(row["delivered_airflow"] for row in outbound_rows)
+    expected_power = math.fsum(values["power"] for values in actuators.values())
+    if not math.isclose(
+        system["total_requested_airflow"], expected_requested, abs_tol=1e-12
+    ):
+        raise ValueError("reserve system total requested airflow is inconsistent")
+    if not math.isclose(
+        system["total_delivered_airflow"], expected_delivered, abs_tol=1e-12
+    ):
+        raise ValueError("reserve system total delivered airflow is inconsistent")
+    if not math.isclose(system["total_power"], expected_power, abs_tol=1e-12):
+        raise ValueError("reserve system total power is inconsistent")
+
+    authority = record.authority
+    if set(authority) != _AUTHORITY_FIELDS:
+        raise ValueError("authority telemetry has unexpected fields")
+    for field_name in ("run_id", "state", "reserve_command_owner", "reason"):
+        if not isinstance(authority[field_name], str) or not authority[field_name]:
+            raise ValueError(f"authority {field_name} must be a non-empty string")
+    for field_name, minimum in (
+        ("authority_epoch", 0),
+        ("decision_tick", 1),
+        ("sequence", 1),
+        ("dwell_ticks", 0),
+        ("observation_tick", 0),
+    ):
+        value = authority[field_name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            raise ValueError(f"authority {field_name} is invalid")
+    if authority["observation_tick"] >= authority["decision_tick"]:
+        raise ValueError("authority observation_tick must precede decision_tick")
+    target = authority["target_zone_id"]
+    if target is not None and (
+        not isinstance(target, str) or target not in expected_zone_ids
+    ):
+        raise ValueError("authority target_zone_id is invalid")
+    if authority["decision_tick"] != record.plant.tick:
+        raise ValueError("authority decision_tick does not match plant tick")
+    if authority["reason"] not in RECOVERY_AUTHORITY_REASONS:
+        raise ValueError("authority reason is invalid")
+    if authority["state"] not in {"NOMINAL", "DEGRADED", "PROTECT", "HANDBACK"}:
+        raise ValueError("authority state is invalid")
+    if authority["reserve_command_owner"] not in {
+        "reserve_off",
+        "deterministic_recovery_supervisor",
+    }:
+        raise ValueError("authority reserve_command_owner is invalid")
+    off_state = authority["state"] in {"NOMINAL", "DEGRADED"}
+    expected_owner = (
+        "reserve_off" if off_state else "deterministic_recovery_supervisor"
+    )
+    if authority["reserve_command_owner"] != expected_owner:
+        raise ValueError("authority state and reserve command owner are inconsistent")
+    if authority["state"] == "NOMINAL" and target is not None:
+        raise ValueError("authority NOMINAL state cannot retain a target")
+    if not off_state and target is None:
+        raise ValueError("authority active reserve state requires a target")
+    for field_name in ("command_digest", "applied_command_digest"):
+        value = authority[field_name]
+        if (
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise ValueError(f"authority {field_name} must be lowercase SHA-256")
+    if authority["command_digest"] != authority["applied_command_digest"]:
+        raise ValueError("authority applied command digest does not acknowledge decision")
 
 
 def _validate_observable_telemetry(record: TickRecord) -> None:
