@@ -19,6 +19,7 @@ from aeolus.model_input import (
     model_input_v1,
 )
 from aeolus.scenario import run_scenario
+from aeolus.trace import RecoveryTickRecord
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -355,3 +356,26 @@ def test_model_input_v1_rejects_malformed_or_incompatible_contracts():
     incompatible = build_model_input_contract(parse_scenario(renamed_scenario))
     with pytest.raises(ValueError, match=r"record topology.*connections"):
         model_input_v1(record, incompatible)
+
+
+def test_recovery_wrapper_cannot_change_model_input_or_contract_identity():
+    legacy_config = load_scenario(STANDARD_SCENARIO)
+    recovery_config = load_scenario(REPO_ROOT / "scenarios" / "recovery_habitat.json")
+    legacy_contract = build_model_input_contract(legacy_config)
+    recovery_contract = build_model_input_contract(recovery_config)
+    plant = run_scenario(recovery_config)[0]
+    expected = model_input_v1(plant, recovery_contract)
+    wrapper = RecoveryTickRecord(
+        plant=plant,
+        reserve={"forbidden_feature": {"value": 999999.0}},
+        authority={"forbidden_label": "fault-at-tick-25"},
+    )
+
+    actual = model_input_v1(wrapper, recovery_contract)
+
+    np.testing.assert_array_equal(actual, expected)
+    assert actual.shape == (24,)
+    assert actual.dtype == np.float32
+    assert model_artifact_metadata(recovery_contract) == model_artifact_metadata(
+        legacy_contract
+    )

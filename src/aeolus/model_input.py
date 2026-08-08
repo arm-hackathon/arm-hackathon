@@ -11,7 +11,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from aeolus.config import HabitatConfig
-from aeolus.trace import TickRecord, model_feature_row
+from aeolus.trace import RecoveryTickRecord, TickRecord, model_feature_row
 
 MODEL_INPUT_VERSION = "model_input_v1"
 TOPOLOGY_VERSION = "aeolus_topology_v1"
@@ -80,7 +80,7 @@ def build_model_input_contract(config: HabitatConfig) -> ModelInputContract:
 
 
 def model_input_v1(
-    record: TickRecord, contract: ModelInputContract
+    record: TickRecord | RecoveryTickRecord, contract: ModelInputContract
 ) -> NDArray[np.float32]:
     """Return the exact ordered float32 v1 tensor from observable telemetry."""
     topology = _validate_contract(contract)
