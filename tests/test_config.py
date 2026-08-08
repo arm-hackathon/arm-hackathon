@@ -41,14 +41,16 @@ def test_standard_habitat_loads_four_zones_and_six_directed_connections(
     assert config.telemetry.co2_sensor_bias_fraction == 0.0
     assert config.telemetry.co2_sensor_drift_fraction == 0.0
     assert config.air_system.shared_airflow_capacity == 24.0
+    assert config.air_system.reserve_airflow_capacity == 0.0
     assert config.air_system.scrubber_removal_fraction == 0.5
+    assert config.reserve_connections == ()
     assert config.fault_profiles == ()
 
 
 def test_version_eight_scenarios_are_rejected(standard_doc):
     standard_doc["version"] = 8
 
-    with pytest.raises(ValueError, match="unsupported version 8; expected 9"):
+    with pytest.raises(ValueError, match="unsupported version 8; expected one of 9, 10"):
         parse_scenario(standard_doc)
 
 
@@ -525,3 +527,145 @@ def test_rejects_unknown_connection_field(standard_doc):
 
     with pytest.raises(ValueError, match="unexpected field 'max_airfow'"):
         parse_scenario(standard_doc)
+
+
+def _reserve_connections():
+    return [
+        {
+            "id": f"reserve_{zone}_to_processing",
+            "from": zone,
+            "to": "processing",
+            "max_airflow": 4.0,
+            "health": 1.0,
+        }
+        for zone in ("cabin_a", "cabin_b", "lab")
+    ] + [
+        {
+            "id": f"reserve_processing_to_{zone}",
+            "from": "processing",
+            "to": zone,
+            "max_airflow": 4.0,
+            "health": 1.0,
+        }
+        for zone in ("cabin_a", "cabin_b", "lab")
+    ]
+
+
+def _recovery_doc(standard_doc):
+    standard_doc["version"] = 10
+    standard_doc["air_system"]["reserve_airflow_capacity"] = 4.0
+    standard_doc["reserve_connections"] = _reserve_connections()
+    return standard_doc
+
+
+def test_v10_loads_exact_independent_reserve_pairs(standard_doc):
+    config = parse_scenario(_recovery_doc(standard_doc))
+
+    assert config.version == 10
+    assert config.air_system.reserve_airflow_capacity == 4.0
+    assert len(config.reserve_connections) == 6
+    assert {connection.id for connection in config.connections}.isdisjoint(
+        connection.id for connection in config.reserve_connections
+    )
+    for zone in config.non_processing_zones():
+        outbound = config.reserve_path_to_processing(zone.id)
+        inbound = config.reserve_path_from_processing(zone.id)
+        assert (outbound.from_zone, outbound.to_zone) == (zone.id, "processing")
+        assert (inbound.from_zone, inbound.to_zone) == ("processing", zone.id)
+        assert outbound.max_airflow == 4.0
+        assert inbound.max_airflow == 4.0
+        assert outbound.health == 1.0
+        assert inbound.health == 1.0
+
+
+def test_v9_rejects_reserve_topology(standard_doc):
+    standard_doc["reserve_connections"] = _reserve_connections()
+
+    with pytest.raises(ValueError, match="unexpected field 'reserve_connections'"):
+        parse_scenario(standard_doc)
+
+
+def test_v9_rejects_reserve_capacity(standard_doc):
+    standard_doc["air_system"]["reserve_airflow_capacity"] = 4.0
+
+    with pytest.raises(ValueError, match="unexpected field 'reserve_airflow_capacity'"):
+        parse_scenario(standard_doc)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda d: d.pop("reserve_connections"), "reserve_connections"),
+        (
+            lambda d: d["air_system"].pop("reserve_airflow_capacity"),
+            "reserve_airflow_capacity",
+        ),
+        (
+            lambda d: d["air_system"].update(reserve_airflow_capacity=True),
+            "reserve_airflow_capacity.*number",
+        ),
+        (
+            lambda d: d["air_system"].update(reserve_airflow_capacity=float("nan")),
+            "finite",
+        ),
+        (
+            lambda d: d["air_system"].update(reserve_airflow_capacity=0.0),
+            "reserve_airflow_capacity.*positive",
+        ),
+        (lambda d: d["reserve_connections"].clear(), "no path"),
+        (lambda d: d["reserve_connections"].pop(), "return path"),
+        (
+            lambda d: d["reserve_connections"].append(
+                dict(d["reserve_connections"][0])
+            ),
+            "duplicate connection id",
+        ),
+        (
+            lambda d: d["reserve_connections"][0].update(
+                id=d["connections"][0]["id"]
+            ),
+            "globally unique",
+        ),
+        (
+            lambda d: d["reserve_connections"][0].update(to="cabin_b"),
+            "hub layout",
+        ),
+        (
+            lambda d: d["reserve_connections"][0].update(max_airflow=True),
+            "max_airflow.*number",
+        ),
+        (
+            lambda d: d["reserve_connections"][0].update(max_airflow=0.0),
+            "max_airflow.*positive",
+        ),
+        (
+            lambda d: d["reserve_connections"][0].update(health=1.1),
+            "health",
+        ),
+        (
+            lambda d: d["reserve_connections"][0].update(extra=True),
+            "unexpected field 'extra'",
+        ),
+    ],
+)
+def test_v10_rejects_malformed_reserve_topology(standard_doc, mutate, match):
+    document = _recovery_doc(standard_doc)
+    mutate(document)
+
+    with pytest.raises(ValueError, match=match):
+        parse_scenario(document)
+
+
+def test_v10_primary_fault_cannot_target_reserve_connection(standard_doc):
+    document = _recovery_doc(standard_doc)
+    document["fault_profiles"] = [
+        {
+            "type": "blocked_path",
+            "connection_id": "reserve_cabin_a_to_processing",
+            "start_tick": 20,
+            "blocked_effectiveness": 0.65,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="unknown connection"):
+        parse_scenario(document)

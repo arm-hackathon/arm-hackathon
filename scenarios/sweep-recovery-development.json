@@ -1,0 +1,151 @@
+{
+  "base_scenario": "recovery_habitat.json",
+  "schema_version": "aeolus_sweep_v4",
+  "splits": {
+    "train": {
+      "blocked_effectiveness": [
+        0.65,
+        0.85
+      ],
+      "fault_start_ticks": [
+        25,
+        55
+      ],
+      "gradual_profiles": [
+        {
+          "duration_ticks": 30,
+          "end_effectiveness": 0.75
+        },
+        {
+          "duration_ticks": 60,
+          "end_effectiveness": 0.9
+        }
+      ],
+      "operating_profiles": [
+        {
+          "id": "primary-low-reserve",
+          "shared_airflow_capacity": 24.0,
+          "source_multiplier": 0.8,
+          "telemetry": {
+            "actuator_position_noise_fraction": 0.01,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "airflow_noise_fraction": 0.025,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.02
+          }
+        },
+        {
+          "id": "primary-high-reserve",
+          "shared_airflow_capacity": 36.0,
+          "source_multiplier": 1.2,
+          "telemetry": {
+            "actuator_position_noise_fraction": 0.015,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "airflow_noise_fraction": 0.035,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02,
+            "co2_sensor_noise_fraction": 0.03
+          }
+        }
+      ],
+      "seeds": [
+        211,
+        212,
+        213,
+        214,
+        215,
+        216
+      ],
+      "transient_blocked_profiles": [
+        {
+          "blocked_effectiveness": 0.65,
+          "duration_ticks": 60
+        }
+      ],
+      "transient_gradual_profiles": [
+        {
+          "duration_ticks": 60,
+          "end_effectiveness": 0.75,
+          "start_effectiveness": 1.0
+        }
+      ]
+    },
+    "validation": {
+      "blocked_effectiveness": [
+        0.65,
+        0.85
+      ],
+      "fault_start_ticks": [
+        25,
+        55
+      ],
+      "gradual_profiles": [
+        {
+          "duration_ticks": 30,
+          "end_effectiveness": 0.75
+        },
+        {
+          "duration_ticks": 60,
+          "end_effectiveness": 0.9
+        }
+      ],
+      "operating_profiles": [
+        {
+          "id": "primary-low-reserve",
+          "shared_airflow_capacity": 24.0,
+          "source_multiplier": 0.8,
+          "telemetry": {
+            "actuator_position_noise_fraction": 0.01,
+            "airflow_bias_fraction": 0.01,
+            "airflow_drift_fraction": 0.01,
+            "airflow_noise_fraction": 0.025,
+            "co2_sensor_bias_fraction": 0.01,
+            "co2_sensor_drift_fraction": 0.015,
+            "co2_sensor_noise_fraction": 0.02
+          }
+        },
+        {
+          "id": "primary-high-reserve",
+          "shared_airflow_capacity": 36.0,
+          "source_multiplier": 1.2,
+          "telemetry": {
+            "actuator_position_noise_fraction": 0.015,
+            "airflow_bias_fraction": 0.015,
+            "airflow_drift_fraction": 0.015,
+            "airflow_noise_fraction": 0.035,
+            "co2_sensor_bias_fraction": 0.015,
+            "co2_sensor_drift_fraction": 0.02,
+            "co2_sensor_noise_fraction": 0.03
+          }
+        }
+      ],
+      "seeds": [
+        601,
+        602,
+        603
+      ],
+      "transient_blocked_profiles": [
+        {
+          "blocked_effectiveness": 0.65,
+          "duration_ticks": 60
+        }
+      ],
+      "transient_gradual_profiles": [
+        {
+          "duration_ticks": 60,
+          "end_effectiveness": 0.75,
+          "start_effectiveness": 1.0
+        }
+      ]
+    }
+  },
+  "suite_role": "development",
+  "targets": [
+    "cabin_a",
+    "cabin_b",
+    "lab"
+  ]
+}
