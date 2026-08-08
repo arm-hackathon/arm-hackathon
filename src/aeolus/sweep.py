@@ -13,13 +13,21 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from aeolus.config import HabitatConfig, load_scenario, parse_scenario
-from aeolus.families import FAMILY_MANIFEST_VERSION, load_family_manifest
+from aeolus.families import (
+    FAMILY_MANIFEST_VERSION,
+    RECOVERY_COUNTERFACTUAL_ARMS,
+    RECOVERY_FAMILY_MANIFEST_VERSION,
+    load_family_manifest,
+)
 from aeolus.model_input import build_model_input_contract, model_artifact_metadata
 
 SWEEP_VERSION = "aeolus_sweep_v1"
 SWEEP_V2_VERSION = "aeolus_sweep_v2"
 SWEEP_V3_VERSION = "aeolus_sweep_v3"
-SUPPORTED_SWEEP_VERSIONS = frozenset({SWEEP_VERSION, SWEEP_V2_VERSION, SWEEP_V3_VERSION})
+SWEEP_V4_VERSION = "aeolus_sweep_v4"
+SUPPORTED_SWEEP_VERSIONS = frozenset(
+    {SWEEP_VERSION, SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION}
+)
 USAGE = "Usage: PYTHONPATH=src python -m aeolus.sweep <sweep.json> <output-dir>"
 _PRIMARY_SPLITS = ("train", "validation", "test")
 _ALL_SPLITS = (*_PRIMARY_SPLITS, "stress")
@@ -47,7 +55,17 @@ _SPLIT_V2_KEYS = frozenset(
         "blocked_effectiveness",
     }
 )
+_SPLIT_V4_KEYS = _SPLIT_V2_KEYS | {
+    "transient_blocked_profiles",
+    "transient_gradual_profiles",
+}
 _GRADUAL_PROFILE_KEYS = frozenset({"duration_ticks", "end_effectiveness"})
+_TRANSIENT_BLOCKED_PROFILE_KEYS = frozenset(
+    {"blocked_effectiveness", "duration_ticks"}
+)
+_TRANSIENT_GRADUAL_PROFILE_KEYS = frozenset(
+    {"start_effectiveness", "end_effectiveness", "duration_ticks"}
+)
 _PROFILE_KEYS = frozenset(
     {"id", "source_multiplier", "shared_airflow_capacity", "telemetry"}
 )
@@ -89,6 +107,23 @@ class GradualSweepProfile:
 
 
 @dataclass(frozen=True)
+class TransientBlockedSweepProfile:
+    """One temporary blocked-path severity and duration."""
+
+    duration_ticks: int
+    blocked_effectiveness: float
+
+
+@dataclass(frozen=True)
+class TransientGradualSweepProfile:
+    """One temporary gradual degradation ramp and recovery."""
+
+    duration_ticks: int
+    start_effectiveness: float
+    end_effectiveness: float
+
+
+@dataclass(frozen=True)
 class SplitSweep:
     """The independent parameters assigned to one corpus split."""
 
@@ -97,6 +132,8 @@ class SplitSweep:
     operating_profiles: tuple[OperatingProfile, ...]
     gradual_profiles: tuple[GradualSweepProfile, ...]
     blocked_effectiveness: tuple[float, ...]
+    transient_blocked_profiles: tuple[TransientBlockedSweepProfile, ...] = ()
+    transient_gradual_profiles: tuple[TransientGradualSweepProfile, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -135,14 +172,16 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
         raise ValueError("sweep specification schema_version is unsupported")
     _require_exact_keys(
         raw,
-        _V3_TOP_LEVEL_KEYS if schema_version == SWEEP_V3_VERSION else _TOP_LEVEL_KEYS,
+        _V3_TOP_LEVEL_KEYS
+        if schema_version in (SWEEP_V3_VERSION, SWEEP_V4_VERSION)
+        else _TOP_LEVEL_KEYS,
         "sweep specification",
     )
     suite_role: str | None = None
-    if schema_version == SWEEP_V3_VERSION:
+    if schema_version in (SWEEP_V3_VERSION, SWEEP_V4_VERSION):
         suite_role = raw["suite_role"]
         if suite_role not in _V3_SPLITS_BY_ROLE:
-            raise ValueError("sweep v3 suite_role must be development or final")
+            raise ValueError("sweep suite_role must be development or final")
 
     base_name = raw["base_scenario"]
     if not isinstance(base_name, str) or Path(base_name).name != base_name:
@@ -153,10 +192,16 @@ def parse_sweep_spec(document: object, *, source_path: Path) -> SweepSpec:
     base_config = load_scenario(base_path)
     if base_config.fault_profiles:
         raise ValueError("sweep base scenario must not declare fault profiles")
+    if schema_version == SWEEP_V4_VERSION and (
+        base_config.version != 10
+        or len(base_config.reserve_connections) != 6
+        or base_config.air_system.reserve_airflow_capacity <= 0.0
+    ):
+        raise ValueError("sweep v4 base scenario must define schema-v10 reserve hardware")
 
     targets = _parse_targets(raw["targets"], base_config)
     raw_splits = _require_mapping(raw["splits"], "sweep splits")
-    if schema_version == SWEEP_V3_VERSION:
+    if schema_version in (SWEEP_V3_VERSION, SWEEP_V4_VERSION):
         assert suite_role is not None
         split_names = _V3_SPLITS_BY_ROLE[suite_role]
     else:
@@ -196,7 +241,7 @@ def generate_sweep(spec_path: str | Path, output_dir: str | Path) -> dict[str, A
     base_document = json.loads(spec.base_scenario_path.read_text(encoding="utf-8"))
     base_config = parse_scenario(base_document)
     contract_metadata = model_artifact_metadata(build_model_input_contract(base_config))
-    families: list[dict[str, str]] = []
+    families: list[dict[str, Any]] = []
     scenario_names: set[str] = set()
     split_counts = {split: 0 for split in spec.splits}
 
@@ -212,6 +257,17 @@ def generate_sweep(spec_path: str | Path, output_dir: str | Path) -> dict[str, A
 
                 for start_tick in split_spec.fault_start_ticks:
                     for target in spec.targets:
+                        base_condition_id = (
+                            _base_condition_id(
+                                split,
+                                seed,
+                                operating.profile_id,
+                                start_tick,
+                                target,
+                            )
+                            if spec.schema_version == SWEEP_V4_VERSION
+                            else None
+                        )
                         connection_id = base_config.path_to_processing(target).id
                         for gradual in split_spec.gradual_profiles:
                             family_id = _family_id(
@@ -241,6 +297,7 @@ def generate_sweep(spec_path: str | Path, output_dir: str | Path) -> dict[str, A
                                 split=split,
                                 fault_class="gradual_primary_fan_degradation",
                                 reference_name=reference_name,
+                                base_condition_id=base_condition_id,
                                 fault=fault,
                             )
                             split_counts[split] += 1
@@ -272,6 +329,84 @@ def generate_sweep(spec_path: str | Path, output_dir: str | Path) -> dict[str, A
                                 split=split,
                                 fault_class="blocked_path",
                                 reference_name=reference_name,
+                                base_condition_id=base_condition_id,
+                                fault=fault,
+                            )
+                            split_counts[split] += 1
+
+                        for transient in split_spec.transient_blocked_profiles:
+                            duration = transient.duration_ticks
+                            family_id = _family_id(
+                                split,
+                                seed,
+                                operating.profile_id,
+                                start_tick,
+                                target,
+                                f"transient-blocked-d{duration:03d}",
+                                transient.blocked_effectiveness,
+                            )
+                            fault = copy.deepcopy(reference)
+                            fault["fault_profiles"] = [
+                                {
+                                    "type": "transient_blocked_path",
+                                    "connection_id": connection_id,
+                                    "start_tick": start_tick,
+                                    "end_tick": start_tick + duration,
+                                    "blocked_effectiveness": (
+                                        transient.blocked_effectiveness
+                                    ),
+                                }
+                            ]
+                            _append_family(
+                                destination,
+                                families,
+                                scenario_names,
+                                family_id=family_id,
+                                split=split,
+                                fault_class="transient_blocked_path",
+                                reference_name=reference_name,
+                                base_condition_id=base_condition_id,
+                                fault=fault,
+                            )
+                            split_counts[split] += 1
+
+                        for transient in split_spec.transient_gradual_profiles:
+                            duration = transient.duration_ticks
+                            family_id = _family_id(
+                                split,
+                                seed,
+                                operating.profile_id,
+                                start_tick,
+                                target,
+                                f"transient-degradation-d{duration:03d}",
+                                transient.end_effectiveness,
+                            )
+                            fault = copy.deepcopy(reference)
+                            fault["fault_profiles"] = [
+                                {
+                                    "type": (
+                                        "transient_gradual_primary_fan_degradation"
+                                    ),
+                                    "connection_id": connection_id,
+                                    "start_tick": start_tick,
+                                    "end_tick": start_tick + duration,
+                                    "start_effectiveness": (
+                                        transient.start_effectiveness
+                                    ),
+                                    "end_effectiveness": transient.end_effectiveness,
+                                }
+                            ]
+                            _append_family(
+                                destination,
+                                families,
+                                scenario_names,
+                                family_id=family_id,
+                                split=split,
+                                fault_class=(
+                                    "transient_gradual_primary_fan_degradation"
+                                ),
+                                reference_name=reference_name,
+                                base_condition_id=base_condition_id,
                                 fault=fault,
                             )
                             split_counts[split] += 1
@@ -301,14 +436,20 @@ def generate_sweep(spec_path: str | Path, output_dir: str | Path) -> dict[str, A
                             split=split,
                             fault_class="frozen_sensor",
                             reference_name=reference_name,
+                            base_condition_id=base_condition_id,
                             fault=fault,
                         )
                         split_counts[split] += 1
 
+    manifest_version = (
+        RECOVERY_FAMILY_MANIFEST_VERSION
+        if spec.schema_version == SWEEP_V4_VERSION
+        else FAMILY_MANIFEST_VERSION
+    )
     family_document = {
         "families": sorted(families, key=lambda family: family["family_id"]),
         **contract_metadata,
-        "schema_version": FAMILY_MANIFEST_VERSION,
+        "schema_version": manifest_version,
     }
     family_path = destination / "families.json"
     _write_json(family_path, family_document)
@@ -347,26 +488,36 @@ def _reference_document(
 
 def _append_family(
     destination: Path,
-    families: list[dict[str, str]],
+    families: list[dict[str, Any]],
     scenario_names: set[str],
     *,
     family_id: str,
     split: str,
     fault_class: str,
     reference_name: str,
+    base_condition_id: str | None,
     fault: dict[str, Any],
 ) -> None:
+    if any(family["family_id"] == family_id for family in families):
+        raise ValueError(f"duplicate generated family_id {family_id!r}")
     fault_name = f"{family_id}.json"
     _write_scenario(destination, fault_name, fault, scenario_names)
-    families.append(
-        {
-            "family_id": family_id,
-            "fault_class": fault_class,
-            "fault_scenario": fault_name,
-            "reference_scenario": reference_name,
-            "split": split,
-        }
-    )
+    family: dict[str, Any] = {
+        "family_id": family_id,
+        "fault_class": fault_class,
+        "fault_scenario": fault_name,
+        "reference_scenario": reference_name,
+        "split": split,
+    }
+    if base_condition_id is not None:
+        family.update(
+            {
+                "counterfactual_group_id": family_id,
+                "base_condition_id": base_condition_id,
+                "counterfactual_arms": list(RECOVERY_COUNTERFACTUAL_ARMS),
+            }
+        )
+    families.append(family)
 
 
 def _write_scenario(
@@ -408,9 +559,13 @@ def _parse_split(
 ) -> SplitSweep:
     raw = _require_mapping(value, f"sweep split {split!r}")
     split_keys = (
-        _SPLIT_V2_KEYS
-        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION)
-        else _SPLIT_V1_KEYS
+        _SPLIT_V4_KEYS
+        if schema_version == SWEEP_V4_VERSION
+        else (
+            _SPLIT_V2_KEYS
+            if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION)
+            else _SPLIT_V1_KEYS
+        )
     )
     _require_exact_keys(raw, split_keys, f"sweep split {split!r}")
     seeds = _integer_list(raw["seeds"], f"sweep split {split!r} seeds", minimum=0)
@@ -431,7 +586,7 @@ def _parse_split(
     )
     if len({profile.profile_id for profile in profiles}) != len(profiles):
         raise ValueError(f"sweep split {split!r} operating profile ids must be unique")
-    if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION):
+    if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION):
         gradual_raw = raw["gradual_profiles"]
         if not isinstance(gradual_raw, list) or not gradual_raw:
             raise ValueError(
@@ -461,7 +616,44 @@ def _parse_split(
         f"sweep split {split!r} blocked_effectiveness",
         strict=True,
     )
-    return SplitSweep(seeds, start_ticks, profiles, gradual, blocked)
+    transient_blocked: tuple[TransientBlockedSweepProfile, ...] = ()
+    transient_gradual: tuple[TransientGradualSweepProfile, ...] = ()
+    if schema_version == SWEEP_V4_VERSION:
+        blocked_raw = raw["transient_blocked_profiles"]
+        gradual_raw = raw["transient_gradual_profiles"]
+        if not isinstance(blocked_raw, list) or not blocked_raw:
+            raise ValueError("sweep transient_blocked_profiles must be non-empty")
+        if not isinstance(gradual_raw, list) or not gradual_raw:
+            raise ValueError("sweep transient_gradual_profiles must be non-empty")
+        transient_blocked = tuple(
+            sorted(
+                (_parse_transient_blocked_profile(item) for item in blocked_raw),
+                key=lambda item: (item.duration_ticks, item.blocked_effectiveness),
+            )
+        )
+        transient_gradual = tuple(
+            sorted(
+                (_parse_transient_gradual_profile(item) for item in gradual_raw),
+                key=lambda item: (
+                    item.duration_ticks,
+                    item.start_effectiveness,
+                    item.end_effectiveness,
+                ),
+            )
+        )
+        if len(set(transient_blocked)) != len(transient_blocked):
+            raise ValueError("sweep transient_blocked_profiles must not contain duplicates")
+        if len(set(transient_gradual)) != len(transient_gradual):
+            raise ValueError("sweep transient_gradual_profiles must not contain duplicates")
+    return SplitSweep(
+        seeds,
+        start_ticks,
+        profiles,
+        gradual,
+        blocked,
+        transient_blocked,
+        transient_gradual,
+    )
 
 
 def _parse_operating_profile(
@@ -479,7 +671,8 @@ def _parse_operating_profile(
     telemetry_raw = _require_mapping(raw["telemetry"], "sweep telemetry profile")
     telemetry_keys = (
         _TELEMETRY_V2_KEYS
-        if schema_version in (SWEEP_V2_VERSION, SWEEP_V3_VERSION)
+        if schema_version
+        in (SWEEP_V2_VERSION, SWEEP_V3_VERSION, SWEEP_V4_VERSION)
         else _TELEMETRY_V1_KEYS
     )
     _require_exact_keys(telemetry_raw, telemetry_keys, "sweep telemetry profile")
@@ -513,6 +706,51 @@ def _parse_gradual_profile(value: object, *, split: str) -> GradualSweepProfile:
     if not 0.0 < effectiveness < 1.0:
         raise ValueError("sweep gradual end_effectiveness must be between zero and one")
     return GradualSweepProfile(duration, effectiveness)
+
+
+def _transient_duration(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 2:
+        raise ValueError("sweep transient duration_ticks must be an integer of at least two")
+    return value
+
+
+def _parse_transient_blocked_profile(value: object) -> TransientBlockedSweepProfile:
+    raw = _require_mapping(value, "sweep transient blocked profile")
+    _require_exact_keys(
+        raw, _TRANSIENT_BLOCKED_PROFILE_KEYS, "sweep transient blocked profile"
+    )
+    effectiveness = _finite_number(
+        raw["blocked_effectiveness"], "sweep transient blocked_effectiveness"
+    )
+    if not 0.0 < effectiveness < 1.0:
+        raise ValueError(
+            "sweep transient blocked_effectiveness must be between zero and one"
+        )
+    return TransientBlockedSweepProfile(
+        _transient_duration(raw["duration_ticks"]), effectiveness
+    )
+
+
+def _parse_transient_gradual_profile(
+    value: object,
+) -> TransientGradualSweepProfile:
+    raw = _require_mapping(value, "sweep transient gradual profile")
+    _require_exact_keys(
+        raw, _TRANSIENT_GRADUAL_PROFILE_KEYS, "sweep transient gradual profile"
+    )
+    start = _finite_number(
+        raw["start_effectiveness"], "sweep transient start_effectiveness"
+    )
+    end = _finite_number(
+        raw["end_effectiveness"], "sweep transient end_effectiveness"
+    )
+    if start != 1.0 or not 0.0 < end < start:
+        raise ValueError(
+            "sweep transient gradual effectiveness must satisfy 0 < end < start = 1"
+        )
+    return TransientGradualSweepProfile(
+        _transient_duration(raw["duration_ticks"]), start, end
+    )
 
 
 def _validate_seed_independence(splits: Mapping[str, SplitSweep]) -> None:
@@ -578,6 +816,12 @@ def _require_exact_keys(
         raise ValueError(f"{description} is missing required field {missing[0]!r}")
     if unexpected:
         raise ValueError(f"{description} has unexpected field {unexpected[0]!r}")
+
+
+def _base_condition_id(
+    split: str, seed: int, profile_id: str, start_tick: int, target: str
+) -> str:
+    return f"{split}-s{seed}-{profile_id}-t{start_tick}-{target}"
 
 
 def _family_id(
