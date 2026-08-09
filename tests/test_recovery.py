@@ -48,6 +48,7 @@ def _observation(
     reserve_position: float = 0.0,
     reserve_delivery: float | None = None,
     co2: float = 0.2,
+    target_delivered: float | None = None,
 ) -> RecoveryObservation:
     decision = supervisor.last_decision
     assert decision is not None
@@ -55,7 +56,7 @@ def _observation(
     requested = {zone_id: 10.0 for zone_id in zone_ids}
     delivered = dict(requested)
     if target is not None and not clear:
-        delivered[target] = 6.5
+        delivered[target] = 6.5 if target_delivered is None else target_delivered
     if ambiguous:
         delivered[zone_ids[0]] = 6.5
         delivered[zone_ids[1]] = 6.5
@@ -124,14 +125,28 @@ def _arm(supervisor, target="cabin_a"):
     _start(supervisor)
     first = _advance(supervisor, target=target)
     second = _advance(supervisor, target=target)
-    third = _advance(supervisor, target=target)
     assert first.state is AuthorityState.DEGRADED
+    if second.state is AuthorityState.PROTECT:
+        assert supervisor.settings.entry_persistence_ticks == 2
+        return second
     assert second.state is AuthorityState.DEGRADED
+    third = _advance(supervisor, target=target)
     assert third.state is AuthorityState.PROTECT
     return third
 
 
 class TestRecoverySettings:
+    def test_defaults_match_frozen_development_candidate(self):
+        settings = RecoverySettings()
+        assert (
+            settings.entry_residual_ratio,
+            settings.entry_isolation_margin,
+            settings.entry_persistence_ticks,
+            settings.exit_residual_ratio,
+            settings.handback_abort_residual_ratio,
+            settings.handback_abort_persistence_ticks,
+        ) == (0.10, 0.05, 2, 0.06, 0.08, 2)
+
     @pytest.mark.parametrize(
         ("field", "value"),
         [
@@ -142,6 +157,7 @@ class TestRecoverySettings:
             ("maximum_reserve_command", 1.1),
             ("minimum_reserve_delivery_ratio", -0.1),
             ("maximum_handback_ticks", 35),
+            ("handback_abort_persistence_ticks", 0),
         ],
     )
     def test_rejects_malformed_settings(self, field, value):
@@ -250,12 +266,12 @@ class TestObservationAndApplicationGates:
 
 
 class TestAuthorityStateTable:
-    def test_three_same_target_observations_arm_with_one_tick_causality(
+    def test_two_same_target_observations_arm_with_one_tick_causality(
         self, supervisor
     ):
         decision = _arm(supervisor)
-        assert decision.decision_tick == 4
-        assert decision.observation_tick == 3
+        assert decision.decision_tick == 3
+        assert decision.observation_tick == 2
         assert decision.target_zone_id == "cabin_a"
         assert decision.reserve_command_owner is (
             ReserveCommandOwner.DETERMINISTIC_RECOVERY_SUPERVISOR
@@ -357,6 +373,89 @@ class TestAuthorityStateTable:
         )
         assert recurrence.state is AuthorityState.PROTECT
         assert recurrence.reserve_commands["cabin_a"] == protect_command
+
+    def test_soft_handback_recurrence_requires_configured_persistence(self, config):
+        supervisor = DeterministicRecoverySupervisor(
+            config,
+            run_id="soft-recurrence",
+            contract=build_model_input_contract(config),
+            settings=RecoverySettings(
+                entry_residual_ratio=0.10,
+                entry_isolation_margin=0.05,
+                entry_persistence_ticks=2,
+                exit_residual_ratio=0.06,
+                handback_abort_residual_ratio=0.09,
+                handback_abort_persistence_ticks=2,
+            ),
+        )
+        protect = _arm(supervisor)
+        command = protect.reserve_commands["cabin_a"]
+        for _ in range(10):
+            handback = _advance(
+                supervisor,
+                clear=True,
+                reserve_position=command,
+            )
+        assert handback.state is AuthorityState.HANDBACK
+
+        first_soft = _advance(
+            supervisor,
+            target="cabin_a",
+            target_delivered=9.05,
+            reserve_position=command,
+        )
+        assert first_soft.state is AuthorityState.HANDBACK
+        cleared = _advance(
+            supervisor,
+            clear=True,
+            reserve_position=first_soft.reserve_commands["cabin_a"],
+        )
+        assert cleared.state is AuthorityState.HANDBACK
+
+        second_first_soft = _advance(
+            supervisor,
+            target="cabin_a",
+            target_delivered=9.05,
+            reserve_position=cleared.reserve_commands["cabin_a"],
+        )
+        assert second_first_soft.state is AuthorityState.HANDBACK
+        second_soft = _advance(
+            supervisor,
+            target="cabin_a",
+            target_delivered=9.05,
+            reserve_position=second_first_soft.reserve_commands["cabin_a"],
+        )
+        assert second_soft.state is AuthorityState.PROTECT
+
+    def test_entry_level_handback_recurrence_aborts_immediately(self, config):
+        supervisor = DeterministicRecoverySupervisor(
+            config,
+            run_id="strong-recurrence",
+            contract=build_model_input_contract(config),
+            settings=RecoverySettings(
+                entry_residual_ratio=0.10,
+                entry_isolation_margin=0.05,
+                entry_persistence_ticks=2,
+                exit_residual_ratio=0.06,
+                handback_abort_residual_ratio=0.09,
+                handback_abort_persistence_ticks=2,
+            ),
+        )
+        protect = _arm(supervisor)
+        command = protect.reserve_commands["cabin_a"]
+        for _ in range(10):
+            handback = _advance(
+                supervisor,
+                clear=True,
+                reserve_position=command,
+            )
+        assert handback.state is AuthorityState.HANDBACK
+        recurrence = _advance(
+            supervisor,
+            target="cabin_a",
+            reserve_position=command,
+        )
+        assert recurrence.state is AuthorityState.PROTECT
 
     def test_physical_zero_acknowledgement_requires_five_fresh_ticks(self, supervisor):
         protect = _arm(supervisor)
