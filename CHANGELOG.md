@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-09 — factory-provenance correction / 0.2.2
+
+- Made response-evidence provenance fail closed when a custom governor factory
+  returns settings that differ from the settings bound in the receipt.
+- Added a regression test using a factory whose settings change after the
+  provenance probe. The runner now rejects that evidence instead of recording a
+  misleading fixed settings value.
+- Superseded the local, unpublished `0.2.1` integration artifact before branch
+  publication. This correction does not rerun C4/C11 or alter Outcome B.
+
 ## 2026-08-09 — integration-only package / 0.2.1
 
 - Rebased the closed recovery-development work onto the reviewed bounded-response
