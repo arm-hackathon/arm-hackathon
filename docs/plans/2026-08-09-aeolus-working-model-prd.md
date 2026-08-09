@@ -5,7 +5,7 @@
 **Deadline:** 2026-08-09 09:00 BST
 **Execution stop:** 2026-08-09 08:30 BST
 **Report window:** 08:30–09:00 BST
-**Last updated:** 2026-08-09 03:07 BST
+**Last updated:** 2026-08-09 03:49 BST
 **Repository:** `arm-hackathon/arm-hackathon`
 **Working branch:** `ben/independent-recovery`
 **Repository root:** the active `ben/independent-recovery` working tree
@@ -467,8 +467,11 @@ Expected bounded checkpoints:
 | C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review | closed — C4 frozen safety and physical-delivery gates failed; no corpus/model/ONNX/integration run permitted |
 | C6 | Version/docs/package closeout | final immutable review | checkpoint `3776af035b07590db53587212762a9ff3304acfb`; exact-commit packages installed and replayed, but the clean locked suite exposed one uncontrolled dirty-worktree test fixture (`1 failed, 453 passed`), so C6 is superseded and not release-qualified |
 | C7 | Clean-source fixture correction | focused regression plus exact-clean full gate | checkpoint `20d7d90caaafe6565bc731d3494a79e8574d626a`; focused RED/GREEN complete; exact clean C7 locked suite `454 passed`; Ruff, compile, diff, and lock gates passed |
-| C8 | Final receipt reconciliation and rebuilt packages | one immutable final review | source `fbdf7fa44fc910ad9571baf7256bb709522555cb`; exact clean suite `454 passed`; wheel/sdist structure, isolated installs, versions, and 180-/120-record replays passed; release receipt SHA `51cf6fc5…4f14dc` |
-| C9 | Receipt-only PRD closeout | no code change; final delta review covers C7–C9 | this document's containing commit records exact C8 receipts; C8 remains the package source |
+| C8 | Final receipt reconciliation and rebuilt packages | one immutable final review | source `fbdf7fa44fc910ad9571baf7256bb709522555cb`; exact clean suite `454 passed`; wheel/sdist structure, isolated installs, versions, and 180-/120-record replays passed; superseded by C11 review hardening |
+| C9 | Receipt-only PRD closeout | no code change; final delta review covers C7–C9 | checkpoint `adc2af693c9c5e92d626b0af08528d5427c9b553`; records C8 receipts |
+| C10 | Formatting-only clean-range checkpoint and broad final review | one exact-SHA immutable review | checkpoint `60726e3abfaf9ccdb89cd77085d1fd114fed1e9b`; review BLOCKED on complete-tree comparison, dependency/post-run provenance, and ONNX producer version |
+| C11 | Review corrections, full-tree rerun, and final package source | one focused immutable re-review | checkpoint `c30f0e2700d355135f1e1714ee92408382832425`; exact clean suite `458 passed`; 3,801-file duplicate matched with zero differing paths; focused re-review PASS with no remaining blockers; final package source |
+| C12 | Receipt-only final ledger closeout | no code change | this document's containing commit records exact C11 evidence, review, and package receipts; C11 remains the reviewed package source |
 
 Checkpoint names may be combined only if the files and acceptance boundary are inseparable. Every actual SHA replaces the placeholder in the execution ledger.
 
@@ -535,7 +538,10 @@ Append one row after each material step. Receipts must be actual outputs.
 | 03:05–03:07 | C8 build, isolated installs, and promotion | complete | source `fbdf7fa44fc910ad9571baf7256bb709522555cb`; `out/release-0.2.0-c8` | wheel `b0ae5c08…9042e04`; sdist `945e0e53…cb2817`; fresh wheel recovery replay 180 records; fresh sdist CLI replay 120 records; checksum file passed; release receipt `51cf6fc5…4f14dc` | Freeze this receipt-only C9 update, then verify final HEAD and review the immutable C7–C9 delta once. |
 | 03:08–03:11 | C9/C10 closeout and final clean gate | complete | C9 `adc2af693c9c5e92d626b0af08528d5427c9b553`; C10 `60726e3abfaf9ccdb89cd77085d1fd114fed1e9b` | exact C10 suite `454 passed in 64.74s`; Ruff, compile, full-range diff, lock, checksums, and gitleaks passed; zero dirty files | Run one exact-SHA independent review. |
 | 03:11–03:23 | C10 immutable review | blocked | REVIEW `60726e3abfaf9ccdb89cd77085d1fd114fed1e9b` | reviewer confirmed authority causality/fail-closed paths, four-arm layout, negative documentation, 72 focused tests, and static gates; blocked on trace-only duplicate helper, incomplete dependency/source-after provenance, and stale ONNX producer version | Write focused RED tests and repair all findings without reopening C5. |
-| 03:24–03:30 | C11 review correction slice | in progress | dirty C11 slice on `60726e3…` | reviewer-contract RED `6 failed`; GREEN `6 passed`; frozen-command rationale RED `1 failed`; GREEN `1 passed` | Reconcile docs, run full gates, freeze C11, then rebuild package from exact clean C11. |
+| 03:24–03:36 | C11 review correction slice | complete | patch `7b4a03ed…351ad`; checkpoint `c30f0e2700d355135f1e1714ee92408382832425` | reviewer-contract RED `6 failed`; GREEN `6 passed`; frozen-command rationale RED `1 failed`; GREEN `1 passed`; pre-freeze suite `458 passed in 65.28s`; exact-clean suite `458 passed in 65.35s`; Ruff, compile, full-range diff, lock, and gitleaks passed | Hold C11 immutable while package, full-tree duplicate, and focused re-review run. |
+| 03:37–03:48 | C11 complete-tree duplicate | complete | source `c30f0e2700d355135f1e1714ee92408382832425`; `out/overnight/recovery-development-c11-fulltree-reproduction.json` | 3,801 files and 3,024 traces per tree; zero mismatched paths; evidence hash `15b0a286…23e96`; comparison self-hash `5c3abf11…c5a62`; source clean; lock/runtime versions bound | Corrected comparator passes at canonical scale; safety and benefit remain false. |
+| 03:37–03:40 | C11 package rebuild and isolated installs | complete | source `c30f0e2700d355135f1e1714ee92408382832425`; `out/release-0.2.0-c11-final` | wheel `45af4d24…72e870`; sdist `73a81074…203f7c`; 23 packaged Python files equal source in both; wheel recovery replay 180 records; sdist CLI replay 120 records; receipt `740ef47c…a5e94c` | Local simulation package qualified; not published, deployed, hardware-qualified, or recovery-accepted. |
+| 03:39–03:45 | C11 focused immutable re-review | passed | REVIEW `c30f0e2700d355135f1e1714ee92408382832425` | exact SHA and clean worktree confirmed; 48 focused tests passed in 17.62s; Ruff, compile, and diff checks passed; all three C10 blockers plus frozen-command rationale verified | No remaining review blockers. Freeze receipt-only C12 documentation without changing C11 package source. |
 
 ## 16. Morning report contract
 
@@ -611,5 +617,7 @@ The report must state, in this order:
 - [x] Wheel and sdist rebuilt from exact clean C8 SHA `fbdf7fa44fc910ad9571baf7256bb709522555cb`; superseded by C11 code hardening
 - [x] Clean C8 wheel install and deterministic recovery replay passed (180 records); clean sdist install and CLI replay passed (120 records)
 - [x] Exact C8 artifact hashes recorded under `out/release-0.2.0-c8/`
-- [ ] Wheel and sdist rebuilt and smoke-installed from exact clean C11
+- [x] Wheel and sdist rebuilt and smoke-installed from exact clean C11 `c30f0e2700d355135f1e1714ee92408382832425`
+- [x] C11 package/source equivalence verified for all 23 Python modules in wheel and sdist
+- [x] C11 focused immutable re-review PASS with no remaining blockers
 - [x] No push, merge, deploy, cloud, or final-suite action
