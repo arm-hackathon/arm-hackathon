@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import math
 import platform
@@ -54,6 +55,9 @@ def run_recovery_evidence(
         _evaluate_family(family, trace_dir=trace_dir, run=run)
         for family in manifest.families
     ]
+    final_provenance = _source_provenance(require_clean_source=False)
+    if final_provenance != provenance:
+        raise ValueError("source provenance changed during recovery evidence generation")
     settings = asdict(RecoverySettings())
     receipt: dict[str, Any] = {
         "evidence_version": RECOVERY_EVIDENCE_VERSION,
@@ -103,23 +107,32 @@ def reproduce_recovery_evidence(
     )
     first_dir = Path(first_output_dir).resolve()
     second_dir = Path(second_output_dir).resolve()
-    first_traces = {
-        path.relative_to(first_dir).as_posix(): path.read_bytes()
-        for path in sorted((first_dir / "traces").glob("*.jsonl"))
-    }
-    second_traces = {
-        path.relative_to(second_dir).as_posix(): path.read_bytes()
-        for path in sorted((second_dir / "traces").glob("*.jsonl"))
-    }
-    receipt_bytes_equal = (
-        (first_dir / "recovery-evidence.json").read_bytes()
-        == (second_dir / "recovery-evidence.json").read_bytes()
-    )
+    first_files = _output_file_tree(first_dir)
+    second_files = _output_file_tree(second_dir)
+    all_paths = sorted(set(first_files).union(second_files))
+    mismatched_files = [
+        path for path in all_paths if first_files.get(path) != second_files.get(path)
+    ]
     return {
         "first_evidence_sha256": first["evidence_sha256"],
         "second_evidence_sha256": second["evidence_sha256"],
-        "trace_count": len(first_traces),
-        "byte_identical": receipt_bytes_equal and first_traces == second_traces,
+        "first_file_count": len(first_files),
+        "second_file_count": len(second_files),
+        "trace_count": sum(
+            path.startswith("traces/") and path.endswith(".jsonl")
+            for path in first_files
+        ),
+        "mismatched_files": mismatched_files,
+        "byte_identical": not mismatched_files,
+    }
+
+
+def _output_file_tree(root: Path) -> dict[str, str]:
+    """Digest every generated file under its relocation-stable relative path."""
+    return {
+        path.relative_to(root).as_posix(): _sha256_file(path)
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
     }
 
 
@@ -618,12 +631,20 @@ def _source_provenance(*, require_clean_source: bool) -> dict[str, Any]:
         path.relative_to(REPOSITORY_ROOT).as_posix(): _sha256_file(path)
         for path in sorted((REPOSITORY_ROOT / "src" / "aeolus").rglob("*.py"))
     }
+    lock_path = REPOSITORY_ROOT / "uv.lock"
+    if not lock_path.is_file():
+        raise OSError(f"canonical recovery evidence requires lock file: {lock_path}")
     return {
         "environment": {
             "source_commit": _git_output("rev-parse", "HEAD"),
             "source_worktree_dirty": dirty,
             "python_version": platform.python_version(),
             "python_implementation": sys.implementation.name,
+            "uv_lock_sha256": _sha256_file(lock_path),
+            "runtime_packages": {
+                "aeolus": importlib.metadata.version("aeolus"),
+                "numpy": importlib.metadata.version("numpy"),
+            },
         },
         "source": {
             "files_sha256": source_files,

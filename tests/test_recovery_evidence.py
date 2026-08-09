@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
 import json
 import math
 import shutil
@@ -9,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+import aeolus.recovery_evidence as recovery_evidence
 from aeolus.recovery_evidence import (
     RECOVERY_ARMS,
     _canonical_sha256,
@@ -92,6 +95,14 @@ def test_recovery_evidence_runs_exactly_four_write_once_arms_per_family(tmp_path
     )
     assert receipt["families_evaluated"] == 10
     assert len(receipt["per_family"]) == 10
+    environment = receipt["environment"]
+    assert environment["uv_lock_sha256"] == hashlib.sha256(
+        (REPO_ROOT / "uv.lock").read_bytes()
+    ).hexdigest()
+    assert environment["runtime_packages"] == {
+        "aeolus": importlib.metadata.version("aeolus"),
+        "numpy": importlib.metadata.version("numpy"),
+    }
     for family in receipt["per_family"]:
         assert tuple(family["arms"]) == RECOVERY_ARMS
         for arm in family["arms"].values():
@@ -240,6 +251,72 @@ def test_recovery_evidence_duplicate_relocation_is_byte_identical(tmp_path):
     assert comparison["byte_identical"] is True
     assert comparison["first_evidence_sha256"] == comparison["second_evidence_sha256"]
     assert comparison["trace_count"] == 40
+    assert comparison["first_file_count"] == comparison["second_file_count"]
+    assert comparison["first_file_count"] > comparison["trace_count"] + 1
+    assert comparison["mismatched_files"] == []
+
+
+def test_recovery_evidence_duplicate_detects_generated_corpus_mutation(
+    tmp_path, monkeypatch
+):
+    real_run = recovery_evidence.run_recovery_evidence
+    calls = 0
+
+    def run_then_mutate(sweep_path, output_dir, **kwargs):
+        nonlocal calls
+        receipt = real_run(sweep_path, output_dir, **kwargs)
+        calls += 1
+        if calls == 2:
+            manifest = Path(output_dir) / "corpus" / "families.json"
+            manifest.write_bytes(manifest.read_bytes() + b"\n")
+        return receipt
+
+    monkeypatch.setattr(recovery_evidence, "run_recovery_evidence", run_then_mutate)
+    comparison = recovery_evidence.reproduce_recovery_evidence(
+        _mini_recovery_sweep(tmp_path),
+        tmp_path / "first",
+        tmp_path / "second",
+        run=RunSpec(
+            total_ticks=30,
+            warmup_ticks=10,
+            crew_cabin_co2_concentration_ceiling=0.30,
+        ),
+        require_clean_source=False,
+    )
+
+    assert comparison["byte_identical"] is False
+    assert comparison["mismatched_files"] == ["corpus/families.json"]
+
+
+def test_recovery_evidence_rejects_source_change_during_run(tmp_path, monkeypatch):
+    real_provenance = recovery_evidence._source_provenance
+    calls = 0
+
+    def changing_provenance(*, require_clean_source: bool):
+        nonlocal calls
+        calls += 1
+        provenance = real_provenance(require_clean_source=False)
+        if calls == 2:
+            provenance["source"]["manifest_sha256"] = "0" * 64
+        return provenance
+
+    monkeypatch.setattr(recovery_evidence, "_source_provenance", changing_provenance)
+    output = tmp_path / "evidence"
+
+    with pytest.raises(ValueError, match="source provenance changed during recovery evidence"):
+        recovery_evidence.run_recovery_evidence(
+            _mini_recovery_sweep(tmp_path),
+            output,
+            run=RunSpec(
+                total_ticks=30,
+                warmup_ticks=10,
+                crew_cabin_co2_concentration_ceiling=0.30,
+            ),
+            require_clean_source=False,
+        )
+
+    assert output.exists()
+    assert not (output / "recovery-evidence.json").exists()
 
 
 def test_recovery_evidence_refuses_existing_output_without_mutation(tmp_path):

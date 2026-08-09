@@ -91,13 +91,23 @@ wrong to call the positive aggregate submetrics recovery efficacy.
   saturation, high noise/drift, and denominator-zero handling.
 - Duplicate A/B reproduction: comparison receipt
   `aadbcd25faffe70a30311187e999c2d8c16c5a61d68a8e8df34606ea6f653343`;
-  3,801 files and all 3,024 traces were byte-identical.
+  3,801 files and all 3,024 traces were byte-identical. The local receipt is
+  `out/overnight/recovery-development-c4-reproduction.json` and explicitly
+  records `all_files_byte_identical: true`.
 - Clean-checkout reproduction: comparison receipt
   `2264c85fc85dd63ee99f853523af0d2dec3c67b861f67e61db05d7c9cb0ef733`;
-  same evidence identity, file count, and source-clean state.
+  same evidence identity, file count, and source-clean state. The local receipt
+  is `out/overnight/recovery-development-c4-clean-checkout-reproduction.json`.
 
 These receipts establish deterministic reproduction of the negative outcome.
 They do not change a required failed gate into acceptance.
+
+The current duplicate helper compares every generated file, including corpus,
+manifest, receipt, and trace files. It records both file counts and the exact
+relative paths of any mismatch. Current provenance additionally binds the lock
+file and runtime package versions and rejects a source change during generation.
+These are forward-looking hardening changes; the C4 receipts above remain bound
+to source `74154956d64309f067ada7593e2ef8786d140b4e`.
 
 ## C5 decision
 
