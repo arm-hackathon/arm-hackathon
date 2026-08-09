@@ -108,6 +108,35 @@ def _loop_fault_effectiveness(
     return effectiveness
 
 
+def _validated_override_commands(
+    config: HabitatConfig, override_commands: Mapping[str, float] | None
+) -> dict[str, float] | None:
+    """Validate external bounded commands or return None for the default path."""
+    if override_commands is None:
+        return None
+    commands = dict(override_commands)
+    expected = {zone.id for zone in config.non_processing_zones()}
+    missing = sorted(expected - set(commands))
+    unexpected = sorted(set(commands) - expected, key=repr)
+    if missing or unexpected:
+        raise ValueError(
+            "override commands must target exactly the non-processing zones: "
+            f"missing={missing!r} unexpected={unexpected!r}"
+        )
+    for zone_id, value in commands.items():
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 0.0 <= value <= 1.0
+        ):
+            raise ValueError(
+                f"override command for zone {zone_id!r} must be a finite number "
+                "in 0.0..1.0"
+            )
+    return commands
+
+
 def _occupancy_multiplier(zone, tick: int) -> float:
     for period in zone.occupancy_profile:
         if period.start_tick <= tick <= period.end_tick:
@@ -145,6 +174,7 @@ def step_habitat(
     *,
     connection_effectiveness: Mapping[str, float] | None = None,
     frozen_zones: Collection[str] | None = None,
+    override_commands: Mapping[str, float] | None = None,
     source_tick: int | None = None,
     occupancy_tick: int | None = None,
 ) -> tuple[HabitatState, dict[str, float]]:
@@ -152,13 +182,21 @@ def step_habitat(
 
     Requested flow is derived only from nominal loop capacity and measured
     actuator position. Static connection health and an optional scenario fault
-    reduce physical delivery later; shared capacity then allocates the resulting
-    provisional delivery proportionally. The distinction makes demand and
-    degraded delivery observable without exposing hidden fault truth.
+    reduce physical delivery later; shared capacity then allocates the
+    resulting provisional delivery proportionally. The distinction makes the
+    demand and degraded delivery observable without exposing hidden fault truth.
+
+    ``override_commands`` lets an external decision maker (a bounded response
+    governor) choose every zone's bounded actuator setpoint target directly.
+    When given it must be exactly the non-processing zone ids with finite
+    commands in 0.0..1.0; movement still passes through the rate-limited
+    actuator model so physics and telemetry bounds are unchanged. When omitted
+    the proportional CO2 controller derives the commands — the default path is
+    byte-identical to previous AEOLUS behaviour.
 
     A zone in ``frozen_zones`` keeps the sensor reading it showed on its first
     frozen tick; the true concentration keeps evolving underneath. The frozen
-    reading is all the controller can see.
+    reading is only the input to a decision maker, never hidden truth.
     """
     connection_effectiveness = connection_effectiveness or {}
     frozen_zones = frozenset(frozen_zones or ())
@@ -168,6 +206,7 @@ def step_habitat(
         raise ValueError(
             f"frozen sensor targets unknown or processing zone {unknown_frozen[0]!r}"
         )
+    override_commands = _validated_override_commands(config, override_commands)
 
     # 1. Occupancy-scaled, replayable CO₂ sources.
     source_co2_mass: dict[str, float] = {}
@@ -234,8 +273,14 @@ def step_habitat(
     for zone in config.non_processing_zones():
         outbound = config.path_to_processing(zone.id)
         inbound = config.path_from_processing(zone.id)
-        setpoint = controller.command_for(
-            CO2SensorReading(zone_id=zone.id, value=sensor_co2_concentration[zone.id])
+        setpoint = (
+            override_commands[zone.id]
+            if override_commands is not None
+            else controller.command_for(
+                CO2SensorReading(
+                    zone_id=zone.id, value=sensor_co2_concentration[zone.id]
+                )
+            )
         )
         actuator = actuator_model.step(state.actuators[zone.id], setpoint)
         actuators[zone.id] = actuator

@@ -28,7 +28,7 @@ from aeolus.scenario import run_scenario
 
 
 FAMILY_MANIFEST_VERSION = "aeolus_family_manifest_v1"
-_SPLITS = frozenset({"train", "validation", "test", "stress"})
+_SPLITS = frozenset({"train", "validation", "test", "stress", "final"})
 _TOP_LEVEL_FIELDS = frozenset(
     {
         "families",
@@ -83,6 +83,32 @@ class FamilyManifest:
     contract_metadata: dict[str, str]
     canonical_json: str
     manifest_sha256: str
+
+
+def validate_manifest_disjointness(
+    left: FamilyManifest, right: FamilyManifest
+) -> None:
+    """Require two manifests to share one input contract and no scenario content.
+
+    Identity is canonical JSON content rather than names, so copying or
+    reformatting a scenario cannot evade the final-suite isolation boundary.
+    """
+    if not isinstance(left, FamilyManifest) or not isinstance(right, FamilyManifest):
+        raise ValueError("manifest disjointness requires validated family manifests")
+    if left.contract_metadata != right.contract_metadata:
+        raise ValueError("manifests do not share one model input contract")
+    left_identities = {
+        _canonical_scenario_sha256(path)
+        for family in left.families
+        for path in (family.reference_path, family.fault_path)
+    }
+    right_identities = {
+        _canonical_scenario_sha256(path)
+        for family in right.families
+        for path in (family.reference_path, family.fault_path)
+    }
+    if left_identities & right_identities:
+        raise ValueError("manifests are not disjoint by canonical scenario identity")
 
 
 def load_family_manifest(path: Path) -> FamilyManifest:
