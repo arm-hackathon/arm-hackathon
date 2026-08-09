@@ -261,6 +261,15 @@ def test_checked_in_sweep_v2_has_iid_primary_and_declared_stress_counts():
     )
 
 
+def test_recovery_counterfactual_arms_match_working_model_contract():
+    assert RECOVERY_COUNTERFACTUAL_ARMS == (
+        "reference_reserve_off",
+        "reference_governed",
+        "fault_reserve_off",
+        "fault_governed",
+    )
+
+
 def test_generate_recovery_sweep_v4_is_byte_stable_and_complete(tmp_path):
     spec = _small_recovery_spec(tmp_path)
     first = tmp_path / "first-recovery"
@@ -356,6 +365,7 @@ def test_checked_in_recovery_sweeps_have_frozen_counts_and_disjoint_seeds():
     assert development.targets == final.targets == ("cabin_a", "cabin_b", "lab")
     assert tuple(development.splits) == ("train", "validation")
     assert tuple(final.splits) == ("final",)
+    assert final.splits["final"].seeds == (1201, 1202, 1203)
     expected = {"train": 504, "validation": 252, "final": 252}
     all_seeds: list[set[int]] = []
     for spec in (development, final):
