@@ -1,11 +1,11 @@
 # AEOLUS Hackathon Working Model Product Requirements Document
 
-**Status:** Active execution contract  
+**Status:** Outcome B complete; local package qualified, recovery gates negative
 **Owner:** Benedict Anokye-Davies  
 **Deadline:** 2026-08-09 09:00 BST  
 **Execution stop:** 2026-08-09 08:30 BST  
 **Report window:** 08:30–09:00 BST  
-**Last updated:** 2026-08-09 03:02 BST
+**Last updated:** 2026-08-09 03:07 BST
 **Repository:** `arm-hackathon/arm-hackathon`  
 **Working branch:** `ben/independent-recovery`  
 **Repository root:** the active `ben/independent-recovery` working tree
@@ -467,7 +467,8 @@ Expected bounded checkpoints:
 | C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review | closed — C4 frozen safety and physical-delivery gates failed; no corpus/model/ONNX/integration run permitted |
 | C6 | Version/docs/package closeout | final immutable review | checkpoint `3776af035b07590db53587212762a9ff3304acfb`; exact-commit packages installed and replayed, but the clean locked suite exposed one uncontrolled dirty-worktree test fixture (`1 failed, 453 passed`), so C6 is superseded and not release-qualified |
 | C7 | Clean-source fixture correction | focused regression plus exact-clean full gate | checkpoint `20d7d90caaafe6565bc731d3494a79e8574d626a`; focused RED/GREEN complete; exact clean C7 locked suite `454 passed`; Ruff, compile, diff, and lock gates passed |
-| C8 | Final receipt reconciliation and rebuilt packages | one immutable final review | in progress — reconcile the C6 blocker/C7 fix, freeze a clean documentation checkpoint, then rebuild and smoke-test exact-C8 distributions |
+| C8 | Final receipt reconciliation and rebuilt packages | one immutable final review | source `fbdf7fa44fc910ad9571baf7256bb709522555cb`; exact clean suite `454 passed`; wheel/sdist structure, isolated installs, versions, and 180-/120-record replays passed; release receipt SHA `51cf6fc5…4f14dc` |
+| C9 | Receipt-only PRD closeout | no code change; final delta review covers C7–C9 | this document's containing commit records exact C8 receipts; C8 remains the package source |
 
 Checkpoint names may be combined only if the files and acceptance boundary are inseparable. Every actual SHA replaces the placeholder in the execution ledger.
 
@@ -529,6 +530,9 @@ Append one row after each material step. Receipts must be actual outputs.
 | 02:40–02:57 | C6 clean-source package cycle | blocked | `3776af035b07590db53587212762a9ff3304acfb` | wheel `7656eee5…66aa5` and sdist `cadf953a…0c1a` built; fresh wheel/sdist installs and 180-/120-record replays passed; exact clean locked suite failed `1 failed, 453 passed in 66.62s` | Test expected a dirty source without controlling repository state. C6 artifacts are evidence only, not release-qualified. |
 | 02:58–03:00 | C7 clean-source fixture correction | complete | patch `934abd8e…e23053`; checkpoint `20d7d90caaafe6565bc731d3494a79e8574d626a` | focused clean-checkout RED `1 failed`; controlled-status GREEN `1 passed`; pre-checkpoint full suite `454 passed in 63.61s`; Ruff, compile, diff, and lock gates passed | Freeze test-only correction, then prove the full gate from the exact clean SHA. |
 | 03:01–03:02 | C7 exact-clean verification | complete | `20d7d90caaafe6565bc731d3494a79e8574d626a`; zero dirty lines | locked full suite `454 passed in 62.80s`; Ruff, compile, diff, and lock gates passed | Reconcile receipts as C8 and rebuild exact-C8 packages. |
+| 03:03 | C8 package-source checkpoint | complete | `fbdf7fa44fc910ad9571baf7256bb709522555cb`; zero dirty lines | documentation-only receipt delta frozen over C7 | Run every release gate from this exact SHA. |
+| 03:04–03:05 | C8 exact-clean verification | complete | `fbdf7fa44fc910ad9571baf7256bb709522555cb` | locked suite `454 passed in 63.78s`; Ruff, compile, diff, lock, and 102.52-KB C4→C8 gitleaks scan passed; zero dirty lines | Build and install exact-C8 distributions. |
+| 03:05–03:07 | C8 build, isolated installs, and promotion | complete | source `fbdf7fa44fc910ad9571baf7256bb709522555cb`; `out/release-0.2.0-c8` | wheel `b0ae5c08…9042e04`; sdist `945e0e53…cb2817`; fresh wheel recovery replay 180 records; fresh sdist CLI replay 120 records; checksum file passed; release receipt `51cf6fc5…4f14dc` | Freeze this receipt-only C9 update, then verify final HEAD and review the immutable C7–C9 delta once. |
 
 ## 16. Morning report contract
 
@@ -598,7 +602,7 @@ The report must state, in this order:
 - [x] Ruff clean
 - [x] Compile and diff checks clean
 - [x] C6 wheel and sdist built and smoke-installed; superseded by the C7 test correction and not release-qualified
-- [ ] Wheel and sdist rebuilt from exact clean C8 SHA
-- [ ] Clean C8 wheel install and deterministic recovery replay passed
-- [ ] Exact C8 artifact hashes recorded in ignored closeout receipt
+- [x] Wheel and sdist rebuilt from exact clean C8 SHA `fbdf7fa44fc910ad9571baf7256bb709522555cb`
+- [x] Clean C8 wheel install and deterministic recovery replay passed (180 records); clean sdist install and CLI replay passed (120 records)
+- [x] Exact C8 artifact hashes recorded under `out/release-0.2.0-c8/`
 - [x] No push, merge, deploy, cloud, or final-suite action
