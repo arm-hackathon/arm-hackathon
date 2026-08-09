@@ -111,11 +111,12 @@ to source `74154956d64309f067ada7593e2ef8786d140b4e`.
 
 ## Post-freeze integration package
 
-Version `0.2.2` packages the source after the dependent bounded-response fixes
+Version `0.2.3` packages the source after the dependent bounded-response fixes
 were integrated. It is a distinct package identity and does not replace the
 source-pinned C4/C11 artifacts, rerun either evidence gate, or change this
 record's negative safety and benefit outcome. Response evidence now fails closed
-if a custom factory returns settings that differ from the receipt-bound settings.
+if a custom factory returns settings that differ from the receipt-bound settings,
+including a transition from unavailable settings to configured settings.
 
 ## C5 decision
 
