@@ -25,13 +25,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from aeolus.families import FamilyManifest, ScenarioFamily, load_family_manifest
+from aeolus.families import ScenarioFamily, load_family_manifest
 from aeolus.response import BoundedRecoveryGovernor, ResponseSettings
 from aeolus.scenario import RunSpec, STANDARD_RUN, run_governed_scenario, run_scenario
 from aeolus.sweep import generate_sweep, load_sweep_spec
@@ -47,6 +46,28 @@ GovernorFactory = Callable[[Any], BoundedRecoveryGovernor]
 def default_governor_factory(config: Any) -> BoundedRecoveryGovernor:
     """The policy under test: a governor over the default response settings."""
     return BoundedRecoveryGovernor(config, settings=ResponseSettings())
+
+
+def _factory_name(governor_factory: GovernorFactory) -> str:
+    return getattr(governor_factory, "__name__", type(governor_factory).__name__)
+
+
+def _evaluated_response_settings(
+    *, sweep_spec: Any, governor_factory: GovernorFactory
+) -> dict[str, Any]:
+    """Capture settings from the factory instance used by the evidence run."""
+    from aeolus.config import load_scenario
+
+    governor = governor_factory(load_scenario(sweep_spec.base_scenario_path))
+    settings = getattr(governor, "settings", None)
+    factory_name = _factory_name(governor_factory)
+    if settings is None:
+        return {"governor_factory": factory_name, "settings_status": "unavailable"}
+    if not isinstance(settings, ResponseSettings):
+        raise ValueError(
+            "response evidence governor settings must be ResponseSettings or unavailable"
+        )
+    return {"governor_factory": factory_name, **asdict(settings)}
 
 
 def metrics_for_records(
@@ -83,7 +104,7 @@ def metrics_for_records(
 
 def response_latency_ticks(
     rationale_history: Sequence[dict[str, dict[str, Any]]],
-    onset_tick: int,
+    onset_tick: int | None,
     affected_zone_ids: Sequence[str] = (),
 ) -> int | None:
     """Return ticks between onset and the first mitigation on an affected loop.
@@ -217,6 +238,9 @@ def run_response_evidence(
     destination.mkdir(parents=True, exist_ok=True)
 
     sweep_spec = load_sweep_spec(sweep_path)
+    response_settings = _evaluated_response_settings(
+        sweep_spec=sweep_spec, governor_factory=governor_factory
+    )
     corpus_dir = destination / "corpus"
     corpus_dir.mkdir()
     generate_sweep(sweep_path, corpus_dir)
@@ -230,10 +254,7 @@ def run_response_evidence(
         "evidence_version": EVIDENCE_VERSION,
         "sweep_spec_sha256": sweep_spec.sha256,
         "family_manifest_sha256": manifest.manifest_sha256,
-        "response_settings": {
-            "governor_factory": governor_factory.__name__,
-            **asdict(ResponseSettings()),
-        },
+        "response_settings": response_settings,
         "families_evaluated": len(rows),
         "per_family": rows,
         "aggregate": _aggregate(rows),

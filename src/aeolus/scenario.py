@@ -122,13 +122,21 @@ def _run_scenario(
                     _tick_record(config, warmup_state, warmup_airflows), contract
                 ).tolist()
             )
-        seeding_window = getattr(governor, "settings", None)
-        keep = (
-            seeding_window.window_ticks
-            if seeding_window is not None
-            else run.warmup_ticks
-        )
-        for vector in warmup_window[-min(keep, len(warmup_window)) :]:
+        try:
+            window_ticks = getattr(
+                getattr(governor, "settings", None), "window_ticks", None
+            )
+        except Exception:
+            window_ticks = None
+        if (
+            isinstance(window_ticks, bool)
+            or not isinstance(window_ticks, int)
+            or window_ticks < 1
+        ):
+            keep = run.warmup_ticks
+        else:
+            keep = min(window_ticks, run.warmup_ticks)
+        for vector in warmup_window[-keep:]:
             governor.observe(vector)
 
     writer_context = (
