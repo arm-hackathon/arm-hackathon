@@ -23,6 +23,14 @@
   negative development outcome.
 - Bumped package metadata and `aeolus.__version__` to `0.2.0`. This is a local
   closeout version; it is not a published release or an Arm/hardware claim.
+- Hardened post-review evidence integrity: relocated reproduction now compares
+  the complete generated output tree, provenance binds `uv.lock` and runtime
+  package versions, and a source change during generation fails closed.
+- Source-pinned the historical C4 reproduction procedure and linked its local
+  full-tree comparison receipts without changing the frozen negative outcome.
+- Removed stale ONNX producer provenance by deriving both exporter versions from
+  `aeolus.__version__`; frozen-sensor rationale now records the rate-bounded
+  command actually issued.
 
 ## Historical entries
 

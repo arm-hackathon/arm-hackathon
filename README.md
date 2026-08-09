@@ -103,18 +103,28 @@ record.
 
 ## Frozen recovery evidence command
 
-The following is the C4 development command. It requires a clean source tree
-and a new empty output directory. It is a reproduction command, not permission
-to reopen C5 or tune the failed gates.
+The following is the C4 development command. It must run from a clean detached
+worktree at the exact C4 source commit and write to a new output directory. It
+is a reproduction command, not permission to reopen C5 or tune the failed
+gates.
 
 ```bash
+git worktree add --detach /absolute/c4-source \
+  74154956d64309f067ada7593e2ef8786d140b4e
+cd /absolute/c4-source
+test "$(git rev-parse HEAD)" = \
+  74154956d64309f067ada7593e2ef8786d140b4e
+test -z "$(git status --porcelain)"
 uv run --locked --python 3.11 --extra dev python -m aeolus.recovery_evidence \
   scenarios/sweep-recovery-development.json /absolute/new-output-directory
 ```
 
 It produces a large, ignored development corpus. Do not replace historical
 outputs, use final-suite inputs, or interpret a deterministic rerun as a passed
-safety or benefit gate.
+safety or benefit gate. Later runner versions bind `uv.lock`, runtime package
+versions, and pre/post source provenance, and compare the complete relocated
+output trees. Those later checks improve future reproduction tooling; they do
+not rewrite the frozen C4 receipt.
 
 ## Project boundaries
 

@@ -533,6 +533,9 @@ Append one row after each material step. Receipts must be actual outputs.
 | 03:03 | C8 package-source checkpoint | complete | `fbdf7fa44fc910ad9571baf7256bb709522555cb`; zero dirty lines | documentation-only receipt delta frozen over C7 | Run every release gate from this exact SHA. |
 | 03:04–03:05 | C8 exact-clean verification | complete | `fbdf7fa44fc910ad9571baf7256bb709522555cb` | locked suite `454 passed in 63.78s`; Ruff, compile, diff, lock, and 102.52-KB C4→C8 gitleaks scan passed; zero dirty lines | Build and install exact-C8 distributions. |
 | 03:05–03:07 | C8 build, isolated installs, and promotion | complete | source `fbdf7fa44fc910ad9571baf7256bb709522555cb`; `out/release-0.2.0-c8` | wheel `b0ae5c08…9042e04`; sdist `945e0e53…cb2817`; fresh wheel recovery replay 180 records; fresh sdist CLI replay 120 records; checksum file passed; release receipt `51cf6fc5…4f14dc` | Freeze this receipt-only C9 update, then verify final HEAD and review the immutable C7–C9 delta once. |
+| 03:08–03:11 | C9/C10 closeout and final clean gate | complete | C9 `adc2af693c9c5e92d626b0af08528d5427c9b553`; C10 `60726e3abfaf9ccdb89cd77085d1fd114fed1e9b` | exact C10 suite `454 passed in 64.74s`; Ruff, compile, full-range diff, lock, checksums, and gitleaks passed; zero dirty files | Run one exact-SHA independent review. |
+| 03:11–03:23 | C10 immutable review | blocked | REVIEW `60726e3abfaf9ccdb89cd77085d1fd114fed1e9b` | reviewer confirmed authority causality/fail-closed paths, four-arm layout, negative documentation, 72 focused tests, and static gates; blocked on trace-only duplicate helper, incomplete dependency/source-after provenance, and stale ONNX producer version | Write focused RED tests and repair all findings without reopening C5. |
+| 03:24–03:30 | C11 review correction slice | in progress | dirty C11 slice on `60726e3…` | reviewer-contract RED `6 failed`; GREEN `6 passed`; frozen-command rationale RED `1 failed`; GREEN `1 passed` | Reconcile docs, run full gates, freeze C11, then rebuild package from exact clean C11. |
 
 ## 16. Morning report contract
 
@@ -582,6 +585,9 @@ The report must state, in this order:
 - [x] Metrics have explicit denominator status
 - [x] Canonical development run complete (756 families / 3,024 traces)
 - [x] Duplicate reproduction byte-identical (3,801 files / 3,024 traces)
+- [x] Historical full-tree comparison receipts located and cited
+- [x] Current duplicate helper compares corpus, manifest, receipt, and traces
+- [x] Current provenance binds `uv.lock` and runtime versions and checks source after generation
 - [x] Frozen safety gates evaluated; negative result recorded (transient physical-zero acknowledgement)
 - [x] Frozen benefit gates evaluated; negative result recorded (physical reserve delivery)
 - [x] Stress/falsification complete (11 targeted tests)
@@ -602,7 +608,8 @@ The report must state, in this order:
 - [x] Ruff clean
 - [x] Compile and diff checks clean
 - [x] C6 wheel and sdist built and smoke-installed; superseded by the C7 test correction and not release-qualified
-- [x] Wheel and sdist rebuilt from exact clean C8 SHA `fbdf7fa44fc910ad9571baf7256bb709522555cb`
+- [x] Wheel and sdist rebuilt from exact clean C8 SHA `fbdf7fa44fc910ad9571baf7256bb709522555cb`; superseded by C11 code hardening
 - [x] Clean C8 wheel install and deterministic recovery replay passed (180 records); clean sdist install and CLI replay passed (120 records)
 - [x] Exact C8 artifact hashes recorded under `out/release-0.2.0-c8/`
+- [ ] Wheel and sdist rebuilt and smoke-installed from exact clean C11
 - [x] No push, merge, deploy, cloud, or final-suite action
