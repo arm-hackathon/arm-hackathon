@@ -33,13 +33,14 @@ class ReserveCommandOwner(Enum):
 class RecoverySettings:
     """Frozen thresholds and timing constants for deterministic recovery."""
 
-    entry_residual_ratio: float = 0.18
-    entry_isolation_margin: float = 0.10
+    entry_residual_ratio: float = 0.10
+    entry_isolation_margin: float = 0.05
     minimum_requested_fraction: float = 0.05
-    entry_persistence_ticks: int = 3
+    entry_persistence_ticks: int = 2
     degraded_clear_persistence_ticks: int = 3
-    exit_residual_ratio: float = 0.10
-    handback_abort_residual_ratio: float = 0.15
+    exit_residual_ratio: float = 0.06
+    handback_abort_residual_ratio: float = 0.08
+    handback_abort_persistence_ticks: int = 2
     minimum_protect_dwell_ticks: int = 10
     recovery_clear_persistence_ticks: int = 10
     minimum_reserve_delivery_ratio: float = 0.90
@@ -84,6 +85,7 @@ class RecoverySettings:
             "reserve_delivery_failure_persistence_ticks",
             "handback_settle_ticks",
             "maximum_handback_ticks",
+            "handback_abort_persistence_ticks",
         )
         for field_name in integer_fields:
             value = getattr(self, field_name)
@@ -759,6 +761,7 @@ class DeterministicRecoverySupervisor:
         self._failure_handback = False
         self._handback_age = 0
         self._handback_zero_ack_count = 0
+        self._handback_abort_streak = 0
         self._epoch_rearm_pending = False
         self._last_observation_sequence = -1
         self._last_decision: RecoveryDecision | None = None
@@ -835,10 +838,12 @@ class DeterministicRecoverySupervisor:
             self._handback_age = 0
             self._protect_clear_count = 0
             self._handback_zero_ack_count = 0
+            self._handback_abort_streak = 0
             commands = self._ramp_down_commands(previous.reserve_commands)
             target = self._target_zone_id
             reason = "observation_unavailable"
         else:
+            self._handback_abort_streak = 0
             self._handback_age += 1
             if self._handback_age >= self.settings.maximum_handback_ticks:
                 commands = self._timeout_handback(self._target_zone_id)
@@ -1154,6 +1159,7 @@ class DeterministicRecoverySupervisor:
             self._handback_age = 0
             self._handback_zero_ack_count = 0
             self._protect_clear_count = 0
+            self._handback_abort_streak = 0
             commands = dict(previous.reserve_commands)
             reason = "reserve_delivery_failure"
         else:
@@ -1179,6 +1185,7 @@ class DeterministicRecoverySupervisor:
                 self._failure_handback = False
                 self._handback_age = 0
                 self._handback_zero_ack_count = 0
+                self._handback_abort_streak = 0
                 reason = "handback_start"
             else:
                 reason = (
@@ -1228,9 +1235,11 @@ class DeterministicRecoverySupervisor:
             self._failure_handback = True
             self._protect_clear_count = 0
             self._handback_zero_ack_count = 0
+            self._handback_abort_streak = 0
             commands = self._ramp_down_commands(previous.reserve_commands)
             reason = "reserve_delivery_failure"
         elif self._reserve_failed:
+            self._handback_abort_streak = 0
             commands = self._ramp_down_commands(previous.reserve_commands)
             if self._zero_acknowledged(observation, previous):
                 self._handback_zero_ack_count += 1
@@ -1247,15 +1256,34 @@ class DeterministicRecoverySupervisor:
                 reason = "failure_latched"
             else:
                 reason = "reserve_failure_shutdown"
-        elif self._handback_recurrence(observation, analysis, target):
+        elif analysis.ambiguous or bool(analysis.candidates):
             self._state = AuthorityState.PROTECT
             self._protect_age = 0
             self._protect_clear_count = 0
             self._handback_zero_ack_count = 0
+            self._handback_abort_streak = 0
             self._reserve_delivery_failure_count = 0
             commands = self._restore_protect_commands(previous.reserve_commands)
             reason = "handback_abort"
+        elif analysis.residuals[target] >= self.settings.handback_abort_residual_ratio:
+            self._handback_abort_streak += 1
+            self._handback_zero_ack_count = 0
+            if (
+                self._handback_abort_streak
+                >= self.settings.handback_abort_persistence_ticks
+            ):
+                self._state = AuthorityState.PROTECT
+                self._protect_age = 0
+                self._protect_clear_count = 0
+                self._handback_abort_streak = 0
+                self._reserve_delivery_failure_count = 0
+                commands = self._restore_protect_commands(previous.reserve_commands)
+                reason = "handback_abort"
+            else:
+                commands = dict(previous.reserve_commands)
+                reason = "handback_wait"
         elif self._handback_safe(observation, analysis, target):
+            self._handback_abort_streak = 0
             commands = self._ramp_down_commands(previous.reserve_commands)
             if self._zero_acknowledged(observation, previous):
                 self._handback_zero_ack_count += 1
@@ -1268,12 +1296,14 @@ class DeterministicRecoverySupervisor:
                 self._entry_streak = 0
                 self._degraded_clear_count = 0
                 self._protect_command = 0.0
+                self._handback_abort_streak = 0
                 self._epoch_rearm_pending = True
                 commands = self._zero_commands()
                 reason = "handback_complete"
             else:
                 reason = "handback_ramp"
         else:
+            self._handback_abort_streak = 0
             self._handback_zero_ack_count = 0
             commands = dict(previous.reserve_commands)
             reason = "handback_ramp"
@@ -1395,6 +1425,7 @@ class DeterministicRecoverySupervisor:
         self._protect_command = 0.0
         self._reserve_delivery_failure_count = 0
         self._handback_zero_ack_count = 0
+        self._handback_abort_streak = 0
         return self._zero_commands()
 
     def _restore_protect_commands(
