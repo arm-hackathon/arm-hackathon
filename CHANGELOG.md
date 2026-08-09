@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-09 — unavailable-settings binding correction / 0.2.3
+
+- Bound `settings_status: unavailable` across every custom governor factory
+  invocation, preventing a probe without settings from later evaluating a
+  configured governor under an unavailable receipt.
+- Added a regression test for that unavailable-to-configured factory transition.
+- Superseded the local, unpublished `0.2.2` integration artifact before branch
+  review. This correction does not rerun C4/C11 or alter Outcome B.
+
 ## 2026-08-09 — factory-provenance correction / 0.2.2
 
 - Made response-evidence provenance fail closed when a custom governor factory

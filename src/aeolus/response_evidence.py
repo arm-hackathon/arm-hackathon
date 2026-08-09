@@ -91,9 +91,6 @@ def _receipt_bound_governor_factory(
     governor_factory: GovernorFactory, response_settings: dict[str, Any]
 ) -> GovernorFactory:
     """Reject factory instances whose declared settings differ from the receipt."""
-    if response_settings.get("settings_status") == "unavailable":
-        return governor_factory
-
     factory_name = _factory_name(governor_factory)
 
     def bound_factory(config: Any) -> BoundedRecoveryGovernor:
