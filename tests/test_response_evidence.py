@@ -193,7 +193,14 @@ def test_receipt_binds_custom_factory_settings(tmp_path, standard_scenario_path)
     )
     assert receipt["response_settings"]["governor_factory"] == "custom_factory"
     assert receipt["response_settings"]["max_command_delta"] == 0.03
-    assert receipt["config"]["response_settings"] == receipt["response_settings"]
+    assert (
+        receipt["config"]["response_settings"]["governor_factory"]
+        == "custom_factory"
+    )
+    assert (
+        receipt["config"]["response_settings"]["settings"]["max_command_delta"]
+        == 0.03
+    )
 
 
 def test_output_dir_must_be_empty(tmp_path, standard_scenario_path):
