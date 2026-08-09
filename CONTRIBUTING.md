@@ -7,61 +7,59 @@ The authoritative clone URL is the configured `origin` remote:
 ```bash
 git clone https://github.com/arm-hackathon/arm-hackathon.git
 cd arm-hackathon
-uv run --extra dev python -m pytest
+uv sync --locked --python 3.11 --extra dev
+uv run --locked --python 3.11 --extra dev python -m pytest -q
 ```
 
-The project has no `requirements.txt`. `uv` resolves the project and the
-`dev` extra from `pyproject.toml`; `uv.lock` is committed to make that
-resolution reproducible. `uv` creates its local environment as needed.
+The project has no `requirements.txt`. `uv.lock` is committed so the declared
+Python dependencies resolve reproducibly.
 
 ## Local workflow
 
 1. Branch from an up-to-date target branch using `name/short-description`.
-2. Keep a change scoped to one simulator, scenario, trace or documentation
-   concern.
-3. Run the full suite before commit:
+2. Keep a change scoped to one simulator, scenario, trace, evidence, or
+   documentation concern.
+3. Run the locked verification suite before commit:
 
    ```bash
-   uv run --extra dev python -m pytest
+   uv run --locked --python 3.11 --extra dev python -m pytest -q
+   uv run --locked --python 3.11 --extra dev ruff check .
+   python -m compileall -q src tests
+   git diff --check
    ```
 
-4. For changed simulation behaviour, generate the affected replay locally and
-   inspect its visualisation:
+4. Generate source-checkout replay output only under a new ignored `out/` path:
 
    ```bash
-   mkdir -p out
-   PYTHONPATH=src uv run python -m aeolus \
+   uv run --locked --python 3.11 python -m aeolus \
      scenarios/standard_habitat.json out/standard.jsonl
-   PYTHONPATH=src uv run python -m aeolus.visualise \
-     out/standard.jsonl out/standard.html
    ```
 
-5. Run `git diff --check`, commit with a short imperative subject, then open a
-   pull request for review. Do not push a branch or alter a remote without the
-   repository owner's approval.
+5. Do not push a branch, alter a remote, request review, merge, deploy, or
+   provision cloud resources without the repository owner's approval.
 
 ## Repository map
 
 | Path | Purpose |
 |---|---|
-| `scenarios/` | Closed-schema v9 scenarios and sweep-v1/v2/v3 specifications. |
+| `scenarios/` | Closed-schema v9 standard and v10 recovery scenarios; historical and development sweep specifications. |
 | `src/aeolus/config.py` | Scenario parsing and validation. |
-| `src/aeolus/plant.py` | Deterministic plant, airflow and CO₂ mass transfer. |
-| `src/aeolus/scenario.py` | Warm-up, measured runs and fault-profile scheduling. |
-| `src/aeolus/sweep.py` | Deterministic family-held-out scenario generation. |
-| `src/aeolus/detector.py` | Softmax/temporal-MLP training, strict inference and FP32 ONNX export. |
-| `src/aeolus/protocol.py` | Validation-only selection, frozen policy and final-only evaluation. |
-| `src/aeolus/trace.py` | JSONL writer and allowlisted model-feature projection. |
-| `src/aeolus/visualise.py` | Dependency-free local HTML replay visualiser. |
-| `tests/` | Unit, scenario, replay and visualisation tests. |
-| `docs/` | Current simulation and telemetry contracts. |
-| `out/` | Ignored generated local traces and reports. |
+| `src/aeolus/plant.py` | Deterministic plant, primary/reserve airflow, and CO₂ mass transfer. |
+| `src/aeolus/scenario.py` | Warm-up, measured runs, fault scheduling, and recovery-arm execution. |
+| `src/aeolus/recovery.py` | Deterministic reserve authority, settings, validation, and state machine. |
+| `src/aeolus/recovery_evidence.py` | Write-once four-arm development evidence runner and gates. |
+| `src/aeolus/trace.py` | JSONL writers and strict telemetry/model-feature boundaries. |
+| `tests/` | Unit, scenario, replay, evidence, and contract tests. |
+| `docs/` | Current simulation, telemetry, recovery, and historical protocol records. |
+| `out/` | Ignored generated traces, corpora, packages, and local closeout receipts. |
 
 ## Current boundaries
 
-AEOLUS currently includes deterministic simulation/replay plus an experimental
-softmax and temporal-MLP training/inference paths with FP32 ONNX export. It does not include
-INT8 quantisation, a governor, redundant fan, Arm measurements, a dashboard,
-API, database, cloud service or hardware integration. The accepted held-out
-evidence does not show an AI advantage; do not represent future work or the
-negative model result as completed deployment evidence.
+C4 recovery development is a documented negative result, not an accepted
+recovery result. The mandatory transient handback acknowledgement and physical
+reserve-delivery benefit gates are false. C5 adviser work is closed: do not train,
+tune, export, integrate, or inspect final-suite data on the strength of C4.
+
+AEOLUS includes deterministic simulation/replay and historical model/FP32 ONNX
+code, but no C4-qualified adviser, INT8 result, Arm benchmark, hardware
+integration, cloud service, physical deployment, or production control claim.
