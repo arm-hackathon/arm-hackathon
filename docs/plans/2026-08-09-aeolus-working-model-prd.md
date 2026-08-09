@@ -5,7 +5,7 @@
 **Deadline:** 2026-08-09 09:00 BST  
 **Execution stop:** 2026-08-09 08:30 BST  
 **Report window:** 08:30–09:00 BST  
-**Last updated:** 2026-08-09 02:40 BST
+**Last updated:** 2026-08-09 03:02 BST
 **Repository:** `arm-hackathon/arm-hackathon`  
 **Working branch:** `ben/independent-recovery`  
 **Repository root:** the active `ben/independent-recovery` working tree
@@ -465,7 +465,9 @@ Expected bounded checkpoints:
 | C3 | Four inherited PR #18 fixes and regressions | one immutable review | checkpoint `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; base `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; detached checkout reverified clean; no SHA-bound review verdict returned by the 01:58 cutoff, so this checkpoint is unreviewed |
 | C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review | checkpoint `74154956d64309f067ada7593e2ef8786d140b4e`; base `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; canonical/duplicate/clean-checkout evidence and stress matrix complete with frozen negative gates; exact detached review had no SHA-bound verdict by the single 02:40 cutoff, so C4 is unreviewed |
 | C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review | closed — C4 frozen safety and physical-delivery gates failed; no corpus/model/ONNX/integration run permitted |
-| C6 | Version/docs/package closeout | final immutable review | in progress — outcome-B documentation/version source checkpoint and locked source gates are ready; package receipts must be produced from its exact clean local SHA |
+| C6 | Version/docs/package closeout | final immutable review | checkpoint `3776af035b07590db53587212762a9ff3304acfb`; exact-commit packages installed and replayed, but the clean locked suite exposed one uncontrolled dirty-worktree test fixture (`1 failed, 453 passed`), so C6 is superseded and not release-qualified |
+| C7 | Clean-source fixture correction | focused regression plus exact-clean full gate | checkpoint `20d7d90caaafe6565bc731d3494a79e8574d626a`; focused RED/GREEN complete; exact clean C7 locked suite `454 passed`; Ruff, compile, diff, and lock gates passed |
+| C8 | Final receipt reconciliation and rebuilt packages | one immutable final review | in progress — reconcile the C6 blocker/C7 fix, freeze a clean documentation checkpoint, then rebuild and smoke-test exact-C8 distributions |
 
 Checkpoint names may be combined only if the files and acceptance boundary are inseparable. Every actual SHA replaces the placeholder in the execution ledger.
 
@@ -508,12 +510,12 @@ Append one row after each material step. Receipts must be actual outputs.
 | 01:06 | C1 protect-state observation dropout | complete | dirty slice on `c5c53cb…` | focused RED: non-zero `PROTECT` decision retained after dropout; focused GREEN: `2 passed in 0.07s` | Dropout enters bounded `HANDBACK`; repeated dropout ramps down and cannot restore reserve authority. Audit topology-order and trace cross-field boundaries before freeze. |
 | 01:08 | C1 file-order topology binding | complete | dirty slice on `c5c53cb…` | focused RED: `recovery observation zone topology is invalid`; focused GREEN: `1 passed in 0.07s` | Runner observations now use validated scenario file order, matching selector and supervisor topology hashes. Freeze C1 after full focused verification. |
 | 01:09 | C1 full pre-freeze verification | complete | staged code patch `7083da43f8eecd44621393e90029330f2dec2098077f20f1b8a32d637d55b911` | locked full suite `436 passed in 56.70s`; Ruff `All checks passed!`; `compileall -q src` and `git diff --check` exit 0 | Stage PRD receipt, commit the bounded C1 slice locally, then review only that immutable SHA. |
-| 01:11 | C1 local immutable checkpoint | complete | BASE `c5c53cb571643254f8a7300d518a4e1ae20901a1`; REVIEW `b4c6ddfe79c24b591f18497b9d9ba1b35298396d` | clean primary worktree; author and committer both `Benedict Anokye-Davies <bbeennyy860@gmail.com>`; detached `/root/luna-workspace/aeolus-review-b4c6ddf` at REVIEW SHA and `diff --check` clean | Dispatch exactly one read-only compliance/quality review batch. Do not modify reviewed files while it runs. |
+| 01:11 | C1 local immutable checkpoint | complete | BASE `c5c53cb571643254f8a7300d518a4e1ae20901a1`; REVIEW `b4c6ddfe79c24b591f18497b9d9ba1b35298396d` | clean primary worktree; author and committer both `Benedict Anokye-Davies <bbeennyy860@gmail.com>`; detached review worktree at REVIEW SHA and `diff --check` clean | Dispatch exactly one read-only compliance/quality review batch. Do not modify reviewed files while it runs. |
 | 01:31 | C1 immutable review outcome | unreviewed | REVIEW `b4c6ddfe79c24b591f18497b9d9ba1b35298396d` | no returned SHA-bound verdict after the 20-minute review window; detached SHA reverified with `436 passed in 57.76s`, Ruff/compile/diff clean, and clean status | No approval inferred and no second C1 review batch dispatched; continue with this exact unreviewed state. |
 | 01:16–01:23 | C3 PR #18 fixes 2–5 | complete | dirty C3 slice on `b4c6ddfe…` | frozen slew RED `Δ=0.85` vs cap `0.05`, then `2 passed`; custom receipt RED `0.1` vs `0.03`, then `2 passed`; optional-onset annotation RED `int`, then `1 passed`; Ruff clean | Response/evidence fixes are isolated; warm-up boundary remains C3-1. |
 | 01:32 | C3 alternative-governor warm-up | complete | dirty C3 slice on `b4c6ddfe…` | missing/malformed settings RED `.FFF` (crash or under-seeding); GREEN `4 passed in 0.07s` | invalid/missing `window_ticks` now falls back to `run.warmup_ticks`. |
 | 01:33 | C3 full verification | complete | staged C3 code patch `e12bd09adc95c6b0f7d52ddd01d6941880f067e1c53b3f35a26d69ce4eba86d1` | locked suite `443 passed in 57.66s`; Ruff `All checks passed!`; compileall and diff check exit 0 | Stage PRD receipt and commit exact C3 checkpoint. |
-| 01:35 | C3 local immutable checkpoint | complete | BASE `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | clean C3 commit; Ben author/committer; detached `/root/luna-workspace/aeolus-review-88321f1` is clean | No C3 review has been dispatched yet. |
+| 01:35 | C3 local immutable checkpoint | complete | BASE `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | clean C3 commit; Ben author/committer; detached review worktree is clean | No C3 review has been dispatched yet. |
 | 01:38 | C3 immutable review dispatch | in progress | REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | detached worktree is clean before dispatch | Require a returned verdict echoing REVIEW SHA; do not modify C3 files while it runs. |
 | 01:58 | C3 immutable review outcome | unreviewed | REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | no SHA-bound verdict returned in the 20-minute review window; detached checkout still clean | No approval inferred and no second C3 review batch dispatched. |
 | 01:39–01:57 | C4 four-arm runner and falsification contracts | in progress | dirty C4 slice on `88321f1…` | arm-name RED/GREEN `3 passed`; final-seed RED/GREEN `1 passed`; recovery evidence/gate/duplicate/saturation/noise/denominator tests `22 passed in 6.10s`; cross-suite pre-freeze `454 passed in 62.74s`; targeted Ruff/compile/diff clean | Four-arm development runner is implemented; freeze exact C4 source before canonical evidence. |
@@ -524,6 +526,9 @@ Append one row after each material step. Receipts must be actual outputs.
 | 02:08–02:20 | C4 duplicate and clean-checkout reproduction | complete | SOURCE `74154956d64309f067ada7593e2ef8786d140b4e` | A/B comparison `aadbcd25faffe70a30311187e999c2d8c16c5a61d68a8e8df34606ea6f653343`: 3,801 files and 3,024 traces identical; clean-checkout comparison `2264c85fc85dd63ee99f853523af0d2dec3c67b861f67e61db05d7c9cb0ef733`: same evidence SHA/files, both source-clean | Deterministic reproduction confirmed; retain negative gate outcome. |
 | 02:22–02:40 | C4 immutable review window | unreviewed | BASE `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; REVIEW `74154956d64309f067ada7593e2ef8786d140b4e` | detached review worktree was clean at REVIEW SHA; no returned verdict echoed REVIEW SHA by the single bounded cutoff | No approval inferred; no second C4 review batch will be dispatched, and any late response is stale. |
 | 02:28–02:37 | C6 source reconciliation and locked verification | complete | dirty C6 documentation/version source on `74154956…` | `uv lock --offline` refreshed `aeolus` `0.1.0 → 0.2.0`; docs link/fact checks passed; locked full suite `454 passed in 64.65s`; Ruff, compileall, `git diff --check`, and `uv lock --check` passed | Commit C6 locally, then build and smoke-test only from the exact clean C6 SHA. |
+| 02:40–02:57 | C6 clean-source package cycle | blocked | `3776af035b07590db53587212762a9ff3304acfb` | wheel `7656eee5…66aa5` and sdist `cadf953a…0c1a` built; fresh wheel/sdist installs and 180-/120-record replays passed; exact clean locked suite failed `1 failed, 453 passed in 66.62s` | Test expected a dirty source without controlling repository state. C6 artifacts are evidence only, not release-qualified. |
+| 02:58–03:00 | C7 clean-source fixture correction | complete | patch `934abd8e…e23053`; checkpoint `20d7d90caaafe6565bc731d3494a79e8574d626a` | focused clean-checkout RED `1 failed`; controlled-status GREEN `1 passed`; pre-checkpoint full suite `454 passed in 63.61s`; Ruff, compile, diff, and lock gates passed | Freeze test-only correction, then prove the full gate from the exact clean SHA. |
+| 03:01–03:02 | C7 exact-clean verification | complete | `20d7d90caaafe6565bc731d3494a79e8574d626a`; zero dirty lines | locked full suite `454 passed in 62.80s`; Ruff, compile, diff, and lock gates passed | Reconcile receipts as C8 and rebuild exact-C8 packages. |
 
 ## 16. Morning report contract
 
@@ -589,10 +594,11 @@ The report must state, in this order:
 
 - [x] Version `0.2.0`
 - [x] Documentation reconciled to Outcome B
-- [x] Locked full suite green (`454 passed`)
+- [x] Exact clean C7 locked full suite green (`454 passed in 62.80s`)
 - [x] Ruff clean
 - [x] Compile and diff checks clean
-- [ ] Wheel and sdist built from exact clean C6 SHA
-- [ ] Clean wheel install and deterministic recovery replay passed
-- [ ] Exact artifact hashes recorded in ignored closeout receipt
+- [x] C6 wheel and sdist built and smoke-installed; superseded by the C7 test correction and not release-qualified
+- [ ] Wheel and sdist rebuilt from exact clean C8 SHA
+- [ ] Clean C8 wheel install and deterministic recovery replay passed
+- [ ] Exact C8 artifact hashes recorded in ignored closeout receipt
 - [x] No push, merge, deploy, cloud, or final-suite action
