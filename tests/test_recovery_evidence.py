@@ -264,8 +264,16 @@ def test_recovery_evidence_refuses_existing_output_without_mutation(tmp_path):
     assert list(output.iterdir()) == [sentinel]
 
 
-def test_canonical_recovery_evidence_clean_gate_precedes_output_creation(tmp_path):
+def test_canonical_recovery_evidence_clean_gate_precedes_output_creation(
+    tmp_path, monkeypatch
+):
     output = tmp_path / "canonical"
+
+    def dirty_status(*args: str) -> str:
+        assert args == ("status", "--porcelain")
+        return "?? controlled-dirty-probe"
+
+    monkeypatch.setattr("aeolus.recovery_evidence._git_output", dirty_status)
 
     with pytest.raises(ValueError, match="clean source worktree"):
         run_recovery_evidence(_mini_recovery_sweep(tmp_path), output)
