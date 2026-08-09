@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 from numpy.typing import NDArray
 
+from aeolus import __version__
 from aeolus.baseline import (
     RuleBaseline,
     RuleParameters,
@@ -838,7 +839,7 @@ def export_onnx(detector: Detector, path: str | Path) -> Path:
     model = helper.make_model(
         graph,
         producer_name="aeolus",
-        producer_version="0.1.0",
+        producer_version=__version__,
         opset_imports=[helper.make_opsetid("", 17)],
     )
     metadata = {
@@ -1010,7 +1011,7 @@ def _export_temporal_mlp_onnx(
     model = helper.make_model(
         graph,
         producer_name="aeolus",
-        producer_version="0.1.0",
+        producer_version=__version__,
         opset_imports=[helper.make_opsetid("", 17)],
     )
     metadata = {

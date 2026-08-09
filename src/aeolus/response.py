@@ -199,7 +199,9 @@ class BoundedRecoveryGovernor:
             ):
                 entry = {**entry, "reason": "bounded_rate", "commanded": commands[zone_id]}
             elif "commanded" not in entry or not math.isclose(
-                entry["commanded"], commands[zone_id], abs_tol=1e-12
+                entry["commanded"],
+                commands[zone_id],
+                abs_tol=1e-12,
             ):
                 entry = {**entry, "commanded": commands[zone_id]}
             rationale[zone_id] = entry

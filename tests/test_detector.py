@@ -1,11 +1,13 @@
 """Four-class training, artifacts, inference and ONNX evidence."""
 
+import importlib.metadata
 import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from aeolus import __version__
 from aeolus.corpus import generate_corpus_v2
 from aeolus.detector import (
     CLASS_NAMES,
@@ -16,6 +18,7 @@ from aeolus.detector import (
     TemporalMLPDetector,
     enforce_onnx_parity,
     evidence_conclusion,
+    export_onnx,
     load_detector,
     main,
     predict_scenario,
@@ -83,6 +86,34 @@ def test_softmax_detector_predicts_probabilities_for_exact_windows(
         synthetic_detector.predict_window(_window(index, 3)).label
         for index in range(len(CLASS_NAMES))
     } == set(CLASS_NAMES)
+
+
+@pytest.mark.parametrize("detector_kind", ("softmax", "temporal_mlp"))
+def test_onnx_export_uses_installed_package_version(
+    synthetic_detector, tmp_path, detector_kind
+):
+    detector = synthetic_detector
+    if detector_kind == "temporal_mlp":
+        detector = TemporalMLPDetector(
+            window_ticks=WINDOW_TICKS,
+            feature_width=FEATURE_WIDTH,
+            class_names=CLASS_NAMES,
+            contract_metadata=_contract(),
+            transform_version="temporal_summary_v1",
+            means=(0.0,) * 135,
+            scales=(1.0,) * 135,
+            input_weights=tuple((0.0,) * 16 for _ in range(135)),
+            hidden_biases=(0.0,) * 16,
+            output_weights=tuple((0.0,) * len(CLASS_NAMES) for _ in range(16)),
+            output_biases=(0.0,) * len(CLASS_NAMES),
+        )
+
+    path = export_onnx(detector, tmp_path / f"{detector_kind}.onnx")
+
+    onnx = pytest.importorskip("onnx")
+    model = onnx.load(path)
+    assert importlib.metadata.version("aeolus") == __version__
+    assert model.producer_version == __version__
 
 
 def test_training_balances_unequal_class_counts():
