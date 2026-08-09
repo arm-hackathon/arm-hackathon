@@ -1,0 +1,78 @@
+{
+  "base_scenario": "recovery_habitat.json",
+  "schema_version": "aeolus_sweep_v4",
+  "splits": {
+    "final": {
+      "blocked_effectiveness": [
+        0.66
+      ],
+      "fault_start_ticks": [
+        43,
+        79
+      ],
+      "gradual_profiles": [
+        {
+          "duration_ticks": 66,
+          "end_effectiveness": 0.76
+        },
+        {
+          "duration_ticks": 96,
+          "end_effectiveness": 0.85
+        }
+      ],
+      "operating_profiles": [
+        {
+          "id": "final-balanced-low",
+          "shared_airflow_capacity": 29.5,
+          "source_multiplier": 0.96,
+          "telemetry": {
+            "actuator_position_noise_fraction": 0.015,
+            "airflow_bias_fraction": 0.010,
+            "airflow_drift_fraction": 0.015,
+            "airflow_noise_fraction": 0.030,
+            "co2_sensor_bias_fraction": 0.010,
+            "co2_sensor_drift_fraction": 0.016,
+            "co2_sensor_noise_fraction": 0.024
+          }
+        },
+        {
+          "id": "final-balanced-high",
+          "shared_airflow_capacity": 31.5,
+          "source_multiplier": 1.06,
+          "telemetry": {
+            "actuator_position_noise_fraction": 0.017,
+            "airflow_bias_fraction": 0.013,
+            "airflow_drift_fraction": 0.017,
+            "airflow_noise_fraction": 0.036,
+            "co2_sensor_bias_fraction": 0.013,
+            "co2_sensor_drift_fraction": 0.020,
+            "co2_sensor_noise_fraction": 0.030
+          }
+        }
+      ],
+      "seeds": [
+        5101,
+        5102
+      ],
+      "transient_blocked_profiles": [
+        {
+          "blocked_effectiveness": 0.71,
+          "duration_ticks": 46
+        }
+      ],
+      "transient_gradual_profiles": [
+        {
+          "duration_ticks": 78,
+          "end_effectiveness": 0.81,
+          "start_effectiveness": 1.0
+        }
+      ]
+    }
+  },
+  "suite_role": "final",
+  "targets": [
+    "cabin_a",
+    "cabin_b",
+    "lab"
+  ]
+}
