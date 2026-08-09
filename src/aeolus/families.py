@@ -35,9 +35,9 @@ _SUPPORTED_MANIFEST_VERSIONS = frozenset(
     {FAMILY_MANIFEST_VERSION, RECOVERY_FAMILY_MANIFEST_VERSION}
 )
 RECOVERY_COUNTERFACTUAL_ARMS = (
-    "healthy_baseline",
-    "healthy_governed",
-    "fault_baseline",
+    "reference_reserve_off",
+    "reference_governed",
+    "fault_reserve_off",
     "fault_governed",
 )
 _SPLITS = frozenset({"train", "validation", "test", "stress", "final"})

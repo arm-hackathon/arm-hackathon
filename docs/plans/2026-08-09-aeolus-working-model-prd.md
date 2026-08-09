@@ -5,7 +5,7 @@
 **Deadline:** 2026-08-09 09:00 BST  
 **Execution stop:** 2026-08-09 08:30 BST  
 **Report window:** 08:30–09:00 BST  
-**Last updated:** 2026-0...[truncated]
+**Last updated:** 2026-08-09 02:01 BST
 **Repository:** `arm-hackathon/arm-hackathon`  
 **Working branch:** `ben/independent-recovery`  
 **Repository root:** the active `ben/independent-recovery` working tree
@@ -460,10 +460,10 @@ Expected bounded checkpoints:
 | Checkpoint | Intended scope | Review required | Current state / SHA |
 |---|---|---|---|
 | C0 | This PRD only | no code review | complete — `c5c53cb571643254f8a7300d518a4e1ae20901a1` |
-| C1 | Authority core, runner, trace enum, focused tests | one immutable compliance/quality batch | checkpoint `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; base `c5c53cb571643254f8a7300d518a4e1ae20901a1`; detached immutable review in progress |
+| C1 | Authority core, runner, trace enum, focused tests | one immutable compliance/quality batch | checkpoint `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; base `c5c53cb571643254f8a7300d518a4e1ae20901a1`; exact detached checkout reverified; no SHA-bound reviewer verdict returned by the 01:31 cutoff, so this checkpoint is unreviewed |
 | C2 | Findings-only correction for C1 | one fresh delta review if C1 had blockers | not started |
-| C3 | Four inherited PR #18 fixes and regressions | one immutable review | not started |
-| C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review | not started |
+| C3 | Four inherited PR #18 fixes and regressions | one immutable review | checkpoint `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; base `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; detached checkout reverified clean; no SHA-bound review verdict returned by the 01:58 cutoff, so this checkpoint is unreviewed |
+| C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review | staged C4 code patch `19870c21fcae46cd67029a362c9403497b747c001aec4a79f99425e4c206cd77`; all local gates green; ready for local checkpoint before canonical development evidence |
 | C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review | not started |
 | C6 | Version/docs/package closeout | final immutable review | not started |
 
@@ -509,6 +509,15 @@ Append one row after each material step. Receipts must be actual outputs.
 | 01:08 | C1 file-order topology binding | complete | dirty slice on `c5c53cb…` | focused RED: `recovery observation zone topology is invalid`; focused GREEN: `1 passed in 0.07s` | Runner observations now use validated scenario file order, matching selector and supervisor topology hashes. Freeze C1 after full focused verification. |
 | 01:09 | C1 full pre-freeze verification | complete | staged code patch `7083da43f8eecd44621393e90029330f2dec2098077f20f1b8a32d637d55b911` | locked full suite `436 passed in 56.70s`; Ruff `All checks passed!`; `compileall -q src` and `git diff --check` exit 0 | Stage PRD receipt, commit the bounded C1 slice locally, then review only that immutable SHA. |
 | 01:11 | C1 local immutable checkpoint | complete | BASE `c5c53cb571643254f8a7300d518a4e1ae20901a1`; REVIEW `b4c6ddfe79c24b591f18497b9d9ba1b35298396d` | clean primary worktree; author and committer both `Benedict Anokye-Davies <bbeennyy860@gmail.com>`; detached `/root/luna-workspace/aeolus-review-b4c6ddf` at REVIEW SHA and `diff --check` clean | Dispatch exactly one read-only compliance/quality review batch. Do not modify reviewed files while it runs. |
+| 01:31 | C1 immutable review outcome | unreviewed | REVIEW `b4c6ddfe79c24b591f18497b9d9ba1b35298396d` | no returned SHA-bound verdict after the 20-minute review window; detached SHA reverified with `436 passed in 57.76s`, Ruff/compile/diff clean, and clean status | No approval inferred and no second C1 review batch dispatched; continue with this exact unreviewed state. |
+| 01:16–01:23 | C3 PR #18 fixes 2–5 | complete | dirty C3 slice on `b4c6ddfe…` | frozen slew RED `Δ=0.85` vs cap `0.05`, then `2 passed`; custom receipt RED `0.1` vs `0.03`, then `2 passed`; optional-onset annotation RED `int`, then `1 passed`; Ruff clean | Response/evidence fixes are isolated; warm-up boundary remains C3-1. |
+| 01:32 | C3 alternative-governor warm-up | complete | dirty C3 slice on `b4c6ddfe…` | missing/malformed settings RED `.FFF` (crash or under-seeding); GREEN `4 passed in 0.07s` | invalid/missing `window_ticks` now falls back to `run.warmup_ticks`. |
+| 01:33 | C3 full verification | complete | staged C3 code patch `e12bd09adc95c6b0f7d52ddd01d6941880f067e1c53b3f35a26d69ce4eba86d1` | locked suite `443 passed in 57.66s`; Ruff `All checks passed!`; compileall and diff check exit 0 | Stage PRD receipt and commit exact C3 checkpoint. |
+| 01:35 | C3 local immutable checkpoint | complete | BASE `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | clean C3 commit; Ben author/committer; detached `/root/luna-workspace/aeolus-review-88321f1` is clean | No C3 review has been dispatched yet. |
+| 01:38 | C3 immutable review dispatch | in progress | REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | detached worktree is clean before dispatch | Require a returned verdict echoing REVIEW SHA; do not modify C3 files while it runs. |
+| 01:58 | C3 immutable review outcome | unreviewed | REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | no SHA-bound verdict returned in the 20-minute review window; detached checkout still clean | No approval inferred and no second C3 review batch dispatched. |
+| 01:39–01:57 | C4 four-arm runner and falsification contracts | in progress | dirty C4 slice on `88321f1…` | arm-name RED/GREEN `3 passed`; final-seed RED/GREEN `1 passed`; recovery evidence/gate/duplicate/saturation/noise/denominator tests `22 passed in 6.10s`; cross-suite pre-freeze `454 passed in 62.74s`; targeted Ruff/compile/diff clean | Four-arm development runner is implemented; freeze exact C4 source before canonical evidence. |
+| 02:01 | C4 full pre-freeze verification | complete | staged C4 code patch `19870c21fcae46cd67029a362c9403497b747c001aec4a79f99425e4c206cd77` | locked full suite `454 passed in 63.59s`; Ruff/compile/diff and `uv lock --check` passed | Commit exact C4 source, then run canonical development evidence from the clean SHA. |
 
 ## 16. Morning report contract
 
@@ -546,16 +555,16 @@ The report must state, in this order:
 
 ### PR #18
 
-- [ ] Alternative-governor warm-up fixed
-- [ ] Frozen-command slew bound fixed
-- [ ] Custom-factory receipt fixed
-- [ ] Optional onset annotation fixed
-- [ ] Exact-head Ruff debt fixed
+- [x] Alternative-governor warm-up fixed
+- [x] Frozen-command slew bound fixed
+- [x] Custom-factory receipt fixed
+- [x] Optional onset annotation fixed
+- [x] Exact-head Ruff debt fixed
 
 ### Evidence
 
-- [ ] Four-arm runner implemented
-- [ ] Metrics have explicit denominator status
+- [x] Four-arm runner implemented
+- [x] Metrics have explicit denominator status
 - [ ] Canonical development run complete
 - [ ] Duplicate reproduction byte-identical
 - [ ] Frozen safety gates pass
