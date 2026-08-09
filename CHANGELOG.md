@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-09 — integration-only package / 0.2.1
+
+- Rebased the closed recovery-development work onto the reviewed bounded-response
+  fixes already integrated through the dependent pull-request stack.
+- Preserved the negative Outcome B decision. This package does not rerun C4/C11,
+  accept a recovery controller, or make a final-suite, hardware, cloud,
+  deployment, or AI-performance claim.
+- Removed an unused internal provenance parameter and added coverage that both
+  receipt surfaces bind the evaluated custom governor factory and settings.
+- Bumped package metadata and `aeolus.__version__` to `0.2.1` so this integrated
+  source tree cannot be confused with the source-pinned `0.2.0` C4/C11 artifacts.
+
 ## 2026-08-09 — recovery-development Outcome B / 0.2.0
 
 - Added the schema-v10 independent-reserve recovery boundary: disjoint primary
