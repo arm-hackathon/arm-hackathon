@@ -79,6 +79,20 @@ def _evaluated_response_settings(
     return {"governor_factory": factory_name, **asdict(settings)}
 
 
+def _provenance_response_settings(response_settings: dict[str, Any]) -> dict[str, Any]:
+    """Preserve the provenance schema while binding evaluated factory settings."""
+    if response_settings.get("settings_status") == "unavailable":
+        return dict(response_settings)
+    return {
+        "governor_factory": response_settings["governor_factory"],
+        "settings": {
+            key: value
+            for key, value in response_settings.items()
+            if key != "governor_factory"
+        },
+    }
+
+
 def _git_output(*args: str) -> str:
     """Return a repository-local Git command result for an evidence receipt."""
     result = subprocess.run(
@@ -161,6 +175,7 @@ def _receipt_provenance(
     source_files = _source_file_hashes()
     project_files = _required_project_file_hashes()
     run_spec = asdict(STANDARD_RUN)
+    provenance_response_settings = _provenance_response_settings(response_settings)
     generated_scenarios = _generated_scenario_hashes(corpus_dir)
     lock_hash = project_files["uv.lock"]
     return {
@@ -184,8 +199,10 @@ def _receipt_provenance(
             ),
             "run_spec": run_spec,
             "run_spec_sha256": _canonical_sha256(run_spec),
-            "response_settings": response_settings,
-            "response_settings_sha256": _canonical_sha256(response_settings),
+            "response_settings": provenance_response_settings,
+            "response_settings_sha256": _canonical_sha256(
+                provenance_response_settings
+            ),
         },
         "sweep": {
             "bytes_sha256": _sha256_file(sweep_spec.source_path),

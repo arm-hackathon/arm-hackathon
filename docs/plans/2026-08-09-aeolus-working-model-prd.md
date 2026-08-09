@@ -5,7 +5,7 @@
 **Deadline:** 2026-08-09 09:00 BST  
 **Execution stop:** 2026-08-09 08:30 BST  
 **Report window:** 08:30–09:00 BST  
-**Last updated:** 2026-08-09 01:10 BST
+**Last updated:** 2026-0...[truncated]
 **Repository:** `arm-hackathon/arm-hackathon`  
 **Working branch:** `ben/independent-recovery`  
 **Repository root:** the active `ben/independent-recovery` working tree
@@ -460,7 +460,7 @@ Expected bounded checkpoints:
 | Checkpoint | Intended scope | Review required | Current state / SHA |
 |---|---|---|---|
 | C0 | This PRD only | no code review | complete — `c5c53cb571643254f8a7300d518a4e1ae20901a1` |
-| C1 | Authority core, runner, trace enum, focused tests | one immutable compliance/quality batch | staged for local checkpoint — code patch `7083da43f8eecd44621393e90029330f2dec2098077f20f1b8a32d637d55b911`; full gates green; unreviewed |
+| C1 | Authority core, runner, trace enum, focused tests | one immutable compliance/quality batch | checkpoint `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; base `c5c53cb571643254f8a7300d518a4e1ae20901a1`; detached immutable review in progress |
 | C2 | Findings-only correction for C1 | one fresh delta review if C1 had blockers | not started |
 | C3 | Four inherited PR #18 fixes and regressions | one immutable review | not started |
 | C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review | not started |
@@ -508,6 +508,7 @@ Append one row after each material step. Receipts must be actual outputs.
 | 01:06 | C1 protect-state observation dropout | complete | dirty slice on `c5c53cb…` | focused RED: non-zero `PROTECT` decision retained after dropout; focused GREEN: `2 passed in 0.07s` | Dropout enters bounded `HANDBACK`; repeated dropout ramps down and cannot restore reserve authority. Audit topology-order and trace cross-field boundaries before freeze. |
 | 01:08 | C1 file-order topology binding | complete | dirty slice on `c5c53cb…` | focused RED: `recovery observation zone topology is invalid`; focused GREEN: `1 passed in 0.07s` | Runner observations now use validated scenario file order, matching selector and supervisor topology hashes. Freeze C1 after full focused verification. |
 | 01:09 | C1 full pre-freeze verification | complete | staged code patch `7083da43f8eecd44621393e90029330f2dec2098077f20f1b8a32d637d55b911` | locked full suite `436 passed in 56.70s`; Ruff `All checks passed!`; `compileall -q src` and `git diff --check` exit 0 | Stage PRD receipt, commit the bounded C1 slice locally, then review only that immutable SHA. |
+| 01:11 | C1 local immutable checkpoint | complete | BASE `c5c53cb571643254f8a7300d518a4e1ae20901a1`; REVIEW `b4c6ddfe79c24b591f18497b9d9ba1b35298396d` | clean primary worktree; author and committer both `Benedict Anokye-Davies <bbeennyy860@gmail.com>`; detached `/root/luna-workspace/aeolus-review-b4c6ddf` at REVIEW SHA and `diff --check` clean | Dispatch exactly one read-only compliance/quality review batch. Do not modify reviewed files while it runs. |
 
 ## 16. Morning report contract
 
@@ -539,7 +540,7 @@ The report must state, in this order:
 
 - [x] Recovery topology and independent reserve plant implemented locally
 - [x] Versioned recovery trace boundary implemented locally
-- [ ] Authority/runner slice checkpointed
+- [x] Authority/runner slice checkpointed at `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`
 - [ ] Authority/runner immutable review passed
 - [ ] Review blockers fixed and reverified
 
