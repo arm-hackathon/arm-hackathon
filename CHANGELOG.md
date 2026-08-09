@@ -1,6 +1,78 @@
 # Changelog
 
-## 2026-08-01 — fair schema-v9 temporal experiment
+## 2026-08-03 — bounded recovery response (development evidence)
+
+- Added a pure override hook to `step_habitat` (`override_commands`) that lets
+  an external decision maker issue bounded per-zone commands while the default
+  path stays byte-identical to the previous AEOLUS behaviour; conserved
+  contract that only the physics engine changes plant state.
+- Added `src/aeolus/response.py`: the `BoundedRecoveryGovernor`, a causal,
+  observable-only decision maker over exact `model_input_v1` windows with
+  declared `ResponseSettings`, four bounded rules (proportional demand,
+  frozen-sensor hold, degraded-loop spare-capacity release, rate/energy
+  bounds), and per-tick structured rationale.
+- Added `run_governed_scenario` with warm-up window seeding so the governor's
+  first measured command matches the baseline observation basis.
+- Added `scenarios/sweep-response.json` (v3 development, 129 families across
+  two operating profiles) and `src/aeolus/response_evidence.py`, a hashed
+  evidence harness reporting time-above-ceiling, max excursion, response
+  latency, energy and invariant violations for both controllers.
+- Response evidence: 117/129 fault families at exact baseline parity; 128/129
+  within the one-tick causality margin (one family exceeded it at +2 ticks;
+  the baseline is same-tick by design, so the causal governor reports the
+  margin explicitly); healthy-reference runs within the margin on all 129;
+  zero invariant violations under both controllers; median energy overhead
+  0.00%. Evidence-driven iteration measured that boosting or unconditionally
+  throttling degraded loops both worsen time-above-ceiling; recorded in
+  `docs/bounded-response.md`.
+- Guarded the v2 `run_experiment` path against v3 development sweep layouts
+  (raise a clear error instead of a silent split failure).
+- Full suite: 339 tests passed at commit time.
+
+## 2026-08-03 — response evidence review fixes (`yarofix2`)
+
+- Fixed a self-contradictory conclusion: the aggregate reported one fault
+  family beyond the one-tick causality margin (max excess 2 ticks), but the
+  conclusion hard-coded "within the margin on all N" and claimed zero
+  invariant violations regardless of the aggregate. The conclusion now
+  derives both the within-margin counts and the violation counts from the
+  aggregate. Regenerated receipt: 128/129 within the margin (1 beyond at +2),
+  healthy 129/129, 0/0 invariant violations.
+- Scoped `response_latency_ticks` to actions on the zone loop that the fault
+  profile actually degrades; rate limits or holds on unrelated healthy loops
+  no longer count as a response. The affected-zone set is derived from the
+  fault profiles (connection faults map to the served command zone, sensor
+  faults to the frozen zone), falling back to all commanded zones only when
+  no match exists. Median response latency re-measured at 67 ticks.
+- Fixed documentation drift: branch references (`ben/bounded-response`) now
+  read `yarofix2`, the README deferred-work bullet no longer defers the
+  implemented governor, and the README margin table reports 128/129 instead
+  of 129/129.
+- Hardened the harness against two latent crashes: `_aggregate` no longer
+  KeyErrors when a run has zero baseline energy (`overhead_fraction` is only
+  emitted for positive baselines, so the metric now defaults to 0.0), and
+  `response_latency_ticks` returns `None` for a family with no fault onset
+  instead of comparing against `None`.
+- Full suite: 343 tests passed at review-fix commit time.
+
+## 2026-08-03 — protocol-v3 frozen final evaluation
+
+- Retired the inspected v2 test and stress partitions as current decision
+  inputs. Added a 360-family train / 120-family validation development suite and
+  a fresh 180-family final suite with role-specific split validation.
+- Added a strict policy that captures validation-only candidate selection, rule
+  calibration, model/rule comparison and ONNX parity. Final evaluation replays
+  candidate training, selection, ONNX parity and calibration from verified
+  development evidence before it evaluates final rows.
+- Final evidence is negative: temporal MLP macro-F1 `0.5754744477098027` versus
+  rule macro-F1 `0.642588422763726`; nominal false-alarm rate `38.5698%` versus
+  `0.5631%`; median detection latency 9 versus 10 simulator ticks. The frozen
+  preferred method remains `rule_baseline` and no AI advantage is claimed.
+- Documented that 8,000 scored windows are correlated observations within 180
+  final scenario families. No independent-window uncertainty, OOD robustness,
+  wall-clock performance, hardware or deployment claim is made.
+
+## 2026-08-01 — historical schema-v9 temporal experiment (superseded for final evidence)
 
 - Added deterministic airflow drift and controller-facing CO2 sensor noise,
   bias and drift. Frozen faults now hold latent readings while downstream

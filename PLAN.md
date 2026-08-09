@@ -19,7 +19,7 @@ isolated actuator degrades
 AI provides diagnosis and confidence. Deterministic safety logic retains
 control of every actuator command.
 
-## Status — Gates 0–2 accepted; fair `alex/ai-2` experiment implemented
+## Status — Gates 0–2 accepted; protocol-v3 experiment implemented
 
 Landed: the deterministic schema-v9 simulator with separated requested/delivered
 airflow and explicit residuals; five scenarios (nominal, healthy high-demand,
@@ -28,15 +28,22 @@ model-feature projection; the HTML visualiser; the leakage-safe labelled window
 corpus; and the streaming rule baseline with its evaluation harness (111/115
 windows on corpus v1, latencies 10/5/10 ticks).
 
-The experimental branch adds deterministic measurement noise, bias and drift;
-controller-facing imperfect CO2 sensing; an 840-family train/validation/IID
-test/OOD-stress sweep; validation-selected softmax and temporal-MLP candidates
-over `float32[10,24]`; validation-calibrated robust rules; stride-one causal
-latency; and FP32 ONNX export. The locked IID result does not demonstrate an AI
-advantage: temporal-MLP macro-F1 is 0.5765 versus 0.6410 for calibrated rules,
-with substantially more false alarms. The model's 9-tick median latency versus
-11 ticks for rules is below the fixed 20% latency-win threshold. Stress
-evidence also favours rules, so the rule remains preferred.
+Protocol v3 replaces the inspected v2 test/stress partitions as decision
+inputs. It uses 360 training and 120 validation scenario families to select
+between softmax and temporal-MLP candidates and calibrate a 216-point rule grid.
+It then builds a separate 180-family final suite. The frozen policy binds the
+selected detector, selection receipt, calibration receipt, validation
+comparison and ONNX parity. Final evaluation replays those development decisions
+and applies them to final rows without reselection.
+
+The final result does not demonstrate an AI advantage: temporal-MLP macro-F1 is
+0.5754744477098027 versus 0.642588422763726 for calibrated rules, and nominal
+false-alarm rate is 38.5698% versus 0.5631%. The MLP's 9-tick median detection
+latency versus 10 ticks for rules is only an 11.1% reduction, below the fixed
+20% latency condition. The rule baseline remains preferred. These are synthetic
+family-held-out results, not independent-window uncertainty, wall-clock
+performance, OOD robustness or Arm evidence; see
+[`docs/protocol-v3-acceptance.md`](docs/protocol-v3-acceptance.md).
 
 Gate 0 accepts the R2 semantic contract. Gate 1 adds graph-derived
 outbound/return loop pairing, the exact topology-bound `model_input_v1`
@@ -52,8 +59,11 @@ training and scored metrics. The three current families are contract fixtures,
 not a training corpus; the scenario sweep is the next prerequisite for model
 work.
 
-Not started: INT8 quantisation, the safety governor and redundant fan, Arm64
-benchmarks, and deployment reproducibility packaging.
+Not started: the redundant fan, INT8 quantisation, Arm64 benchmarks, and
+deployment reproducibility packaging. The bounded-response governor slice
+(no-loss parity on 129 development families, `docs/bounded-response.md`) is
+landed in development evidence; the remaining governor items below are future
+slices.
 
 ## Core objectives
 
@@ -132,6 +142,13 @@ benchmarks, and deployment reproducibility packaging.
   FP32 and rule comparison)
 
 ### 5. Safety governor
+
+Landed (development slice): deterministic causal governor
+(`src/aeolus/response.py`) with declared constants, bounded commands,
+structured per-tick rationale, and a 129-family response-evidence harness
+(`src/aeolus/response_evidence.py`, `scenarios/sweep-response.json`).
+
+Remaining slices:
 
 - Require persistent model confidence before intervening.
 - Select healthy redundant capacity using topology and current demand.

@@ -1,60 +1,58 @@
-# Canonical experiment evidence environment
+# Canonical evidence environment
 
 AEOLUS supports Python `>=3.10` as a library. That compatibility statement does
 not mean every interpreter and dependency resolution must emit byte-identical
-learned artifacts. The canonical evidence workflow is intentionally narrower:
+learned artifacts. The canonical protocol-v3 evidence workflow is intentionally
+narrower:
 
 - CPython 3.11;
 - the committed `uv.lock` without resolution changes;
-- a clean Git worktree at the recorded source commit;
-- new, empty output and artifact directories under ignored `out/`.
+- a clean Git worktree at the recorded source commit; and
+- new, empty output paths under ignored `out/`.
 
-Run a canonical experiment with a new run identifier:
+The current canonical procedure is the staged development-selection →
+final-evaluation path in [protocol v3 acceptance](protocol-v3-acceptance.md).
+It does not use the legacy one-command `sweep-v2` runner as final evidence.
 
-```bash
-uv sync --locked --python 3.11 --extra ml
-PYTHONPATH=src uv run --locked --python 3.11 --extra ml \
-  python -m aeolus.experiment \
-  scenarios/sweep-v2.json \
-  out/evidence-py311-<run-id> \
-  out/evidence-py311-<run-id>-artifacts
-```
+## Evidence boundaries
 
-The runner rejects non-empty output or artifact directories. It writes
-`experiment-receipt.json` beside the generated sweep/corpus evidence. The
-receipt binds the output to:
+The development command creates a detector JSON artifact, an ONNX artifact and
+a strict policy. The policy binds development-manifest, detector and contract
+metadata and records validation-only candidate selection, rule calibration,
+model/rule comparison and ONNX parity.
 
-- source commit and whether the source worktree was dirty;
-- SHA-256 of `uv.lock`;
-- Python implementation and version;
-- NumPy, ONNX and ONNX Runtime versions;
-- the actual ONNX IR version and imported opsets;
-- sweep/corpus hashes and SHA-256 values for all generated artifacts.
+The final command requires the expected SHA-256 for the policy, detector JSON,
+detector ONNX, development manifest and final manifest. It refuses to write to
+an existing report. Before evaluating final rows, it replays development
+candidate training/selection, ONNX parity and rule calibration, then verifies
+the saved validation comparison. A final report records the policy, detector
+JSON and detector ONNX digests alongside final metrics and the frozen policy
+outcome.
+
+This is deliberately stricter than a policy file plus its own checksum. A
+self-supplied hash proves only which bytes were supplied, not whether the bytes
+truthfully describe selection or calibration.
+
+## ONNX acceptance
+
+ONNX parity is checked against validation rows, and export is rejected when its
+maximum absolute probability error exceeds `1e-5`. The final evaluator repeats
+and enforces this parity check before it writes a report.
+
+Parity is exporter-equivalence evidence only. It is not a hardware benchmark,
+wall-clock inference-latency result, deployment-safety result or evidence that
+an ONNX runtime has been selected for an Arm device.
 
 ## Promotion policy
 
 Generated files under `out/` are candidates, not canonical repository evidence.
-Before replacing any tracked file under `artifacts/`:
-
-1. verify `source_worktree_dirty` is `false` in the candidate receipt;
-2. verify each receipt hash against the candidate artifact bytes;
-3. inspect metric differences and classify them as operational, numerical-only,
-   exporter/protobuf-only, or unexplained;
-4. copy the three reviewed artifacts and their receipt into `artifacts/` in a
-   dedicated evidence-only commit;
-5. record the command and receipt SHA-256 in the commit/review notes.
+Before promoting a generated receipt or artifact, record the source commit,
+clean-worktree state, lock-file hash, dependency/exporter versions, command,
+all artifact digests and reproduced final report. Keep any historical v2
+artifact clearly labelled as historical and non-comparable with protocol-v3
+final evidence.
 
 A same-environment byte match proves deterministic regeneration for that
-recorded environment. A mismatch across different Python or exporter versions
+recorded environment only. A mismatch across Python or exporter versions
 requires semantic comparison before any claim of equivalence. Do not edit ONNX
 IR metadata merely to imitate an older file hash.
-
-## ONNX acceptance
-
-The experiment measures Python-versus-ONNX raw-softmax-score error on the first
-512 scored rows of the current IID test partition (or all rows if fewer are
-available). An export is rejected when its maximum absolute error exceeds
-`1e-5`; the metrics artifact records both the observed error and acceptance
-bound, and the experiment receipt binds that metrics artifact by SHA-256. This
-is exporter parity evidence, not Arm hardware evidence or a deployment-safety
-claim.
