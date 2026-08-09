@@ -7,8 +7,10 @@ AEOLUS is not ready to submit against the Arm brief unchanged.
 
 The final temporal model losing to the rule baseline is a measured limitation,
 not a reason to reselect against the final suite. The more serious gaps are that
-the project still has no bounded simulated response, no INT8 artifact, no
-declared Arm target, and no measured Arm-specific optimization.
+the project still has no INT8 artifact, no declared Arm target, and no measured
+Arm-specific optimization. A bounded simulated response now exists as
+development-stage, evidence-backed design on `yarofix2` (see
+`docs/bounded-response.md`), but it is not yet final-suite evidence.
 
 This assessment was made against:
 
@@ -31,7 +33,7 @@ enough.
 | Make the project easy to run | Documented staged, hash-bound reproduction | Strong |
 | Compare honestly with a baseline | Softmax, temporal MLP and calibrated rules; development-only selection and frozen final evaluation | Strong |
 | AI identifies faults | MLP loses overall and produces too many false alarms on final families | Weak |
-| Diagnosis leads to simulated action | Governor and redundant response remain absent | Missing |
+| Diagnosis leads to simulated action | Bounded governor with parity evidence on 129 development families; redundant fan absent | Partial |
 | Perform a deliberate Arm optimization | Only an FP32 ONNX baseline exists | Missing |
 | Match runtime to a declared Arm target | No target-device benchmark exists | Missing |
 | Compare FP32 and INT8 | No INT8 artifact or quality/performance comparison exists | Missing |
@@ -152,14 +154,19 @@ not the inspected test partition.
 
 ### 4. Implement the bounded response
 
-Add deterministic response logic that:
-
+Landed in development evidence (`docs/bounded-response.md`): a deterministic,
+causal governor that emits bounded commands with structured rationale. It
 - acts only on sufficiently persistent, valid evidence;
-- keeps commands within declared limits;
-- hands control back when inference or telemetry is invalid;
-- records the reason for every decision;
-- compares identical fault runs with response enabled and disabled;
-- reports airflow recovery and CO2 outcome changes.
+- keeps commands within declared limits and never under-drives a hot zone;
+- records the reason for every command;
+- is compared on identical fault runs with response enabled and disabled;
+- reports time above ceiling, response latency, energy and invariant
+  violations on a 129-family response sweep.
+
+Still to demonstrate as final-suite evidence: a redundant-fan model, and a
+fault run where healthy capacity visibly recovers airflow (the governor's
+parity result shows the single-loop failure is delivery-bound, so the recovery
+claim requires the redundancy model).
 
 ### 5. Complete the Arm optimization evidence
 
