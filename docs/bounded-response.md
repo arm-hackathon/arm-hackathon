@@ -1,130 +1,87 @@
-# Bounded recovery response
+# Bounded response and recovery boundary
 
 ## Status
 
-Development-stage, evidence-backed design on `yarofix2`. The
-governor is a deterministic, causal, observable-only decision maker that emits
-bounded per-zone actuator commands with structured rationale. It runs in
-parallel with — never instead of — the deterministic baseline controller.
+This document separates two development-stage mechanisms:
 
-## Problem
+1. the historical bounded-response governor on `yarofix2`; and
+2. the schema-v10 reserve recovery authority evaluated by C4.
 
-The frozen v3 evaluation documents detection only. PROBLEM.md identifies a
-simulation demonstration of *fault detection and bounded response* as the
-remaining gap. The conservation model requires that only the physics engine
-changes state and that the controller emits bounded commands with action
-bounds and rationale.
+Neither is an accepted physical recovery controller. C4 closed as **Outcome B**:
+its reproducible development run failed the transient physical-zero handback
+acknowledgement gate and the physical-reserve-delivery benefit gate. See
+[`recovery-protocol-acceptance.md`](recovery-protocol-acceptance.md).
 
-## Design constraints
+## Historical bounded-response governor
 
-1. **Causality** — the governor decides commands for the next tick from
-   completed-tick observations only. It never sees fault effectiveness,
-   health, seeds or schedules.
-2. **Observable-only input** — it consumes exactly the `model_input_v1`
-   `float32[24]` vector per completed tick; the same features the detector
-   uses.
-3. **Bounds** — every command stays in `0.0..1.0`; per-zone commands move by
-   at most `max_command_delta` per tick.
-4. **Determinism** — identical scenario plus identical settings yields
-   identical commands and rationale.
-5. **Auditability** — every threshold is a declared constant in
-   `ResponseSettings`; every tick records a per-zone rationale object, never
-   free text.
+The earlier `BoundedRecoveryGovernor` is a deterministic, causal,
+observable-only development controller. It emits bounded primary per-zone
+commands with structured reasons and runs alongside the baseline controller; it
+does not directly mutate plant state.
 
-## Policy
+Its historical response-evidence harness is retained as development context. It
+is not C4 recovery evidence and does not establish independent reserve delivery,
+physical handback, a qualified model, or a final result.
 
-1. **Proportional demand** — each zone starts from the same bounded
-   proportional command the baseline controller would issue for its latest
-   sensor reading.
-2. **Frozen-sensor hold** — a zone whose reading is flat across its window is
-   held at its last good command instead of chasing a stale reading.
-3. **Degraded-loop spare-capacity release** — a loop with a severe, isolated,
-   sustained delivery residual is treated as degraded. Its commanded demand is
-   released back to shared capacity only while that zone still has spare
-   comfort (reading at or below the comfort threshold). A zone that actually
-   needs air keeps its full proportional command, so the governor never
-   under-drives a hot zone.
-4. **Rate and energy bounds** — commands move by at most `max_command_delta`
-   per tick and remain in `0.0..1.0`.
+The policy constraints remain useful as source-level boundaries:
 
-Rationale reasons: `nominal`, `frozen_hold`, `degraded_spare_release`,
-`bounded_rate`.
+1. decisions use completed-tick observable data only;
+2. hidden fault state, health, schedules, seeds, and internal noise do not enter
+   the decision input;
+3. commands are finite, bounded, and rate-limited; and
+4. the physics engine is the only component that changes plant state.
 
-## Constants (defaults)
+## C4 deterministic reserve authority
 
-| Constant | Value | Meaning |
-|---|---|---|
-| `window_ticks` | 10 | causal observation window |
-| `max_command_delta` | 0.1 | per-tick command movement bound |
-| `degraded_residual_threshold` | 0.4 | severe residual-to-request ratio |
-| `degradation_isolation_margin` | 0.2 | required margin over other loops |
-| `degradation_persistence_ticks` | 3 | sustained tail before acting |
-| `min_requested_fraction` | 0.05 | ratio denominator floor vs loop max |
-| `frozen_normalized_range` | 0.02 | flatness detection scale |
-| `frozen_persistence_ticks` | 10 | flat window before holding |
+Schema-v10 recovery scenarios add a disjoint primary/reserve topology. The
+`DeterministicRecoverySupervisor` is the only component that can own the
+reserve command channel in `PROTECT` or `HANDBACK`; `NOMINAL` and `DEGRADED`
+use an explicit reserve-off owner.
 
-## Evidence-driven iteration
+The authority checks identity, topology, selector and command digests, sequence,
+finite observations, bounded commands, persistence, recurrence, and reserve
+delivery failure. Its state transitions are recorded separately from the legacy
+plant projection in strict versioned recovery traces.
 
-The policy was tuned against measured outcome, not intuition. Every policy
-below was evaluated over the same `scenarios/sweep-response.json` corpus
-(129 families: blocked, gradual degradation and frozen sensors across two
-operating profiles):
+The frozen settings include a 36-tick maximum handback duration. Completion
+requires physical command, actuator position, and delivered-flow acknowledgement
+rather than a command-zero assertion alone.
 
-| Policy | time-above parity | healthy-reference outcome |
-|---|---|---|
-| v1 boost + priority cut + arbitration | worse on 51/129 (mean +2.5 ticks) | 60/129 overruns |
-| v2 unconditional throttle | worse on 64/129 (mean +8.8 ticks) | 60/129 overruns |
-| v3 spare-capacity release + parity baseline | 117/129 exact, 128/129 within margin (1 at +2 ticks) | 0 beyond margin |
+## C4 evidence boundary
 
-Measured findings that shaped the final policy:
+The C4 runner evaluates each development family under four exact arms:
 
-- Boosting a degraded loop wastes shared capacity the loop cannot turn into
-  airflow; the hub then starves healthy loops (cabin_a time-above rose from 8
-  to 19 ticks in one blocked family).
-- Throttling a degraded loop that actually needs air under-delivers it; only
-  a loop with spare comfort can be throttled without loss.
-- The baseline controller is same-tick (it reads the post-ventilation
-  concentration of the tick it commands). A causal governor is therefore one
-  tick behind by construction. The evidence reports this explicitly as a
-  causality margin instead of pretending it away.
-
-## Evidence
-
-Reproduce with:
-
-```bash
-PYTHONPATH=src uv run python -m aeolus.response_evidence \
-  scenarios/sweep-response.json out/response-evidence
+```text
+reference_reserve_off
+reference_governed
+fault_reserve_off
+fault_governed
 ```
 
-The receipt (`out/response-evidence/response-evidence.json`) binds the result to
-more than the canonical sweep and family-manifest identities:
+It records paired safety and benefit predicates. A recovery claim requires the
+mechanism-to-outcome chain to hold: reserve authority command, positive observed
+reserve delivery where required, and predeclared target-zone benefit against the
+fault reserve-off arm.
 
-- `environment` follows the experiment receipt convention and records the
-  Python/platform versions, `uv.lock` hash, source commit and the actual
-  `source_worktree_dirty` Git-status flag.
-- `source.files_sha256` records exact bytes for every repository `src/aeolus`
-  module, with a deterministic `source.manifest_sha256` over that map.
-- `config` records exact `pyproject.toml`, `uv.lock` and base-scenario bytes,
-  plus canonical hashes of the fixed run and response settings.
-- `sweep` records the exact sweep-spec bytes, its canonical JSON hash and
-  exact hashes for generated scenario files and their deterministic manifest.
+C4 did not satisfy that chain. Its positive aggregate improvement submetrics do
+not override the failed mandatory physical-delivery predicate, and its passing
+safety subgates do not override the failed transient handback acknowledgement.
 
-Only repository-relative logical names occur in these manifests. Output
-locations are not included in receipt values or canonical hashes, so moving
-an output directory cannot change the receipt. A dirty worktree is recorded as
-`true`; it is never reported as clean merely because the generated metrics are
-reproducible. The tracked receipt in `artifacts/response-evidence.json` is the
-frozen historical artifact and is regenerated separately when its provenance
-is intentionally refreshed.
+## Reproduction boundary
 
-Metrics per family and controller: time above the `0.30` crew-cabin ceiling,
-max excursion, response latency from onset to first non-nominal action on the
-affected loop, cumulative actuator energy, and invariant violations (delivered
-airflow above shared capacity).
+The C4 corpus command is intentionally strict and writes only to a new ignored
+output directory:
+
+```bash
+uv run --locked --python 3.11 --extra dev python -m aeolus.recovery_evidence \
+  scenarios/sweep-recovery-development.json /absolute/new-output-directory
+```
+
+It is a historical reproduction command, not permission to tune, rerun a final
+suite, train an adviser, or treat deterministic output as acceptance.
 
 ## Scope
 
-This is simulation evidence on declared synthetic operating profiles. It is
-not hardware, INT8, wall-clock or deployment evidence. The governor never
-changes plant state directly and never overrides the physics invariant.
+All evidence here is abstract simulation evidence. It makes no claim about
+physical airflow hardware, real CO₂ safety limits, hardware-in-the-loop tests,
+Arm performance, INT8 quantisation, deployment, or autonomous control.

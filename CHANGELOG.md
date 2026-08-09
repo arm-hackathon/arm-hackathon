@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-08-09 — recovery-development Outcome B / 0.2.0
+
+- Added the schema-v10 independent-reserve recovery boundary: disjoint primary
+  and reserve topology, a deterministic reserve authority, versioned recovery
+  traces, and a write-once four-arm development evidence runner.
+- Ran C4 from source commit
+  `74154956d64309f067ada7593e2ef8786d140b4e`: 756 development families and
+  3,024 traces, bound by evidence self-hash
+  `1cbb9d428824f57c500b4a1ac3859b4ea6ef0a0dd4e70012b2e6c35d230a1730`.
+- Preserved the negative result. The safety gate failed on transient physical-zero
+  handback acknowledgement; the benefit gate failed on the required
+  physical-reserve-delivery criterion. Passing submetrics do not override either
+  required failure.
+- Verified deterministic duplicate and clean-checkout reproduction: 3,801 files
+  and all 3,024 traces were byte-identical. Eleven targeted stress/falsification
+  tests passed.
+- Closed C5. No new recovery adviser corpus, training, tuning, ONNX export,
+  integration, or final-suite operation occurred.
+- Reconciled README, plan, problem assessment, telemetry/simulation contracts,
+  bounded-response notes, and the dedicated recovery acceptance record to the
+  negative development outcome.
+- Bumped package metadata and `aeolus.__version__` to `0.2.0`. This is a local
+  closeout version; it is not a published release or an Arm/hardware claim.
+
+## Historical entries
+
+The entries below preserve their contemporaneous records. They are not C4/C6
+inputs, do not qualify a recovery adviser, and must not be read as a current
+final-suite, hardware, deployment, or AI-advantage claim.
+
 ## 2026-08-03 — bounded recovery response (development evidence)
 
 - Added a pure override hook to `step_habitat` (`override_commands`) that lets

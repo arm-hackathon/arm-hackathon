@@ -17,20 +17,23 @@ All values are abstract units:
   rate;
 - actuator power — an abstract reporting value, not an electrical measurement.
 
-## Schema v9
+## Scenario schemas v9 and v10
 
-A scenario is closed-schema JSON with exactly these top-level keys:
+A scenario is closed-schema JSON. Version `9` describes the standard plant;
+version `10` adds the independently metered reserve topology used only by the
+recovery runner.
 
 | Key | Meaning |
 |---|---|
-| `version` | Must be `9`. |
+| `version` | Must be `9` for a standard scenario or `10` for a recovery scenario. |
 | `zones` | Zone specifications. Exactly one must be `air_processing`. |
-| `connections` | Directed paths in the hub layout. |
+| `connections` | Primary directed paths in the hub layout. |
+| `reserve_connections` | Required only in v10: disjoint reserve directed paths. |
 | `control` | CO₂ thresholds and actuator command bounds. |
 | `actuator` | Full-stroke duration and abstract power values. |
 | `simulation` | Deterministic source-noise seed. |
 | `telemetry` | Deterministic measurement-noise and bias fractions. |
-| `air_system` | Shared delivery capacity and scrubber removal fraction. |
+| `air_system` | Shared primary capacity, scrubber fraction, and v10 reserve capacity. |
 | `fault_profiles` | Explicit list of deterministic fault profiles; `[]` means healthy. |
 
 Every zone contains `id`, `label`, `preset`,
@@ -55,15 +58,28 @@ non-processing zone ── outbound meter ──> processing bay
 non-processing zone <── paired return ─── processing bay
 ```
 
-Each non-processing zone requires exactly one path in each direction. No
-self-loops, bypass paths or multiple directed paths between the same zone pair
+Each non-processing zone requires exactly one primary path in each direction.
+No self-loops, bypass paths or multiple directed paths between the same zone pair
 are accepted.
+
+### Schema-v10 recovery extension
+
+A v10 scenario additionally requires `reserve_connections` with one disjoint
+outbound/return pair per non-processing zone. Every reserve leg has a positive
+`max_airflow`, and `air_system.reserve_airflow_capacity` is separately required
+to be positive; primary and reserve connection IDs must not overlap. Reserve
+commands default to zero and are consumed only by `run_recovery_scenario()`
+through the shared simulation step. A reserve topology is a simulated mechanism,
+not evidence that it delivered benefit or satisfies the C4 safety gate.
 
 ## Fault profiles
 
-`fault_profiles` is required even for a healthy scenario (`[]`). Three
-deterministic profile types are accepted. Profile type and fields are
-allowlisted per type; unknown fields are rejected.
+`fault_profiles` is required even for a healthy scenario (`[]`). Schema v9
+accepts three deterministic profile types. Schema v10 additionally accepts the
+transient connection profiles `transient_blocked_path` and
+`transient_gradual_primary_fan_degradation` used to test reserve handback. The
+presence of a recovery fault profile does not itself authorise a recovery claim.
+Profile type and fields are allowlisted per type; unknown fields are rejected.
 
 ### `gradual_primary_fan_degradation`
 
@@ -201,6 +217,24 @@ Time advances in fixed one-second ticks.
 CO₂ is conserved: generated mass is split only between airborne zone mass and
 the processing bay's captured store.
 
+## Recovery run and authority boundary
+
+`run_recovery_scenario()` accepts only validated v10 input. It warms the plant,
+then runs 180 measured ticks with an explicit reserve-off or deterministic
+supervisor decision for each next tick. The supervisor receives completed-tick
+observable data and cannot apply a decision earlier than the following tick.
+
+Recovery trace rows preserve the legacy plant projection and add separate
+`reserve` and `authority` objects. The authority reports a state (`NOMINAL`,
+`DEGRADED`, `PROTECT`, or `HANDBACK`), a reserve-command owner, a causal
+observation tick, and matching command digests. The strict trace validator
+rejects invalid ownership, topology, timing, bounds, or acknowledgement fields.
+
+This implementation boundary is not the C4 outcome. C4 demonstrated a
+reproducible negative result: transient physical-zero acknowledgement and
+physical reserve delivery for benefit remain required failed gates. See
+`docs/recovery-protocol-acceptance.md`.
+
 ## Standard run and determinism
 
 `STANDARD_RUN` has 120 measured ticks and a 60-tick unrecorded warm-up. The
@@ -223,7 +257,7 @@ delivered_airflow
 airflow_residual
 ```
 
-System telemetry has exactly:
+Standard plant system telemetry has exactly:
 
 ```text
 shared_airflow_capacity
@@ -231,6 +265,9 @@ total_requested_airflow
 total_delivered_airflow
 capacity_scale
 ```
+
+Schema-v10 recovery telemetry is a separate strict envelope documented in
+`docs/telemetry-contract.md`; it is not an implicit widening of standard rows.
 
 Trace writers validate the observable allowlist before serialising a row. The
 visualiser independently rejects undeclared connection telemetry. The visualiser
@@ -258,38 +295,26 @@ before it writes a report.
 ## Local commands
 
 ```bash
-uv run --extra dev python -m pytest
+uv sync --locked --python 3.11 --extra dev
+uv run --locked --python 3.11 --extra dev python -m pytest -q
+uv run --locked --python 3.11 --extra dev ruff check .
 mkdir -p out
-uv run python -m aeolus scenarios/standard_habitat.json out/standard.jsonl
-uv run python -m aeolus.visualise out/standard.jsonl out/standard.html
-uv run python -m aeolus.corpus out/corpus \
-  scenarios/standard_habitat.json scenarios/high_demand_healthy.json \
-  scenarios/primary_fan_degradation.json scenarios/blocked_path.json \
-  scenarios/frozen_sensor.json
-uv run python -m aeolus.evaluate out/corpus/corpus.jsonl \
-  scenarios/standard_habitat.json scenarios/high_demand_healthy.json \
-  scenarios/primary_fan_degradation.json scenarios/blocked_path.json \
-  scenarios/frozen_sensor.json
-uv run python -m aeolus.corpus --v2 out/corpus-v2 scenarios/families.json
-uv run python -m aeolus.evaluate --v2 out/corpus-v2/corpus.jsonl \
-  scenarios/families.json \
-  --expected-family-manifest-sha256 828880e3257036ff2897a6cc2668c25b87734f8c57004ed36e62b2b6d66f6541 \
-  --split test
-# Historical sweep-v2 commands are intentionally omitted here. For the current
-# development-selection → final-evaluation protocol, use:
-# docs/protocol-v3-acceptance.md
-uv run python -m aeolus.detector predict \
-  artifacts/aeolus_fault_detector.json scenarios/standard_habitat.json
+uv run --locked --python 3.11 python -m aeolus \
+  scenarios/standard_habitat.json out/standard.jsonl
+uv run --locked --python 3.11 python -m aeolus.visualise \
+  out/standard.jsonl out/standard.html
 ```
 
-`aeolus.corpus` writes a labelled window corpus (`corpus.jsonl`) and a
-`manifest.json` into the given output directory. `aeolus.evaluate` grades the
-rule baseline against that corpus and prints accuracy, confusion and
-detection-latency metrics as JSON. See
-`docs/telemetry-contract.md` for the corpus leakage boundary.
+For an installed-package deterministic recovery replay, use the explicit
+schema-v10 `scenarios/recovery_habitat.json` input and the API command in
+`docs/recovery-protocol-acceptance.md`. The full C4 development corpus command
+is retained there as historical reproduction only. It must not be used to tune
+failed gates, train an adviser, export a model, or reopen final-suite work.
 
-## Deliberately absent
+## Not established or deliberately absent
 
-AEOLUS has experimental softmax and temporal-MLP training plus FP32 ONNX export. It has no
-INT8 quantisation, governor, redundant fan, recovery controller, Arm benchmark,
-dashboard, API, cloud service or hardware connection.
+AEOLUS includes deterministic simulation, recovery source contracts, and
+historical model/FP32 ONNX code. C4 does **not** establish an accepted recovery
+controller, physical reserve benefit, a qualified adviser, AI advantage, a final
+result, INT8 quantisation, Arm benchmark, dashboard, API, cloud service,
+hardware connection, deployment, or autonomous physical control.

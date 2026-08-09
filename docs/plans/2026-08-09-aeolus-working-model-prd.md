@@ -5,7 +5,7 @@
 **Deadline:** 2026-08-09 09:00 BST  
 **Execution stop:** 2026-08-09 08:30 BST  
 **Report window:** 08:30–09:00 BST  
-**Last updated:** 2026-08-09 02:01 BST
+**Last updated:** 2026-08-09 02:40 BST
 **Repository:** `arm-hackathon/arm-hackathon`  
 **Working branch:** `ben/independent-recovery`  
 **Repository root:** the active `ben/independent-recovery` working tree
@@ -461,11 +461,11 @@ Expected bounded checkpoints:
 |---|---|---|---|
 | C0 | This PRD only | no code review | complete — `c5c53cb571643254f8a7300d518a4e1ae20901a1` |
 | C1 | Authority core, runner, trace enum, focused tests | one immutable compliance/quality batch | checkpoint `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; base `c5c53cb571643254f8a7300d518a4e1ae20901a1`; exact detached checkout reverified; no SHA-bound reviewer verdict returned by the 01:31 cutoff, so this checkpoint is unreviewed |
-| C2 | Findings-only correction for C1 | one fresh delta review if C1 had blockers | not started |
+| C2 | Findings-only correction for C1 | one fresh delta review if C1 had blockers | not applicable — no actual C1 finding exists; absence of a reviewer verdict is not a finding |
 | C3 | Four inherited PR #18 fixes and regressions | one immutable review | checkpoint `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; base `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`; detached checkout reverified clean; no SHA-bound review verdict returned by the 01:58 cutoff, so this checkpoint is unreviewed |
-| C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review | staged C4 code patch `19870c21fcae46cd67029a362c9403497b747c001aec4a79f99425e4c206cd77`; all local gates green; ready for local checkpoint before canonical development evidence |
-| C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review | not started |
-| C6 | Version/docs/package closeout | final immutable review | not started |
+| C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review | checkpoint `74154956d64309f067ada7593e2ef8786d140b4e`; base `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; canonical/duplicate/clean-checkout evidence and stress matrix complete with frozen negative gates; exact detached review had no SHA-bound verdict by the single 02:40 cutoff, so C4 is unreviewed |
+| C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review | closed — C4 frozen safety and physical-delivery gates failed; no corpus/model/ONNX/integration run permitted |
+| C6 | Version/docs/package closeout | final immutable review | in progress — outcome-B documentation/version source checkpoint and locked source gates are ready; package receipts must be produced from its exact clean local SHA |
 
 Checkpoint names may be combined only if the files and acceptance boundary are inseparable. Every actual SHA replaces the placeholder in the execution ledger.
 
@@ -518,6 +518,12 @@ Append one row after each material step. Receipts must be actual outputs.
 | 01:58 | C3 immutable review outcome | unreviewed | REVIEW `88321f1d7bda00d215d81a535eaeafc9fa72b5c0` | no SHA-bound verdict returned in the 20-minute review window; detached checkout still clean | No approval inferred and no second C3 review batch dispatched. |
 | 01:39–01:57 | C4 four-arm runner and falsification contracts | in progress | dirty C4 slice on `88321f1…` | arm-name RED/GREEN `3 passed`; final-seed RED/GREEN `1 passed`; recovery evidence/gate/duplicate/saturation/noise/denominator tests `22 passed in 6.10s`; cross-suite pre-freeze `454 passed in 62.74s`; targeted Ruff/compile/diff clean | Four-arm development runner is implemented; freeze exact C4 source before canonical evidence. |
 | 02:01 | C4 full pre-freeze verification | complete | staged C4 code patch `19870c21fcae46cd67029a362c9403497b747c001aec4a79f99425e4c206cd77` | locked full suite `454 passed in 63.59s`; Ruff/compile/diff and `uv lock --check` passed | Commit exact C4 source, then run canonical development evidence from the clean SHA. |
+| 02:02 | C4 local checkpoint | complete | BASE `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; SOURCE `74154956d64309f067ada7593e2ef8786d140b4e` | clean source status before canonical execution; Ben author/committer | Canonical evidence must run only from this SHA. |
+| 02:02–02:07 | C4 canonical development run A | negative | SOURCE `74154956d64309f067ada7593e2ef8786d140b4e`; `out/overnight/recovery-development-c4-a` | 756 families/3,024 traces; receipt SHA `1cbb9d428824f57c500b4a1ac3859b4ea6ef0a0dd4e70012b2e6c35d230a1730` self-hash verified; source clean | safety false: transient acknowledgement; benefit false: physical-delivery gate. Model lane closes without tuning. |
+| 02:08 | C4 stress/falsification matrix | complete | SOURCE `74154956d64309f067ada7593e2ef8786d140b4e` | 11 targeted stress tests passed in 3.42s: delivery failure, recurrence, dropout, ambiguity, malformed authority, saturation, high noise/drift, denominator zero | Tested fail-closed paths are sound; does not repair canonical transient outcome failure. |
+| 02:08–02:20 | C4 duplicate and clean-checkout reproduction | complete | SOURCE `74154956d64309f067ada7593e2ef8786d140b4e` | A/B comparison `aadbcd25faffe70a30311187e999c2d8c16c5a61d68a8e8df34606ea6f653343`: 3,801 files and 3,024 traces identical; clean-checkout comparison `2264c85fc85dd63ee99f853523af0d2dec3c67b861f67e61db05d7c9cb0ef733`: same evidence SHA/files, both source-clean | Deterministic reproduction confirmed; retain negative gate outcome. |
+| 02:22–02:40 | C4 immutable review window | unreviewed | BASE `88321f1d7bda00d215d81a535eaeafc9fa72b5c0`; REVIEW `74154956d64309f067ada7593e2ef8786d140b4e` | detached review worktree was clean at REVIEW SHA; no returned verdict echoed REVIEW SHA by the single bounded cutoff | No approval inferred; no second C4 review batch will be dispatched, and any late response is stale. |
+| 02:28–02:37 | C6 source reconciliation and locked verification | complete | dirty C6 documentation/version source on `74154956…` | `uv lock --offline` refreshed `aeolus` `0.1.0 → 0.2.0`; docs link/fact checks passed; locked full suite `454 passed in 64.65s`; Ruff, compileall, `git diff --check`, and `uv lock --check` passed | Commit C6 locally, then build and smoke-test only from the exact clean C6 SHA. |
 
 ## 16. Morning report contract
 
@@ -550,8 +556,8 @@ The report must state, in this order:
 - [x] Recovery topology and independent reserve plant implemented locally
 - [x] Versioned recovery trace boundary implemented locally
 - [x] Authority/runner slice checkpointed at `b4c6ddfe79c24b591f18497b9d9ba1b35298396d`
-- [ ] Authority/runner immutable review passed
-- [ ] Review blockers fixed and reverified
+- [x] Authority/runner bounded review window completed; no SHA-bound verdict, therefore unreviewed
+- [x] C2 not applicable — no actual C1 finding exists to correct or re-review
 
 ### PR #18
 
@@ -565,30 +571,28 @@ The report must state, in this order:
 
 - [x] Four-arm runner implemented
 - [x] Metrics have explicit denominator status
-- [ ] Canonical development run complete
-- [ ] Duplicate reproduction byte-identical
-- [ ] Frozen safety gates pass
-- [ ] Frozen benefit gates pass or negative result recorded
-- [ ] Stress/falsification complete
+- [x] Canonical development run complete (756 families / 3,024 traces)
+- [x] Duplicate reproduction byte-identical (3,801 files / 3,024 traces)
+- [x] Frozen safety gates evaluated; negative result recorded (transient physical-zero acknowledgement)
+- [x] Frozen benefit gates evaluated; negative result recorded (physical reserve delivery)
+- [x] Stress/falsification complete (11 targeted tests)
+- [x] C4 bounded immutable review window completed; no SHA-bound verdict, therefore unreviewed
 
-### Adviser
+### Adviser — C5 closed
 
-- [ ] Deterministic prerequisites pass
-- [ ] Leakage-safe recovery development corpus built
-- [ ] Bounded candidates trained
-- [ ] Family-held-out validation complete
-- [ ] FP32 ONNX exported
-- [ ] ONNX parity passed
-- [ ] Adviser integrated without command ownership, or negative result frozen
+- [x] Deterministic prerequisites evaluated and required gates failed
+- [x] Negative result frozen; adviser lane closed before corpus/training
+- [x] No recovery corpus, model, ONNX, tuning, or integration artifact produced
+- [x] No final-suite input inspected or evaluated
 
 ### Release
 
-- [ ] Version `0.2.0`
-- [ ] Documentation reconciled
-- [ ] Full suite green
-- [ ] Ruff clean
-- [ ] Compile and diff checks clean
-- [ ] Wheel and sdist built
-- [ ] Clean wheel install and replay passed
-- [ ] Artifact hashes recorded
-- [ ] No push, merge, deploy, cloud, or final-suite action
+- [x] Version `0.2.0`
+- [x] Documentation reconciled to Outcome B
+- [x] Locked full suite green (`454 passed`)
+- [x] Ruff clean
+- [x] Compile and diff checks clean
+- [ ] Wheel and sdist built from exact clean C6 SHA
+- [ ] Clean wheel install and deterministic recovery replay passed
+- [ ] Exact artifact hashes recorded in ignored closeout receipt
+- [x] No push, merge, deploy, cloud, or final-suite action
