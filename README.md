@@ -1,228 +1,129 @@
-# Project AEOLUS — `alex/ai-2` experimental branch
+# AEOLUS
 
-> **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
-> **U**ser-defined **S**cenarios
->
-> Deterministic habitat simulation, realistically imperfect synthetic
-> telemetry, and family-held-out fault prediction.
+**A**irflow and **E**nvironmental **O**bservation **L**aboratory for
+**U**ser-defined **S**cenarios
 
-> [!IMPORTANT]
-> `alex/ai-2` branches from `main` to make the simulation more complex and test
-> prediction models. It preserves AEOLUS contracts and selectively adapts useful
-> ideas from legacy `alex/ai`; it does not merge that branch wholesale.
+Version `0.2.0` is a local recovery-development closeout, not a published or
+hardware-qualified release.
 
-AEOLUS is a local research simulation in abstract CO2 and airflow units. It
-does not model real spacecraft equipment, life-support limits, or a general
-fluid system. It must not control real environmental or safety-critical
-equipment.
+AEOLUS is a deterministic habitat simulation in abstract CO₂ and airflow units.
+It is not a spacecraft, life-support, building-control, or safety-critical
+system, and it must not control physical equipment.
 
-## Implemented experiment
+## Current status: Outcome B — reproducible negative development result
 
-The branch retains deterministic replay, explicit fault profiles, the
-standalone visualiser, corpus-v2 integrity checks, topology hashes, and the
-frozen `model_input_v1 float32[24]` contract from `main`.
+The C4 recovery-development gate was run from immutable source commit
+`74154956d64309f067ada7593e2ef8786d140b4e` on branch
+`ben/independent-recovery`.
 
-Protocol v3 adds a strict development-to-final decision path:
+- The development sweep generated **756** independent scenario families and
+  **3,024** four-arm recovery traces.
+- The canonical receipt self-hash is
+  `1cbb9d428824f57c500b4a1ac3859b4ea6ef0a0dd4e70012b2e6c35d230a1730`.
+- A duplicate run compared 3,801 files and all 3,024 traces byte-for-byte;
+  a clean-checkout reproduction agreed with the same evidence identity.
+- Eleven targeted stress/falsification tests passed. They exercise delivery
+  failure, recurrence, observation dropout, ambiguity, malformed authority,
+  saturation, high noise/drift, and zero-denominator paths.
+- The recovery safety gate is **false** because transient scenarios did not
+  establish physical-zero acknowledgement inside the frozen handback bound.
+- The benefit gate is **false** because the physical-reserve-delivery criterion
+  failed for eligible, defined validation families. Other aggregate submetrics
+  do not override that required criterion.
 
-- closed-schema v9 measurement noise, bias and drift, including controller-facing
-  CO2 readout effects;
-- 360 training and 120 validation scenario families used for every learned
-  candidate choice and rule-grid calibration;
-- a separately generated 180-family final suite, never used for selection;
-- softmax and compact `temporal_summary_v1` MLP candidates, a 216-point
-  validation-only rule calibration, strict JSON loading and FP32 ONNX parity;
-- a hash-bound policy whose candidate receipt, calibration receipt, validation
-  comparison and outcome are replayed before final evaluation; and
-- a final report that cannot overwrite an earlier report or reselect a method.
+The gate is therefore a completed negative result. The deterministic recovery
+implementation is not accepted as demonstrated recovery, and C5 is closed:
+no new adviser corpus, training, tuning, ONNX export, integration, or final-suite
+operation is authorised by this result.
 
-Both learned candidates consume exact `float32[10,24]` corpus-v2 windows. The
-selected MLP summarizes last value, mean, population standard deviation, slope
-and maximum absolute first difference for 24 channels and three safe
-residual/request ratios, then applies a `135 → 16 ReLU → 4 softmax` network.
+See [`docs/recovery-protocol-acceptance.md`](docs/recovery-protocol-acceptance.md)
+for the frozen contract, receipts, and exact scope boundary.
 
-Predictions contain confidence and probabilities for these exact classes:
+## Implemented simulation boundary
 
-```text
-nominal
-gradual_primary_fan_degradation
-blocked_path
-frozen_sensor
-```
+The repository currently provides:
 
-Fault truth, schedules, hidden effectiveness, connection health, seeds and
-measurement state never enter telemetry or model features.
+- deterministic, seeded JSONL replay of a validated abstract habitat;
+- schema-v9 standard scenarios and schema-v10 recovery scenarios;
+- a topology-bound `model_input_v1 float32[24]` projection that excludes fault
+  truth, schedules, health, seeds, and simulator-only state;
+- a v10 simulated primary/reserve topology with one paired reserve path per
+  non-processing zone;
+- a deterministic authority state machine (`NOMINAL`, `DEGRADED`, `PROTECT`,
+  `HANDBACK`) that owns the reserve command channel only while active;
+- strict, write-once recovery traces that retain the legacy plant projection
+  and add separate reserve and authority telemetry; and
+- a four-arm development evidence runner:
+  `reference_reserve_off`, `reference_governed`, `fault_reserve_off`, and
+  `fault_governed`.
 
-## Current measured result
+These are software and simulation contracts. They are not evidence of physical
+recovery, a qualified model, AI advantage, hardware performance, deployment
+readiness, or Arm optimisation.
 
-The frozen v3 final result is negative: the calibrated rule baseline remains
-preferred over the validation-selected temporal MLP.
+## Historical model work
 
-| Final-suite evidence | Temporal MLP | Calibrated rules |
-|---|---:|---:|
-| Macro-F1 | 0.5754744477098027 | 0.642588422763726 |
-| Nominal false-alarm rate | 38.5698% | 0.5631% |
-| Overall median detection latency | 9 ticks | 10 ticks |
-| Scored windows | 8,000 | 8,000 |
+The repository retains historical protocol-v3 model and FP32 ONNX code and its
+archived documentation. It is not the basis of this recovery closeout. No
+final-suite data was run, inspected, or used for C4/C6 decisions, and no
+historical model is qualified to control the reserve path.
 
-The MLP's median detection latency is 11.1% lower, below the fixed 20%
-latency condition, while macro-F1 is lower and nominal false alarms are much
-higher. `ai_advantage_demonstrated` is therefore `false` and
-`rule_baseline` remains preferred. This is a negative result, not a tuned AI
-claim.
-
-The 8,000 windows are correlated, stride-one observations from **180** held-out
-scenario families. The family—not a window—is the independent replay unit. No
-confidence interval, independent-window, alert-burden, wall-clock latency or
-deployment claim follows from this result. Detection latency means simulator
-ticks from observable onset to first correct causal label.
-
-Protocol v3's final suite is fresh but uses the declared synthetic operating
-profiles; it is not OOD stress, hardware-in-the-loop or physical evidence. No
-INT8 artifact, Arm benchmark, production controller or on-hardware autonomous
-actuator command is implemented or claimed; the simulated bounded recovery
-governor below is development evidence, not a production control result. See
-the full [protocol v3 acceptance record](docs/protocol-v3-acceptance.md).
-
-## Bounded recovery response
-
-`yarofix2` adds the deterministic _bounded_ decision layer the
-Arm brief asks for. The `BoundedRecoveryGovernor` is a causal, observable-only
-controller: it consumes the same exact `model_input_v1 float32[24]` windows
-the detector sees, never hidden fault state, and emits bounded per-zone
-commands with structured rationale (`nominal`, `frozen_hold`,
-`degraded_spare_release`, `bounded_rate`). Every threshold is a declared
-constant in `ResponseSettings`.
-
-The baseline controller is same-tick by design, so the causal governor is one
-tick behind by construction. Response evidence states this as a one-tick
-causality margin rather than hiding it:
-
-| 129-family response sweep | Result |
-|---|---:|
-| Fault families at exact baseline parity | 117/129 |
-| Fault families within the 1-tick causality margin | 128/129 (1 at +2 ticks) |
-| Healthy-reference families beyond margin | 0/129 |
-| Invariant violations (both controllers) | 0 |
-| Median energy overhead | 0.00% |
-
-Iteration was evidence-driven: boosting a degraded loop or throttling an
-under-loaded one both measured as _worse_ than baseline, so the final policy
-releases spare capacity only from a degraded loop whose zone is not under
-pressure. Full design, constants, iteration table and reproduction are in
-[docs/bounded-response.md](docs/bounded-response.md); the frozen hashed
-receipt is `artifacts/response-evidence.json`.
-
-Reproduce:
-
-```bash
-PYTHONPATH=src uv run python -m aeolus.response_evidence \
-  scenarios/sweep-response.json out/response-evidence
-```
-
-## Schema-v9 measurement semantics
-
-Every scenario requires exactly:
-
-```json
-"telemetry": {
-  "airflow_noise_fraction": 0.0,
-  "airflow_bias_fraction": 0.0,
-  "airflow_drift_fraction": 0.0,
-  "actuator_position_noise_fraction": 0.0,
-  "co2_sensor_noise_fraction": 0.0,
-  "co2_sensor_bias_fraction": 0.0,
-  "co2_sensor_drift_fraction": 0.0
-}
-```
-
-All values must be finite fractions in `0.0..1.0`; missing, unknown and v8
-input fails closed. Hand-written scenarios use zero values, preserving their
-inherited numerical traces.
-
-Bias is fixed per entity. Noise varies per tick. Drift linearly interpolates
-deterministic samples at 20-tick anchors and remains bounded. Airflow effects
-are scaled by connection capacity; CO2 effects are scaled by the controller's
-upper threshold. Observations are clamped and airflow request/delivery/residual
-invariants are recomputed consistently.
-
-CO2 measurement happens before control. Frozen faults hold the latent sensor
-value, after which bias, drift and readout noise still apply. This avoids an
-unrealistic exactly constant signature while preserving replay determinism and
-leaving latent CO2 mass untouched by the measurement calculation itself.
-
-## Reproduce locally
-
-Install dependencies and run all tests:
+## Source-checkout verification
 
 ```bash
 uv sync --locked --python 3.11 --extra dev
-uv run --locked --python 3.11 --extra dev python -m pytest
+uv run --locked --python 3.11 --extra dev python -m pytest -q
+uv run --locked --python 3.11 --extra dev ruff check .
+python -m compileall -q src tests
 ```
 
-Use the staged v3 procedure in the
-[protocol v3 acceptance record](docs/protocol-v3-acceptance.md#reproduction).
-It generates a development corpus, selects and freezes a policy, creates a
-separate final corpus, and evaluates the final suite once. All generated output
-belongs under a new ignored `out/` directory; the protocol rejects pre-existing
-final reports rather than overwriting evidence.
-
-The older `sweep-v2` command path remains in the codebase only for historical
-comparison. Its inspected IID and stress metrics are not current selection or
-final-evaluation evidence.
-
-Run rolling inference on a compatible scenario:
+Generate a standard deterministic plant replay from a source checkout:
 
 ```bash
-PYTHONPATH=src uv run python -m aeolus.detector predict \
-  artifacts/aeolus_fault_detector.json scenarios/standard_habitat.json
+uv run --locked --python 3.11 python -m aeolus \
+  scenarios/standard_habitat.json out/standard.jsonl
 ```
 
-Each line contains `end_tick`, `label`, `confidence` and all class
-probabilities. Loading fails closed on format, transform, shape, vocabulary,
-non-finite parameters, selector hash or topology hash.
+The command writes a new file only; generated traces belong under ignored
+`out/` paths.
 
-Generate and visualise one replay:
+## Installed-package use
+
+The installed module accepts a scenario path and an output path; it does not
+require `PYTHONPATH=src`:
 
 ```bash
-PYTHONPATH=src uv run python -m aeolus \
-  scenarios/primary_fan_degradation.json out/degradation.jsonl
-PYTHONPATH=src uv run python -m aeolus.visualise \
-  out/degradation.jsonl out/degradation.html
+python -I -m aeolus /absolute/path/to/scenario.json /absolute/path/to/trace.jsonl
 ```
 
-On Windows PowerShell, set `$env:PYTHONPATH = "src"` before module commands.
-Generated scenarios and corpora remain ignored under `out/`.
+Scenario JSON remains an explicit input rather than a hidden packaged fixture.
+For the deterministic recovery API, use the schema-v10
+`scenarios/recovery_habitat.json` input as shown in the recovery acceptance
+record.
 
-## Repository fixtures
+## Frozen recovery evidence command
 
-| File | Purpose |
-|---|---|
-| `scenarios/standard_habitat.json` | Healthy zero-noise schema-v9 reference. |
-| `scenarios/high_demand_healthy.json` | Healthy high-demand reference. |
-| `scenarios/primary_fan_degradation.json` | Gradual Cabin A path degradation. |
-| `scenarios/blocked_path.json` | Sudden Cabin B path blockage. |
-| `scenarios/frozen_sensor_healthy.json` | Healthy frozen-sensor counterfactual. |
-| `scenarios/frozen_sensor.json` | Frozen lab sensor while truth evolves. |
-| `scenarios/families.json` | Small historical corpus-v2 contract fixture. |
-| `scenarios/sweep-v1.json` | Legacy three-way experimental sweep. |
-| `scenarios/sweep-v2.json` | Historical inspected IID/OOD experiment; not current final evidence. |
-| `scenarios/sweep-v3-development.json` | Current train/validation-only policy-selection suite. |
-| `scenarios/sweep-v3-final.json` | Current fresh final-only evaluation suite. |
+The following is the C4 development command. It requires a clean source tree
+and a new empty output directory. It is a reproduction command, not permission
+to reopen C5 or tune the failed gates.
 
-## Deferred work
+```bash
+uv run --locked --python 3.11 --extra dev python -m aeolus.recovery_evidence \
+  scenarios/sweep-recovery-development.json /absolute/new-output-directory
+```
 
-- improve learned calibration/generalisation without using test or stress data
-  for selection;
-- quantify whether a hybrid learned-plus-rule system adds value;
-- only after FP32 value is established, evaluate INT8 and benchmark on a
-  declared Arm target;
-- redundant-fan actuation and `HAND_BACK`-on-invalid-input remain for the
-  next slice.
+It produces a large, ignored development corpus. Do not replace historical
+outputs, use final-suite inputs, or interpret a deterministic rerun as a passed
+safety or benefit gate.
 
-See [simulation rules](docs/simulation-rules.md), the
-[telemetry contract](docs/telemetry-contract.md), and the historical
-[corpus-v2 acceptance receipt](docs/corpus-v2-acceptance.md).
+## Project boundaries
 
-## Licence
+No C4/C6 claim is made about INT8 quantisation, Arm64 benchmarks, cloud
+provisioning, hardware-in-the-loop testing, physical deployment, real-world
+CO₂ limits, production control, or a final result. No push, merge, deploy,
+cloud action, or final-suite operation is part of this closeout.
 
-[MIT](LICENSE)
+See the [simulation rules](docs/simulation-rules.md),
+[telemetry contract](docs/telemetry-contract.md),
+[recovery acceptance record](docs/recovery-protocol-acceptance.md), and
+[project plan](PLAN.md).
