@@ -2,13 +2,14 @@
 
 import copy
 import math
+from types import SimpleNamespace
 
 import pytest
 
 from aeolus.config import load_scenario
 from aeolus.model_input import build_model_input_contract, model_input_v1
 from aeolus.response import BoundedRecoveryGovernor, ResponseSettings
-from aeolus.scenario import run_governed_scenario, run_scenario
+from aeolus.scenario import RunSpec, run_governed_scenario, run_scenario
 
 
 @pytest.fixture
@@ -32,6 +33,25 @@ def _with_vector(vector, index, value):
     altered = copy.copy(vector)
     altered[index] = value
     return altered
+
+
+class _WarmupProbeGovernor:
+    def __init__(self, config, settings=None):
+        self.observation_count = 0
+        self._commands = {
+            zone.id: 0.0 for zone in config.non_processing_zones()
+        }
+        if settings is not None:
+            self.settings = settings
+
+    def reset(self) -> None:
+        self.observation_count = 0
+
+    def observe(self, vector: list[float]) -> None:
+        self.observation_count += 1
+
+    def next_commands(self) -> tuple[dict[str, float], dict[str, object]]:
+        return dict(self._commands), {}
 
 
 class TestSettingsValidation:
@@ -70,6 +90,28 @@ class TestGovernorLifecycle:
         assert governor.command_history == []
         assert governor.rationale_history == []
 
+    @pytest.mark.parametrize(
+        "settings",
+        [
+            None,
+            object(),
+            SimpleNamespace(window_ticks=-2),
+            SimpleNamespace(window_ticks=True),
+        ],
+    )
+    def test_alternative_governor_uses_run_warmup_for_missing_or_bad_settings(
+        self, config, settings
+    ):
+        run = RunSpec(
+            total_ticks=2, warmup_ticks=4, crew_cabin_co2_concentration_ceiling=0.30
+        )
+        governor = _WarmupProbeGovernor(config, settings=settings)
+
+        records = run_governed_scenario(config, governor, run=run)
+
+        assert len(records) == run.total_ticks
+        assert governor.observation_count == run.warmup_ticks + run.total_ticks
+
 
 class TestBoundedness:
     def test_commands_always_in_unit_interval(self, config, standard_scenario_path):
@@ -94,6 +136,27 @@ class TestBoundedness:
         first = run_governed_scenario(config, BoundedRecoveryGovernor(config))
         second = run_governed_scenario(config, BoundedRecoveryGovernor(config))
         assert first == second
+
+    def test_frozen_hold_respects_rate_limit_after_high_base(self, config, base_vectors):
+        settings = ResponseSettings(max_command_delta=0.05, frozen_persistence_ticks=2)
+        governor = BoundedRecoveryGovernor(config, settings=settings)
+        zone_id = governor._zone_ids[0]
+        reading_index = _contract_index(
+            governor, "zones", zone_id, "sensor_co2_concentration"
+        )
+        low = _with_vector(base_vectors[0], reading_index, 0.0)
+        high = _with_vector(base_vectors[1], reading_index, 1.0)
+
+        governor.observe(low)
+        governor.next_commands()
+        governor.observe(high)
+        previous, _ = governor.next_commands()
+        governor.observe(high)
+        commands, rationale = governor.next_commands()
+
+        assert rationale[zone_id]["reason"] == "frozen_hold"
+        assert abs(commands[zone_id] - previous[zone_id]) <= settings.max_command_delta + 1e-12
+        assert rationale[zone_id]["commanded"] == commands[zone_id]
 
 
 class TestPolicyRules:

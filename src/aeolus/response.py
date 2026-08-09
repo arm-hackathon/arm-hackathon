@@ -185,8 +185,6 @@ class BoundedRecoveryGovernor:
                 }
 
         for zone_id in self._zone_ids:
-            if self._is_frozen(zone_id):
-                continue
             previous = self._last_commands.get(zone_id)
             if previous is not None:
                 commands[zone_id] = _clamp(
@@ -200,10 +198,8 @@ class BoundedRecoveryGovernor:
                 entry["commanded"], commands[zone_id], abs_tol=1e-12
             ):
                 entry = {**entry, "reason": "bounded_rate", "commanded": commands[zone_id]}
-            elif not math.isclose(
-                entry.get("commanded", commands[zone_id]),
-                commands[zone_id],
-                abs_tol=1e-12,
+            elif "commanded" not in entry or not math.isclose(
+                entry["commanded"], commands[zone_id], abs_tol=1e-12
             ):
                 entry = {**entry, "commanded": commands[zone_id]}
             rationale[zone_id] = entry

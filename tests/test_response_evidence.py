@@ -1,7 +1,9 @@
 """Response-evidence harness tests."""
 
 import json
+from typing import get_type_hints
 
+from aeolus.response import BoundedRecoveryGovernor, ResponseSettings
 from aeolus.response_evidence import (
     metrics_for_records,
     response_latency_ticks,
@@ -104,6 +106,12 @@ def test_response_latency_uses_onset_window():
     assert response_latency_ticks(history, onset_tick=10) is None
 
 
+def test_response_latency_annotation_allows_missing_onset():
+    history = [{"cabin_a": {"reason": "nominal", "commanded": 0.1}}]
+    assert get_type_hints(response_latency_ticks)["onset_tick"] == int | None
+    assert response_latency_ticks(history, onset_tick=None) is None
+
+
 def test_response_latency_scoped_to_affected_zones():
     history = [
         {"cabin_a": {"reason": "nominal", "commanded": 0.1},
@@ -166,6 +174,21 @@ def test_deterministic_receipt(tmp_path, standard_scenario_path):
     first = run_response_evidence(spec_path, tmp_path / "a")
     second = run_response_evidence(spec_path, tmp_path / "b")
     assert first["evidence_sha256"] == second["evidence_sha256"]
+
+
+def test_receipt_binds_custom_factory_settings(tmp_path, standard_scenario_path):
+    spec_path = _write_mini_sweep(tmp_path, standard_scenario_path)
+
+    def custom_factory(config):
+        return BoundedRecoveryGovernor(
+            config, settings=ResponseSettings(max_command_delta=0.03)
+        )
+
+    receipt = run_response_evidence(
+        spec_path, tmp_path / "custom", governor_factory=custom_factory
+    )
+    assert receipt["response_settings"]["governor_factory"] == "custom_factory"
+    assert receipt["response_settings"]["max_command_delta"] == 0.03
 
 
 def test_output_dir_must_be_empty(tmp_path, standard_scenario_path):
