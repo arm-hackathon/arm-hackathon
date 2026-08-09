@@ -2,10 +2,10 @@
 
 Deterministic habitat environmental simulation with replayable traces.
 
-The habitat is a validated, user-editable scenario graph (see
-``scenarios/standard_habitat.json``). All quantities are abstract
-simulation units (``co2_units``, ``airflow_units_per_second``). They are
-not real spacecraft ppm, kilograms, or safety limits.
+The legacy habitat uses abstract simulation units. Habitat Plant V2 is a
+separate grey-box research analogue with explicit SI accounting. Neither
+simulator defines real spacecraft geometry, qualified safety limits, or a
+physical equipment control system.
 """
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"

@@ -1,0 +1,628 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+import math
+from typing import Any, Mapping
+
+from .scenario import Scenario, ScenarioValidationError
+from .state import (
+    GAS_CONSTANT_J_PER_MOL_K,
+    PlantState,
+    UtilityState,
+    ZoneState,
+    saturation_vapor_pressure_pa,
+)
+
+
+@dataclass(frozen=True)
+class StepResult:
+    state: PlantState
+    receipt: Mapping[str, Any]
+
+
+class InfeasibleActionError(RuntimeError):
+    """Raised before state advance when a valid command cannot be served."""
+
+
+def _segment_for_step(scenario: Scenario, step: int) -> Mapping[str, Any]:
+    for segment in scenario.data["timeline"]:
+        if segment["start_step"] <= step < segment["end_step"]:
+            return segment
+    raise ScenarioValidationError(f"no timeline segment covers step {step}")
+
+
+def _slew(current: float, target: float, maximum_delta: float) -> float:
+    difference = target - current
+    if abs(difference) <= maximum_delta:
+        return target
+    return current + math.copysign(maximum_delta, difference)
+
+
+def _recirculate(
+    zones: Mapping[str, ZoneState],
+    *,
+    zone_configs: Mapping[str, Mapping[str, Any]],
+    airflow_m3_s: Mapping[str, float],
+    scrubber_duty: float,
+    condenser_duty: float,
+    equipment: Mapping[str, Any],
+    sorbent_remaining_mol: float,
+    dt_seconds: float,
+) -> tuple[dict[str, ZoneState], dict[str, Any]]:
+    species = ("co2_mol", "o2_mol", "water_vapor_mol", "inert_mol")
+    extracted: dict[str, dict[str, float]] = {}
+    remaining: dict[str, ZoneState] = {}
+    pool = {name: 0.0 for name in species}
+    extracted_totals: dict[str, float] = {}
+
+    for zone_id in sorted(zones):
+        zone = zones[zone_id]
+        volume_m3 = float(zone_configs[zone_id]["volume_m3"])
+        exchange_fraction = 1.0 - math.exp(
+            -float(airflow_m3_s[zone_id]) * dt_seconds / volume_m3
+        )
+        zone_extracted = {
+            name: getattr(zone, name) * exchange_fraction for name in species
+        }
+        extracted[zone_id] = zone_extracted
+        extracted_totals[zone_id] = sum(zone_extracted.values())
+        for name in species:
+            pool[name] += zone_extracted[name]
+        remaining[zone_id] = replace(
+            zone,
+            **{name: getattr(zone, name) - zone_extracted[name] for name in species},
+        )
+
+    total_extracted = sum(extracted_totals.values())
+    if total_extracted == 0.0:
+        return dict(zones), {
+            "exchange_fraction": {zone_id: 0.0 for zone_id in zones},
+            "co2_captured_mol": 0.0,
+            "water_condensed_mol": 0.0,
+            "species_residual_mol": {name: 0.0 for name in species},
+        }
+
+    co2_captured_mol = min(
+        pool["co2_mol"],
+        float(equipment["scrubber_max_co2_mol_s"]) * scrubber_duty * dt_seconds,
+        sorbent_remaining_mol,
+    )
+    water_condensed_mol = min(
+        pool["water_vapor_mol"],
+        float(equipment["condenser_max_water_mol_s"]) * condenser_duty * dt_seconds,
+    )
+    pool["co2_mol"] -= co2_captured_mol
+    pool["water_vapor_mol"] -= water_condensed_mol
+
+    mixed: dict[str, ZoneState] = {}
+    for zone_id in sorted(zones):
+        return_fraction = extracted_totals[zone_id] / total_extracted
+        zone = remaining[zone_id]
+        mixed[zone_id] = replace(
+            zone,
+            **{
+                name: getattr(zone, name) + pool[name] * return_fraction
+                for name in species
+            },
+        )
+
+    removed = {
+        "co2_mol": co2_captured_mol,
+        "water_vapor_mol": water_condensed_mol,
+        "o2_mol": 0.0,
+        "inert_mol": 0.0,
+    }
+    residual = {
+        name: sum(getattr(zone, name) for zone in mixed.values())
+        + removed[name]
+        - sum(getattr(zone, name) for zone in zones.values())
+        for name in species
+    }
+    return mixed, {
+        "extracted_mol": extracted,
+        "co2_captured_mol": co2_captured_mol,
+        "water_condensed_mol": water_condensed_mol,
+        "species_residual_mol": residual,
+    }
+
+
+def _recirculation_heat_transfer_j(
+    zones: Mapping[str, ZoneState],
+    *,
+    airflow_m3_s: Mapping[str, float],
+    equipment: Mapping[str, Any],
+    dt_seconds: float,
+) -> dict[str, float]:
+    zone_ids = sorted(zones)
+    total_airflow_m3_s = sum(float(airflow_m3_s[zone_id]) for zone_id in zone_ids)
+    if total_airflow_m3_s == 0.0:
+        return {zone_id: 0.0 for zone_id in zone_ids}
+
+    mixed_temperature_k = (
+        sum(
+            float(airflow_m3_s[zone_id]) * zones[zone_id].temperature_k
+            for zone_id in zone_ids
+        )
+        / total_airflow_m3_s
+    )
+    density_kg_m3 = float(equipment["air_density_kg_m3"])
+    specific_heat_j_kg_k = float(equipment["air_specific_heat_j_kg_k"])
+    transfers = {
+        zone_id: (
+            density_kg_m3
+            * specific_heat_j_kg_k
+            * float(airflow_m3_s[zone_id])
+            * (mixed_temperature_k - zones[zone_id].temperature_k)
+            * dt_seconds
+        )
+        for zone_id in zone_ids
+    }
+    closure_error_j = sum(transfers.values())
+    transfers[zone_ids[-1]] -= closure_error_j
+    return transfers
+
+
+def _apply_zone_thermal_balance(
+    zones: Mapping[str, ZoneState],
+    *,
+    zone_configs: Mapping[str, Mapping[str, Any]],
+    loads: Mapping[str, Mapping[str, Any]],
+    cooling_removed_w: Mapping[str, float],
+    recirculation_heat_added_j: Mapping[str, float],
+    dt_seconds: float,
+) -> tuple[dict[str, ZoneState], dict[str, Any]]:
+    updated: dict[str, ZoneState] = {}
+    zone_receipts: dict[str, Mapping[str, float]] = {}
+    for zone_id in sorted(zones):
+        zone = zones[zone_id]
+        config = zone_configs[zone_id]
+        thermal_capacity_j_per_k = float(config["thermal_capacity_j_per_k"])
+        metabolic_heat_added_j = float(loads[zone_id]["sensible_heat_w"]) * dt_seconds
+        signed_passive_heat_j = (
+            float(config["passive_thermal_conductance_w_per_k"])
+            * (float(config["sink_temperature_k"]) - zone.temperature_k)
+            * dt_seconds
+        )
+        passive_heat_received_j = max(0.0, signed_passive_heat_j)
+        passive_heat_rejected_j = max(0.0, -signed_passive_heat_j)
+        cooling_heat_removed_j = float(cooling_removed_w[zone_id]) * dt_seconds
+        zone_recirculation_heat_added_j = float(recirculation_heat_added_j[zone_id])
+        expected_energy_delta_j = (
+            metabolic_heat_added_j
+            + zone_recirculation_heat_added_j
+            + passive_heat_received_j
+            - passive_heat_rejected_j
+            - cooling_heat_removed_j
+        )
+        next_temperature_k = (
+            zone.temperature_k + expected_energy_delta_j / thermal_capacity_j_per_k
+        )
+        zone_thermal_energy_delta_j = (
+            next_temperature_k - zone.temperature_k
+        ) * thermal_capacity_j_per_k
+        zone_thermal_residual_j = zone_thermal_energy_delta_j - expected_energy_delta_j
+        updated[zone_id] = replace(zone, temperature_k=next_temperature_k)
+        zone_receipts[zone_id] = {
+            "metabolic_heat_added_j": metabolic_heat_added_j,
+            "recirculation_heat_added_j": zone_recirculation_heat_added_j,
+            "cooling_heat_removed_j": cooling_heat_removed_j,
+            "passive_heat_rejected_j": passive_heat_rejected_j,
+            "passive_heat_received_j": passive_heat_received_j,
+            "zone_thermal_energy_delta_j": zone_thermal_energy_delta_j,
+            "zone_thermal_residual_j": zone_thermal_residual_j,
+        }
+
+    return updated, {
+        "zones": zone_receipts,
+        "system_residual_j": sum(
+            receipt["zone_thermal_residual_j"] for receipt in zone_receipts.values()
+        ),
+        "external_heat_received_j": sum(
+            receipt["passive_heat_received_j"] for receipt in zone_receipts.values()
+        ),
+        "external_heat_rejected_j": sum(
+            receipt["passive_heat_rejected_j"] + receipt["cooling_heat_removed_j"]
+            for receipt in zone_receipts.values()
+        ),
+    }
+
+
+def _apply_passive_condensation(
+    zones: Mapping[str, ZoneState],
+    *,
+    zone_configs: Mapping[str, Mapping[str, Any]],
+) -> tuple[dict[str, ZoneState], dict[str, float]]:
+    updated: dict[str, ZoneState] = {}
+    condensed_by_zone: dict[str, float] = {}
+    for zone_id in sorted(zones):
+        zone = zones[zone_id]
+        volume_m3 = float(zone_configs[zone_id]["volume_m3"])
+        saturated_water_mol = (
+            saturation_vapor_pressure_pa(zone.temperature_k)
+            * volume_m3
+            / (GAS_CONSTANT_J_PER_MOL_K * zone.temperature_k)
+        )
+        condensed_mol = max(0.0, zone.water_vapor_mol - saturated_water_mol)
+        updated[zone_id] = replace(
+            zone,
+            water_vapor_mol=zone.water_vapor_mol - condensed_mol,
+        )
+        condensed_by_zone[zone_id] = condensed_mol
+    return updated, condensed_by_zone
+
+
+def _electrical_balance(
+    *,
+    battery_energy_wh: float,
+    equipment: Mapping[str, Any],
+    command: Mapping[str, Any],
+    actual_airflow_m3_s: Mapping[str, float],
+    actual_scrubber_duty: float,
+    actual_condenser_duty: float,
+    generation_w: float,
+    dt_seconds: float,
+) -> tuple[float, dict[str, float]]:
+    duration_hours = dt_seconds / 3600.0
+    load_power_w = {
+        "fixed_load_wh": float(equipment["base_load_w"]),
+        "fan_load_wh": (
+            float(equipment["fan_power_w_per_m3_s"])
+            * sum(float(value) for value in actual_airflow_m3_s.values())
+        ),
+        "scrubber_load_wh": (
+            float(equipment["scrubber_power_w_full"]) * actual_scrubber_duty
+        ),
+        "condenser_load_wh": (
+            float(equipment["condenser_power_w_full"]) * actual_condenser_duty
+        ),
+        "cooling_load_wh": (
+            sum(float(value) for value in command["cooling_removed_w"].values())
+            / float(equipment["cooling_coefficient_of_performance"])
+        ),
+        "oxygen_injection_load_wh": (
+            float(equipment["oxygen_injection_power_w_per_mol_s"])
+            * sum(float(value) for value in command["oxygen_injection_mol_s"].values())
+        ),
+    }
+    load_energy_wh = {
+        name: power_w * duration_hours for name, power_w in load_power_w.items()
+    }
+    served_load_wh = sum(load_energy_wh.values())
+    generation_wh = float(generation_w) * duration_hours
+
+    battery_charge_input_wh = 0.0
+    battery_charge_stored_wh = 0.0
+    battery_withdrawn_wh = 0.0
+    battery_bus_output_wh = 0.0
+    charge_conversion_loss_wh = 0.0
+    discharge_conversion_loss_wh = 0.0
+    curtailed_generation_wh = 0.0
+
+    if generation_wh >= served_load_wh:
+        surplus_wh = generation_wh - served_load_wh
+        charge_efficiency = float(equipment["battery_charge_efficiency"])
+        capacity_headroom_wh = (
+            float(equipment["battery_capacity_wh"]) - battery_energy_wh
+        )
+        maximum_charge_input_wh = min(
+            float(equipment["battery_max_charge_w"]) * duration_hours,
+            capacity_headroom_wh / charge_efficiency,
+        )
+        battery_charge_input_wh = min(surplus_wh, maximum_charge_input_wh)
+        battery_charge_stored_wh = battery_charge_input_wh * charge_efficiency
+        charge_conversion_loss_wh = battery_charge_input_wh - battery_charge_stored_wh
+        curtailed_generation_wh = surplus_wh - battery_charge_input_wh
+    else:
+        deficit_at_bus_wh = served_load_wh - generation_wh
+        discharge_efficiency = float(equipment["battery_discharge_efficiency"])
+        required_withdrawal_wh = deficit_at_bus_wh / discharge_efficiency
+        maximum_withdrawal_wh = min(
+            battery_energy_wh,
+            float(equipment["battery_max_discharge_w"]) * duration_hours,
+        )
+        tolerance_wh = max(1e-12, 1e-10 * max(1.0, served_load_wh))
+        if required_withdrawal_wh > maximum_withdrawal_wh + tolerance_wh:
+            raise InfeasibleActionError(
+                "electrical demand exceeds generation and battery capability"
+            )
+        battery_withdrawn_wh = required_withdrawal_wh
+        battery_bus_output_wh = battery_withdrawn_wh * discharge_efficiency
+        discharge_conversion_loss_wh = battery_withdrawn_wh - battery_bus_output_wh
+
+    battery_energy_delta_wh = battery_charge_stored_wh - battery_withdrawn_wh
+    next_battery_energy_wh = battery_energy_wh + battery_energy_delta_wh
+    residual_wh = (
+        generation_wh
+        + battery_withdrawn_wh
+        - (
+            served_load_wh
+            + battery_charge_stored_wh
+            + curtailed_generation_wh
+            + charge_conversion_loss_wh
+            + discharge_conversion_loss_wh
+        )
+    )
+    receipt = {
+        "generation_wh": generation_wh,
+        **load_energy_wh,
+        "served_load_wh": served_load_wh,
+        "battery_charge_input_wh": battery_charge_input_wh,
+        "battery_charge_stored_wh": battery_charge_stored_wh,
+        "battery_withdrawn_wh": battery_withdrawn_wh,
+        "battery_bus_output_wh": battery_bus_output_wh,
+        "charge_conversion_loss_wh": charge_conversion_loss_wh,
+        "discharge_conversion_loss_wh": discharge_conversion_loss_wh,
+        "curtailed_generation_wh": curtailed_generation_wh,
+        "battery_energy_delta_wh": battery_energy_delta_wh,
+        "residual_wh": residual_wh,
+    }
+    return next_battery_energy_wh, receipt
+
+
+def initial_state(scenario: Scenario) -> PlantState:
+    zones: dict[str, ZoneState] = {}
+    for zone_config in scenario.data["zones"]:
+        initial = zone_config["initial"]
+        temperature_k = float(initial["temperature_k"])
+        pressure_pa = float(initial["pressure_pa"])
+        volume_m3 = float(zone_config["volume_m3"])
+        total_moles = (
+            pressure_pa * volume_m3 / (GAS_CONSTANT_J_PER_MOL_K * temperature_k)
+        )
+        water_partial_pressure_pa = float(
+            initial["relative_humidity"]
+        ) * saturation_vapor_pressure_pa(temperature_k)
+        water_fraction = water_partial_pressure_pa / pressure_pa
+        co2_fraction = float(initial["co2_ppm"]) / 1_000_000.0
+        o2_fraction = float(initial["o2_mole_fraction"])
+        inert_fraction = 1.0 - water_fraction - co2_fraction - o2_fraction
+        if inert_fraction <= 0.0:
+            raise ScenarioValidationError(
+                f"invalid scenario value at zones.{zone_config['id']}.initial: "
+                "species fractions leave no inert gas"
+            )
+        zones[str(zone_config["id"])] = ZoneState(
+            co2_mol=total_moles * co2_fraction,
+            o2_mol=total_moles * o2_fraction,
+            water_vapor_mol=total_moles * water_fraction,
+            inert_mol=total_moles * inert_fraction,
+            temperature_k=temperature_k,
+        )
+
+    utility = scenario.data["initial_utility"]
+    return PlantState(
+        step=0,
+        zones=zones,
+        utility=UtilityState(
+            co2_sorbent_remaining_mol=float(utility["co2_sorbent_remaining_mol"]),
+            captured_co2_mol=float(utility["captured_co2_mol"]),
+            condensed_water_mol=float(utility["condensed_water_mol"]),
+            oxygen_store_mol=float(utility["oxygen_store_mol"]),
+            battery_energy_wh=float(utility["battery_energy_wh"]),
+            actual_airflow_m3_s={
+                str(zone_id): float(value)
+                for zone_id, value in utility["actual_airflow_m3_s"].items()
+            },
+            actual_scrubber_duty=float(utility["actual_scrubber_duty"]),
+            actual_condenser_duty=float(utility["actual_condenser_duty"]),
+            external_heat_rejected_j=float(utility["external_heat_rejected_j"]),
+            external_heat_received_j=float(utility["external_heat_received_j"]),
+        ),
+    )
+
+
+def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
+    if state.step >= scenario.data["steps"]:
+        raise ScenarioValidationError("cannot advance beyond configured steps")
+
+    segment = _segment_for_step(scenario, state.step)
+    dt_seconds = float(scenario.data["dt_seconds"])
+    next_zones: dict[str, ZoneState] = {}
+    source_receipt: dict[str, dict[str, float]] = {}
+    for zone_id, zone in state.zones.items():
+        load = segment["loads"][zone_id]
+        co2_added_mol = float(load["co2_generation_mol_s"]) * dt_seconds
+        o2_consumed_mol = float(load["o2_consumption_mol_s"]) * dt_seconds
+        water_added_mol = float(load["water_vapor_generation_mol_s"]) * dt_seconds
+        if o2_consumed_mol > zone.o2_mol:
+            raise InfeasibleActionError(
+                f"oxygen load exceeds inventory in zone {zone_id}"
+            )
+        next_zones[zone_id] = replace(
+            zone,
+            co2_mol=zone.co2_mol + co2_added_mol,
+            o2_mol=zone.o2_mol - o2_consumed_mol,
+            water_vapor_mol=zone.water_vapor_mol + water_added_mol,
+        )
+        source_receipt[zone_id] = {
+            "co2_added_mol": co2_added_mol,
+            "o2_consumed_mol": o2_consumed_mol,
+            "water_added_mol": water_added_mol,
+        }
+
+    equipment = scenario.data["equipment"]
+    command = segment["command"]
+    maximum_flow_delta = float(equipment["airflow_slew_m3_s2"]) * dt_seconds
+    actual_airflow_m3_s = {
+        zone_id: _slew(
+            float(state.utility.actual_airflow_m3_s[zone_id]),
+            float(command["airflow_m3_s"][zone_id]),
+            maximum_flow_delta,
+        )
+        for zone_id in sorted(next_zones)
+    }
+    actual_scrubber_duty = _slew(
+        state.utility.actual_scrubber_duty,
+        float(command["scrubber_duty"]),
+        float(equipment["scrubber_duty_slew_per_s"]) * dt_seconds,
+    )
+    actual_condenser_duty = _slew(
+        state.utility.actual_condenser_duty,
+        float(command["condenser_duty"]),
+        float(equipment["condenser_duty_slew_per_s"]) * dt_seconds,
+    )
+    zone_configs = {str(zone["id"]): zone for zone in scenario.data["zones"]}
+    next_zones, recirculation_receipt = _recirculate(
+        next_zones,
+        zone_configs=zone_configs,
+        airflow_m3_s=actual_airflow_m3_s,
+        scrubber_duty=actual_scrubber_duty,
+        condenser_duty=actual_condenser_duty,
+        equipment=equipment,
+        sorbent_remaining_mol=state.utility.co2_sorbent_remaining_mol,
+        dt_seconds=dt_seconds,
+    )
+    co2_captured_mol = float(recirculation_receipt["co2_captured_mol"])
+    water_condensed_mol = float(recirculation_receipt["water_condensed_mol"])
+    oxygen_injected_by_zone = {
+        zone_id: float(command["oxygen_injection_mol_s"][zone_id]) * dt_seconds
+        for zone_id in sorted(next_zones)
+    }
+    total_oxygen_injected_mol = sum(oxygen_injected_by_zone.values())
+    if total_oxygen_injected_mol > state.utility.oxygen_store_mol:
+        raise InfeasibleActionError("oxygen injection exceeds stored oxygen")
+    next_zones = {
+        zone_id: replace(
+            zone,
+            o2_mol=zone.o2_mol + oxygen_injected_by_zone[zone_id],
+        )
+        for zone_id, zone in next_zones.items()
+    }
+    recirculation_heat_added_j = _recirculation_heat_transfer_j(
+        next_zones,
+        airflow_m3_s=actual_airflow_m3_s,
+        equipment=equipment,
+        dt_seconds=dt_seconds,
+    )
+    next_zones, thermal_receipt = _apply_zone_thermal_balance(
+        next_zones,
+        zone_configs=zone_configs,
+        loads=segment["loads"],
+        cooling_removed_w=command["cooling_removed_w"],
+        recirculation_heat_added_j=recirculation_heat_added_j,
+        dt_seconds=dt_seconds,
+    )
+    next_zones, passive_condensation_mol = _apply_passive_condensation(
+        next_zones,
+        zone_configs=zone_configs,
+    )
+    total_passive_condensation_mol = sum(passive_condensation_mol.values())
+    next_battery_energy_wh, electrical_receipt = _electrical_balance(
+        battery_energy_wh=state.utility.battery_energy_wh,
+        equipment=equipment,
+        command=command,
+        actual_airflow_m3_s=actual_airflow_m3_s,
+        actual_scrubber_duty=actual_scrubber_duty,
+        actual_condenser_duty=actual_condenser_duty,
+        generation_w=float(segment["generation_w"]),
+        dt_seconds=dt_seconds,
+    )
+    electrical_heat_rejected_j = (
+        electrical_receipt["served_load_wh"]
+        + electrical_receipt["charge_conversion_loss_wh"]
+        + electrical_receipt["discharge_conversion_loss_wh"]
+    ) * 3600.0
+    thermal_receipt = {
+        **thermal_receipt,
+        "external_heat_rejected_j": (
+            float(thermal_receipt["external_heat_rejected_j"])
+            + electrical_heat_rejected_j
+        ),
+    }
+    species_before = {
+        "co2_mol": sum(zone.co2_mol for zone in state.zones.values()),
+        "o2_mol": sum(zone.o2_mol for zone in state.zones.values()),
+        "water_mol": sum(zone.water_vapor_mol for zone in state.zones.values()),
+        "inert_mol": sum(zone.inert_mol for zone in state.zones.values()),
+    }
+    species_after = {
+        "co2_mol": sum(zone.co2_mol for zone in next_zones.values()),
+        "o2_mol": sum(zone.o2_mol for zone in next_zones.values()),
+        "water_mol": sum(zone.water_vapor_mol for zone in next_zones.values()),
+        "inert_mol": sum(zone.inert_mol for zone in next_zones.values()),
+    }
+    expected_species_delta = {
+        "co2_mol": (
+            sum(item["co2_added_mol"] for item in source_receipt.values())
+            - co2_captured_mol
+        ),
+        "o2_mol": (
+            -sum(item["o2_consumed_mol"] for item in source_receipt.values())
+            + total_oxygen_injected_mol
+        ),
+        "water_mol": (
+            sum(item["water_added_mol"] for item in source_receipt.values())
+            - water_condensed_mol
+            - total_passive_condensation_mol
+        ),
+        "inert_mol": 0.0,
+    }
+    species_receipt_scale_mol = max(
+        1.0, *(abs(value) for value in expected_species_delta.values())
+    )
+    species_tolerance_mol = max(1e-12, 1e-10 * species_receipt_scale_mol)
+    species_accounting = {
+        "co2_residual_mol": (
+            species_after["co2_mol"]
+            - species_before["co2_mol"]
+            - expected_species_delta["co2_mol"]
+        ),
+        "o2_residual_mol": (
+            species_after["o2_mol"]
+            - species_before["o2_mol"]
+            - expected_species_delta["o2_mol"]
+        ),
+        "water_residual_mol": (
+            species_after["water_mol"]
+            - species_before["water_mol"]
+            - expected_species_delta["water_mol"]
+        ),
+        "inert_residual_mol": (
+            species_after["inert_mol"] - species_before["inert_mol"]
+        ),
+        "receipt_scale_mol": species_receipt_scale_mol,
+        "tolerance_mol": species_tolerance_mol,
+    }
+
+    next_utility = replace(
+        state.utility,
+        co2_sorbent_remaining_mol=(
+            state.utility.co2_sorbent_remaining_mol - co2_captured_mol
+        ),
+        captured_co2_mol=state.utility.captured_co2_mol + co2_captured_mol,
+        condensed_water_mol=(
+            state.utility.condensed_water_mol
+            + water_condensed_mol
+            + total_passive_condensation_mol
+        ),
+        oxygen_store_mol=(state.utility.oxygen_store_mol - total_oxygen_injected_mol),
+        battery_energy_wh=next_battery_energy_wh,
+        external_heat_received_j=(
+            state.utility.external_heat_received_j
+            + float(thermal_receipt["external_heat_received_j"])
+        ),
+        external_heat_rejected_j=(
+            state.utility.external_heat_rejected_j
+            + float(thermal_receipt["external_heat_rejected_j"])
+        ),
+        actual_airflow_m3_s=actual_airflow_m3_s,
+        actual_scrubber_duty=actual_scrubber_duty,
+        actual_condenser_duty=actual_condenser_duty,
+    )
+
+    return StepResult(
+        state=PlantState(
+            step=state.step + 1,
+            zones=next_zones,
+            utility=next_utility,
+        ),
+        receipt={
+            "species_sources": source_receipt,
+            "species_accounting": species_accounting,
+            "recirculation": recirculation_receipt,
+            "oxygen_injected_mol": oxygen_injected_by_zone,
+            "passive_condensation_mol": passive_condensation_mol,
+            "thermal": thermal_receipt,
+            "electrical": electrical_receipt,
+        },
+    )
