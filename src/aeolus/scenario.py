@@ -15,8 +15,28 @@ from aeolus.measurement import (
     deterministic_measurement_sample,
 )
 from aeolus.model_input import build_model_input_contract, model_input_v1
-from aeolus.plant import initial_state, requested_loop_airflow, step_habitat
-from aeolus.trace import TickRecord, TraceWriter
+from aeolus.plant import (
+    HabitatState,
+    initial_state,
+    requested_loop_airflow,
+    step_habitat,
+)
+from aeolus.recovery import (
+    AuthorityEvent,
+    AuthorityState,
+    DeterministicRecoverySupervisor,
+    RecoveryDecision,
+    RecoveryObservation,
+    ReserveCommandOwner,
+    _decision_digest,
+    validate_recovery_decision,
+)
+from aeolus.trace import (
+    RecoveryTickRecord,
+    RecoveryTraceWriter,
+    TickRecord,
+    TraceWriter,
+)
 
 
 @dataclass(frozen=True)
@@ -36,10 +56,25 @@ class RunSpec:
             raise ValueError("crew-cabin CO2 ceiling must be positive")
 
 
+@dataclass(frozen=True)
+class RecoveryRunResult:
+    """Observable recovery rows plus evaluator-only physical replay state."""
+
+    records: tuple[RecoveryTickRecord, ...]
+    states: tuple[HabitatState, ...]
+    decisions: tuple[RecoveryDecision, ...]
+    events: tuple[AuthorityEvent, ...]
+
+
 # Declared run constants for the standard habitat. The ceiling is the
 # declared crew-cabin concentration ceiling for the measured run.
 STANDARD_RUN = RunSpec(
     total_ticks=120,
+    warmup_ticks=60,
+    crew_cabin_co2_concentration_ceiling=0.30,
+)
+RECOVERY_RUN = RunSpec(
+    total_ticks=180,
     warmup_ticks=60,
     crew_cabin_co2_concentration_ceiling=0.30,
 )
@@ -79,6 +114,114 @@ def run_governed_scenario(
     if callable(reset):
         reset()
     return _run_scenario(config, run=run, trace_path=trace_path, governor=governor)
+
+
+def run_recovery_scenario(
+    config: HabitatConfig,
+    *,
+    run_id: str,
+    governed: bool,
+    run: RunSpec = RECOVERY_RUN,
+    trace_path=None,
+) -> RecoveryRunResult:
+    """Run one causal reserve-recovery arm through the shared plant."""
+    if config.version != 10 or not config.reserve_connections:
+        raise ValueError("recovery runs require a validated version-10 topology")
+    if not isinstance(run_id, str) or not run_id:
+        raise ValueError("recovery run_id must be non-empty")
+
+    state = initial_state(config)
+    for warmup_index in range(run.warmup_ticks):
+        state, _ = step_habitat(
+            config,
+            state,
+            source_tick=warmup_index - run.warmup_ticks,
+            occupancy_tick=1,
+        )
+    state = replace(state, tick=0, captured_co2=0.0)
+
+    contract = build_model_input_contract(config)
+    supervisor = (
+        DeterministicRecoverySupervisor(config, run_id=run_id, contract=contract)
+        if governed
+        else None
+    )
+    decision = (
+        supervisor.cold_start(decision_tick=1)
+        if supervisor is not None
+        else _reserve_off_decision(config, run_id=run_id, decision_tick=1)
+    )
+    records: list[RecoveryTickRecord] = []
+    states: list[HabitatState] = []
+    decisions: list[RecoveryDecision] = []
+    writer_context = (
+        RecoveryTraceWriter(trace_path, config) if trace_path is not None else nullcontext()
+    )
+    with writer_context as writer:
+        for tick in range(1, run.total_ticks + 1):
+            expected_state = (
+                supervisor.state if supervisor is not None else AuthorityState.NOMINAL
+            )
+            expected_owner = (
+                ReserveCommandOwner.DETERMINISTIC_RECOVERY_SUPERVISOR
+                if expected_state in (AuthorityState.PROTECT, AuthorityState.HANDBACK)
+                else ReserveCommandOwner.RESERVE_OFF
+            )
+            reserve_commands = validate_recovery_decision(
+                decision,
+                config=config,
+                expected_run_id=run_id,
+                expected_authority_epoch=(
+                    supervisor.authority_epoch if supervisor is not None else 0
+                ),
+                expected_decision_tick=tick,
+                expected_observation_tick=tick - 1,
+                expected_sequence=tick,
+                expected_state=expected_state,
+                expected_owner=expected_owner,
+            )
+            effectiveness = _connection_effectiveness(config, tick)
+            frozen_zones = _frozen_sensor_zones(config, tick)
+            state, airflows = step_habitat(
+                config,
+                state,
+                connection_effectiveness=effectiveness,
+                frozen_zones=frozen_zones,
+                reserve_commands=reserve_commands,
+                source_tick=run.warmup_ticks + tick,
+                occupancy_tick=tick,
+            )
+            plant_record = _tick_record(config, state, airflows)
+            record = RecoveryTickRecord(
+                plant=plant_record,
+                reserve=_reserve_trace_telemetry(config, state),
+                authority=_authority_telemetry(decision),
+            )
+            if writer is not None:
+                writer.write(record)
+            records.append(record)
+            states.append(state)
+            decisions.append(decision)
+
+            if tick == run.total_ticks:
+                continue
+            decision = (
+                supervisor.decide(
+                    _recovery_observation(config, contract, supervisor, record)
+                )
+                if supervisor is not None
+                else _reserve_off_decision(
+                    config, run_id=run_id, decision_tick=tick + 1
+                )
+            )
+
+    events = tuple(supervisor.event_history) if supervisor is not None else ()
+    return RecoveryRunResult(
+        records=tuple(records),
+        states=tuple(states),
+        decisions=tuple(decisions),
+        events=events,
+    )
 
 
 def _run_scenario(
@@ -326,3 +469,198 @@ def _observed_loop_telemetry(
                     entry["requested_airflow"] - entry["delivered_airflow"]
                 )
     return observed_positions, observed_connections
+
+
+def _reserve_off_decision(
+    config: HabitatConfig, *, run_id: str, decision_tick: int
+) -> RecoveryDecision:
+    commands = {zone.id: 0.0 for zone in config.non_processing_zones()}
+    reason = "cold_start" if decision_tick == 1 else "no_concern"
+    digest = _decision_digest(
+        run_id=run_id,
+        authority_epoch=0,
+        decision_tick=decision_tick,
+        observation_tick=decision_tick - 1,
+        sequence=decision_tick,
+        state=AuthorityState.NOMINAL,
+        owner=ReserveCommandOwner.RESERVE_OFF,
+        target_zone_id=None,
+        reserve_commands=commands,
+        reason=reason,
+        dwell_ticks=0,
+    )
+    return RecoveryDecision(
+        run_id=run_id,
+        authority_epoch=0,
+        decision_tick=decision_tick,
+        observation_tick=decision_tick - 1,
+        sequence=decision_tick,
+        state=AuthorityState.NOMINAL,
+        reserve_command_owner=ReserveCommandOwner.RESERVE_OFF,
+        target_zone_id=None,
+        reserve_commands=commands,
+        reason=reason,
+        command_digest=digest,
+        dwell_ticks=0,
+    )
+
+
+def _authority_telemetry(decision: RecoveryDecision) -> dict[str, object]:
+    return {
+        "run_id": decision.run_id,
+        "authority_epoch": decision.authority_epoch,
+        "decision_tick": decision.decision_tick,
+        "sequence": decision.sequence,
+        "state": decision.state.value,
+        "reserve_command_owner": decision.reserve_command_owner.value,
+        "target_zone_id": decision.target_zone_id,
+        "reason": decision.reason,
+        "dwell_ticks": decision.dwell_ticks,
+        "observation_tick": decision.observation_tick,
+        "command_digest": decision.command_digest,
+        "applied_command_digest": decision.command_digest,
+    }
+
+
+def _reserve_trace_telemetry(
+    config: HabitatConfig, state: HabitatState
+) -> dict[str, object]:
+    settings = config.telemetry
+    connections: dict[str, dict[str, float]] = {}
+    actuators: dict[str, dict[str, float | bool]] = {}
+    requested_total = 0.0
+    delivered_total = 0.0
+    for zone in config.non_processing_zones():
+        actuator = state.reserve.actuators[zone.id]
+        position_factor = 1.0 + (
+            settings.actuator_position_noise_fraction
+            * deterministic_measurement_sample(
+                config, zone.id, "reserve_actuator_position", state.tick
+            )
+        )
+        observed_position = max(
+            0.0, min(1.0, actuator.actual_position * position_factor)
+        )
+        outbound = config.reserve_path_to_processing(zone.id)
+        inbound = config.reserve_path_from_processing(zone.id)
+        observed_requested = requested_loop_airflow(
+            outbound, inbound, observed_position
+        )
+        flow_factor = 1.0 + (
+            settings.airflow_bias_fraction
+            * deterministic_measurement_sample(
+                config, outbound.id, "reserve_airflow_bias", 0
+            )
+            + settings.airflow_drift_fraction
+            * deterministic_measurement_drift(
+                config, outbound.id, "reserve_airflow", state.tick
+            )
+            + settings.airflow_noise_fraction
+            * deterministic_measurement_sample(
+                config, outbound.id, "reserve_airflow_noise", state.tick
+            )
+        )
+        observed_delivered = max(
+            0.0,
+            min(
+                observed_requested,
+                state.reserve.delivered_airflows[outbound.id] * max(0.0, flow_factor),
+            ),
+        )
+        entry = {
+            "requested_airflow": observed_requested,
+            "delivered_airflow": observed_delivered,
+            "airflow_residual": observed_requested - observed_delivered,
+        }
+        connections[outbound.id] = dict(entry)
+        connections[inbound.id] = dict(entry)
+        actuators[zone.id] = {
+            "setpoint": actuator.setpoint,
+            "actual_position": observed_position,
+            "tracking_residual": actuator.setpoint - observed_position,
+            "moving": actuator.moving,
+            "movement_seconds": actuator.movement_seconds,
+            "power": actuator.power,
+        }
+        requested_total += observed_requested
+        delivered_total += observed_delivered
+
+    return {
+        "connections": connections,
+        "actuators": actuators,
+        "system": {
+            "reserve_airflow_capacity": config.air_system.reserve_airflow_capacity,
+            "total_requested_airflow": requested_total,
+            "total_delivered_airflow": delivered_total,
+            "capacity_scale": state.reserve.capacity_scale,
+            "total_power": sum(
+                actuator.power for actuator in state.reserve.actuators.values()
+            ),
+        },
+    }
+
+
+def _recovery_observation(
+    config: HabitatConfig,
+    contract,
+    supervisor: DeterministicRecoverySupervisor,
+    record: RecoveryTickRecord,
+) -> RecoveryObservation:
+    zone_ids = tuple(zone.id for zone in config.non_processing_zones())
+    primary_outbound = {
+        zone_id: config.path_to_processing(zone_id).id for zone_id in zone_ids
+    }
+    reserve_outbound = {
+        zone_id: config.reserve_path_to_processing(zone_id).id for zone_id in zone_ids
+    }
+    reserve_return = {
+        zone_id: config.reserve_path_from_processing(zone_id).id for zone_id in zone_ids
+    }
+    return RecoveryObservation(
+        run_id=supervisor.run_id,
+        authority_epoch=supervisor.authority_epoch,
+        completed_tick=record.plant.tick,
+        sequence=int(record.authority["sequence"]),
+        model_input_v1=tuple(float(value) for value in model_input_v1(record, contract)),
+        selector_sha256=contract.selector_hash,
+        topology_sha256=contract.topology_hash,
+        zone_ids=zone_ids,
+        primary_outbound_ids=primary_outbound,
+        reserve_outbound_ids=reserve_outbound,
+        reserve_return_ids=reserve_return,
+        co2_concentration={
+            zone_id: float(record.plant.zones[zone_id]["sensor_co2_concentration"])
+            for zone_id in zone_ids
+        },
+        primary_requested_airflow={
+            zone_id: float(
+                record.plant.connections[primary_outbound[zone_id]][
+                    "requested_airflow"
+                ]
+            )
+            for zone_id in zone_ids
+        },
+        primary_delivered_airflow={
+            zone_id: float(
+                record.plant.connections[primary_outbound[zone_id]][
+                    "delivered_airflow"
+                ]
+            )
+            for zone_id in zone_ids
+        },
+        reserve_actual_position={
+            zone_id: float(
+                record.reserve["actuators"][zone_id]["actual_position"]
+            )
+            for zone_id in zone_ids
+        },
+        reserve_delivered_airflow={
+            zone_id: float(
+                record.reserve["connections"][reserve_outbound[zone_id]][
+                    "delivered_airflow"
+                ]
+            )
+            for zone_id in zone_ids
+        },
+        applied_command_digest=str(record.authority["applied_command_digest"]),
+    )
