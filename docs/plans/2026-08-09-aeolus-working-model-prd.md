@@ -5,7 +5,7 @@
 **Deadline:** 2026-08-09 09:00 BST  
 **Execution stop:** 2026-08-09 08:30 BST  
 **Report window:** 08:30–09:00 BST  
-**Last updated:** 2026-08-09 00:53 BST  
+**Last updated:** 2026-08-09 01:10 BST
 **Repository:** `arm-hackathon/arm-hackathon`  
 **Working branch:** `ben/independent-recovery`  
 **Repository root:** the active `ben/independent-recovery` working tree
@@ -457,15 +457,15 @@ Untested packaging is reported as untested. No plausible-looking command output 
 
 Expected bounded checkpoints:
 
-| Checkpoint | Intended scope | Review required |
-|---|---|---|
-| C0 | This PRD only | no code review |
-| C1 | Authority core, runner, trace enum, focused tests | one immutable compliance/quality batch |
-| C2 | Findings-only correction for C1 | one fresh delta review if C1 had blockers |
-| C3 | Four inherited PR #18 fixes and regressions | one immutable review |
-| C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review |
-| C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review |
-| C6 | Version/docs/package closeout | final immutable review |
+| Checkpoint | Intended scope | Review required | Current state / SHA |
+|---|---|---|---|
+| C0 | This PRD only | no code review | complete — `c5c53cb571643254f8a7300d518a4e1ae20901a1` |
+| C1 | Authority core, runner, trace enum, focused tests | one immutable compliance/quality batch | staged for local checkpoint — code patch `7083da43f8eecd44621393e90029330f2dec2098077f20f1b8a32d637d55b911`; full gates green; unreviewed |
+| C2 | Findings-only correction for C1 | one fresh delta review if C1 had blockers | not started |
+| C3 | Four inherited PR #18 fixes and regressions | one immutable review | not started |
+| C4 | Four-arm evidence runner, metrics, gates, docs/tests | one immutable review | not started |
+| C5 | Adviser training/integration/artifacts, or frozen negative result | one immutable review | not started |
+| C6 | Version/docs/package closeout | final immutable review | not started |
 
 Checkpoint names may be combined only if the files and acceptance boundary are inseparable. Every actual SHA replaces the placeholder in the execution ledger.
 
@@ -498,6 +498,16 @@ Append one row after each material step. Receipts must be actual outputs.
 | BST time | Task | State | Source SHA / patch hash | Verification receipt | Finding / next gate |
 |---|---|---|---|---|---|
 | 00:53 | Live-state reconstruction | complete | HEAD `5afae5b`; dirty patch `b6f59c…` | remote fetched; PR #17/#18 inspected; 430-test prior baseline | Write and freeze PRD |
+| 00:56 | PRD checkpoint | complete | `c5c53cb571643254f8a7300d518a4e1ae20901a1` | one-file commit; 574 lines; SHA-256 `65078986…70a65` | Freeze and verify authority slice |
+| 00:56 | Unattended-run guardrails | complete | profile configuration | 2500 primary turns; hard loop stop on; two review workers maximum per turn; worker iterations remain 50 | Start bounded execution |
+| 00:58–01:01 | Target-worktree reconciliation and regression rerun | complete | HEAD `c5c53cb571643254f8a7300d518a4e1ae20901a1`; pre-existing authority slice dirty | `uv run --locked --python 3.11 --extra dev python -m pytest -q` → `430 passed in 57.66s`; Ruff → `All checks passed!`; authority-only diff check clean | Current recomposed dirty patch does not reproduce recorded `b6f59c…`; source provenance retained as a discrepancy. Repair C1 gaps test-first before checkpoint. |
+| 01:03 | C1 handback delivery-failure latch | complete | dirty slice on `c5c53cb…` | focused RED: `handback_ramp` instead of `reserve_delivery_failure`; focused GREEN: `1 passed in 0.07s`; diff check clean | Persistent delivery failure is now evaluated while `HANDBACK` still commands reserve flow. Test hard 36-tick source bound next. |
+| 01:04 | C1 handback source bound | complete | dirty slice on `c5c53cb…` | focused RED: state remained `HANDBACK` at dwell 36; focused GREEN: `1 passed in 0.07s` | At elapsed handback tick 36, fail to latched reserve-off `DEGRADED` without faking physical-zero acknowledgement. Freeze the exact threshold and test write-once traces next. |
+| 01:04 | C1 frozen handback threshold | complete | dirty slice on `c5c53cb…` | focused RED: `maximum_handback_ticks=35` did not raise; focused GREEN: `7 passed in 0.07s` | `RecoverySettings` now rejects a non-36 handback bound. Test write-once trace paths next. |
+| 01:05 | C1 write-once trace paths | complete | dirty slice on `c5c53cb…` | focused RED: two writers did not raise; focused GREEN: `2 passed in 0.03s` | `TraceWriter` and `RecoveryTraceWriter` use atomic exclusive creation and preserve existing bytes. Audit remaining C1 authority/runner invariants before freeze. |
+| 01:06 | C1 protect-state observation dropout | complete | dirty slice on `c5c53cb…` | focused RED: non-zero `PROTECT` decision retained after dropout; focused GREEN: `2 passed in 0.07s` | Dropout enters bounded `HANDBACK`; repeated dropout ramps down and cannot restore reserve authority. Audit topology-order and trace cross-field boundaries before freeze. |
+| 01:08 | C1 file-order topology binding | complete | dirty slice on `c5c53cb…` | focused RED: `recovery observation zone topology is invalid`; focused GREEN: `1 passed in 0.07s` | Runner observations now use validated scenario file order, matching selector and supervisor topology hashes. Freeze C1 after full focused verification. |
+| 01:09 | C1 full pre-freeze verification | complete | staged code patch `7083da43f8eecd44621393e90029330f2dec2098077f20f1b8a32d637d55b911` | locked full suite `436 passed in 56.70s`; Ruff `All checks passed!`; `compileall -q src` and `git diff --check` exit 0 | Stage PRD receipt, commit the bounded C1 slice locally, then review only that immutable SHA. |
 
 ## 16. Morning report contract
 
@@ -521,9 +531,9 @@ The report must state, in this order:
 - [x] Live remote and PR state reconstructed
 - [x] Tool budget raised to 2500 primary execution turns; review workers retained at 50
 - [x] PRD created before resumed implementation
-- [ ] PRD checkpointed locally
-- [ ] Execution ledger updated after every material step
-- [ ] No mutable-worktree review dispatched
+- [x] PRD checkpointed locally at `c5c53cb571643254f8a7300d518a4e1ae20901a1`
+- [x] Execution ledger updated after every material step
+- [x] No mutable-worktree review dispatched
 
 ### Authority and plant
 
