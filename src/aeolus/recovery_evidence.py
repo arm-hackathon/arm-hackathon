@@ -1,4 +1,4 @@
-"""Write-once four-arm evidence runner for deterministic recovery development."""
+"""Write-once four-arm evidence runner for deterministic recovery suites."""
 
 from __future__ import annotations
 
@@ -9,21 +9,31 @@ import math
 import platform
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from aeolus.config import load_scenario
-from aeolus.families import RECOVERY_COUNTERFACTUAL_ARMS, ScenarioFamily, load_family_manifest
+from aeolus.families import (
+    RECOVERY_COUNTERFACTUAL_ARMS,
+    ScenarioFamily,
+    load_family_manifest,
+)
 from aeolus.recovery import AuthorityState, RecoverySettings
-from aeolus.scenario import RECOVERY_RUN, RecoveryRunResult, RunSpec, run_recovery_scenario
+from aeolus.scenario import (
+    RECOVERY_RUN,
+    RecoveryRunResult,
+    RunSpec,
+    run_recovery_scenario,
+)
 from aeolus.sweep import SWEEP_V4_VERSION, generate_sweep, load_sweep_spec
 
 RECOVERY_EVIDENCE_VERSION = "aeolus_recovery_evidence_v1"
 RECOVERY_ARMS = RECOVERY_COUNTERFACTUAL_ARMS
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _EPSILON = 1e-12
-USAGE = "Usage: python -m aeolus.recovery_evidence <development-sweep.json> <output-dir>"
+USAGE = "Usage: python -m aeolus.recovery_evidence <recovery-sweep.json> <output-dir>"
 
 
 def run_recovery_evidence(
@@ -32,15 +42,24 @@ def run_recovery_evidence(
     *,
     run: RunSpec = RECOVERY_RUN,
     require_clean_source: bool = True,
+    settings: RecoverySettings | None = None,
 ) -> dict[str, Any]:
-    """Run every v4 development family in the four fixed recovery arms."""
+    """Run every v4 development or final family in four fixed recovery arms."""
     destination = Path(output_dir).resolve()
     if destination.exists():
         raise FileExistsError(f"recovery evidence output already exists: {destination}")
 
     sweep = load_sweep_spec(sweep_path)
-    if sweep.schema_version != SWEEP_V4_VERSION or sweep.suite_role != "development":
-        raise ValueError("recovery evidence requires an aeolus_sweep_v4 development suite")
+    if (
+        sweep.schema_version != SWEEP_V4_VERSION
+        or sweep.suite_role not in {"development", "final"}
+    ):
+        raise ValueError(
+            "recovery evidence requires an aeolus_sweep_v4 development or final suite"
+        )
+    selected_settings = settings if settings is not None else RecoverySettings()
+    if not isinstance(selected_settings, RecoverySettings):
+        raise TypeError("recovery evidence settings are malformed")
     provenance = _source_provenance(require_clean_source=require_clean_source)
 
     destination.mkdir(parents=True)
@@ -52,13 +71,18 @@ def run_recovery_evidence(
 
     trace_dir = destination / "traces"
     rows = [
-        _evaluate_family(family, trace_dir=trace_dir, run=run)
+        _evaluate_family(
+            family,
+            trace_dir=trace_dir,
+            run=run,
+            settings=selected_settings,
+        )
         for family in manifest.families
     ]
     final_provenance = _source_provenance(require_clean_source=False)
     if final_provenance != provenance:
         raise ValueError("source provenance changed during recovery evidence generation")
-    settings = asdict(RecoverySettings())
+    settings_document = asdict(selected_settings)
     receipt: dict[str, Any] = {
         "evidence_version": RECOVERY_EVIDENCE_VERSION,
         "environment": provenance["environment"],
@@ -70,14 +94,17 @@ def run_recovery_evidence(
             "canonical_sha256": sweep.sha256,
             "family_manifest_sha256": manifest.manifest_sha256,
         },
-        "recovery_settings": settings,
-        "recovery_settings_sha256": _canonical_sha256(settings),
+        "recovery_settings": settings_document,
+        "recovery_settings_sha256": _canonical_sha256(settings_document),
         "arms": list(RECOVERY_ARMS),
         "run_spec": asdict(run),
         "run_spec_sha256": _canonical_sha256(asdict(run)),
         "families_evaluated": len(rows),
         "per_family": rows,
-        "gates": _evaluate_gates(rows),
+        "gates": _evaluate_gates(
+            rows,
+            evaluation_split="validation" if sweep.suite_role == "development" else "final",
+        ),
     }
     receipt["evidence_sha256"] = _canonical_sha256(receipt)
     _write_json_new(destination / "recovery-evidence.json", receipt)
@@ -91,19 +118,22 @@ def reproduce_recovery_evidence(
     *,
     run: RunSpec = RECOVERY_RUN,
     require_clean_source: bool = True,
+    settings: RecoverySettings | None = None,
 ) -> dict[str, Any]:
-    """Run and compare two relocated development reproductions."""
+    """Run and compare two relocated recovery-evidence reproductions."""
     first = run_recovery_evidence(
         sweep_path,
         first_output_dir,
         run=run,
         require_clean_source=require_clean_source,
+        settings=settings,
     )
     second = run_recovery_evidence(
         sweep_path,
         second_output_dir,
         run=run,
         require_clean_source=require_clean_source,
+        settings=settings,
     )
     first_dir = Path(first_output_dir).resolve()
     second_dir = Path(second_output_dir).resolve()
@@ -137,7 +167,11 @@ def _output_file_tree(root: Path) -> dict[str, str]:
 
 
 def _evaluate_family(
-    family: ScenarioFamily, *, trace_dir: Path, run: RunSpec
+    family: ScenarioFamily,
+    *,
+    trace_dir: Path,
+    run: RunSpec,
+    settings: RecoverySettings,
 ) -> dict[str, Any]:
     """Run a paired recovery family under each immutable authority arm."""
     reference_config = load_scenario(family.reference_path)
@@ -158,6 +192,7 @@ def _evaluate_family(
             governed=governed,
             run=run,
             trace_path=trace_path,
+            settings=settings if governed else None,
         )
         results[arm_name] = result
         arms[arm_name] = {
@@ -354,8 +389,71 @@ def _failed_reserve_does_not_rearm(result: RecoveryRunResult) -> bool:
     return True
 
 
-def _evaluate_gates(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def _evaluate_gates(
+    rows: Sequence[dict[str, Any]], *, evaluation_split: str
+) -> dict[str, Any]:
     arms = [arm for row in rows for arm in row["arms"].values()]
+    harmful_physical = [
+        row
+        for row in rows
+        if row["paired_metrics"]["eligible_physical_airflow_fault"]
+        and float(
+            row["arms"]["fault_reserve_off"]["metrics"][
+                "integrated_physical_co2_excess"
+            ][row["paired_metrics"]["target_zone_id"]]
+        )
+        > _EPSILON
+    ]
+    missed_harmful = [
+        row["family_id"]
+        for row in harmful_physical
+        if row["arms"]["fault_governed"]["metrics"]["states"][
+            "first_protect_tick"
+        ]
+        is None
+    ]
+    wrong_target = [
+        row["family_id"]
+        for row in rows
+        if set(
+            row["arms"]["fault_governed"]["metrics"]["lifecycle"][
+                "protect_target_zone_ids"
+            ]
+        )
+        - {row["paired_metrics"]["target_zone_id"]}
+    ]
+    transients = [row for row in rows if row["fault_class"].startswith("transient_")]
+    multiple_or_missing_protect = [
+        row["family_id"]
+        for row in transients
+        if row["arms"]["fault_governed"]["metrics"]["lifecycle"][
+            "protect_entry_count"
+        ]
+        != 1
+    ]
+    handback_recurrence = [
+        row["family_id"]
+        for row in transients
+        if row["arms"]["fault_governed"]["metrics"]["lifecycle"][
+            "handback_recurrence_count"
+        ]
+        != 0
+    ]
+    handback_timeout = [
+        row["family_id"]
+        for row in transients
+        if row["arms"]["fault_governed"]["metrics"]["lifecycle"][
+            "handback_timeout_count"
+        ]
+        != 0
+    ]
+    nonzero_final = [
+        row["family_id"]
+        for row in transients
+        if not row["arms"]["fault_governed"]["metrics"]["lifecycle"][
+            "final_physical_zero"
+        ]
+    ]
     safety: dict[str, Any] = {
         "zero_invariant_violations": _gate(
             all(arm["metrics"]["invariant_violation_count"] == 0 for arm in arms),
@@ -391,6 +489,45 @@ def _evaluate_gates(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
             ),
             {"families": sum(row["fault_class"] == "frozen_sensor" for row in rows)},
         ),
+        "harmful_physical_fault_protected": _gate(
+            not missed_harmful,
+            {
+                "families": len(harmful_physical),
+                "missed_family_ids": missed_harmful,
+            },
+        ),
+        "fault_governed_expected_target_only": _gate(
+            not wrong_target,
+            {"families": len(rows), "wrong_target_family_ids": wrong_target},
+        ),
+        "transient_single_protect_episode": _gate(
+            not multiple_or_missing_protect,
+            {
+                "families": len(transients),
+                "failed_family_ids": multiple_or_missing_protect,
+            },
+        ),
+        "transient_zero_handback_recurrence": _gate(
+            not handback_recurrence,
+            {
+                "families": len(transients),
+                "failed_family_ids": handback_recurrence,
+            },
+        ),
+        "transient_zero_handback_timeout": _gate(
+            not handback_timeout,
+            {
+                "families": len(transients),
+                "failed_family_ids": handback_timeout,
+            },
+        ),
+        "transient_final_physical_zero": _gate(
+            not nonzero_final,
+            {
+                "families": len(transients),
+                "failed_family_ids": nonzero_final,
+            },
+        ),
         "preactivation_physical_parity": _gate(
             all(row["paired_metrics"]["preactivation_physical_parity"] for row in rows),
             {"families": len(rows)},
@@ -409,7 +546,7 @@ def _evaluate_gates(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         ),
     }
     safety["passed"] = all(entry["passed"] for entry in safety.values())
-    benefit = _benefit_gates(rows)
+    benefit = _benefit_gates(rows, evaluation_split=evaluation_split)
     return {
         "safety": safety,
         "benefit": benefit,
@@ -417,11 +554,13 @@ def _evaluate_gates(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _benefit_gates(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def _benefit_gates(
+    rows: Sequence[dict[str, Any]], *, evaluation_split: str
+) -> dict[str, Any]:
     eligible = [
         row
         for row in rows
-        if row["split"] == "validation"
+        if row["split"] == evaluation_split
         and row["paired_metrics"]["eligible_physical_airflow_fault"]
     ]
     defined = [
@@ -446,6 +585,7 @@ def _benefit_gates(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         else None
     )
     gates: dict[str, Any] = {
+        "evaluation_split": evaluation_split,
         "physical_reserve_delivery_for_benefit": _gate(
             bool(defined)
             and all(
@@ -560,6 +700,32 @@ def _arm_metrics(
             maximum_co2[zone_id] = max(maximum_co2[zone_id], concentration)
 
     states = tuple(decision.state for decision in result.decisions)
+    protect_events = [
+        event for event in result.events if event.to_state is AuthorityState.PROTECT
+    ]
+    handback_recurrence_events = [
+        event
+        for event in result.events
+        if event.from_state is AuthorityState.HANDBACK
+        and event.to_state is AuthorityState.PROTECT
+    ]
+    protect_target_zone_ids = sorted(
+        {
+            decision.target_zone_id
+            for decision in result.decisions
+            if decision.state is AuthorityState.PROTECT
+            and decision.target_zone_id is not None
+        }
+    )
+    final_records = result.records[-5:]
+    final_physical_zero = bool(final_records) and all(
+        float(record.reserve["system"]["total_delivered_airflow"]) <= _EPSILON
+        and all(
+            float(actuator["actual_position"]) <= _EPSILON
+            for actuator in record.reserve["actuators"].values()
+        )
+        for record in final_records
+    )
     processing_id = config.processing_zone().id
     captured = (
         float(result.records[-1].plant.zones[processing_id]["captured_co2"])
@@ -591,8 +757,31 @@ def _arm_metrics(
             "first_handback_tick": _first_state_tick(states, AuthorityState.HANDBACK),
             "physical_zero_acknowledgement_tick": _physical_zero_ack_tick(result),
         },
+        "lifecycle": {
+            "protect_target_zone_ids": protect_target_zone_ids,
+            "protect_entry_count": len(protect_events),
+            "handback_recurrence_count": len(handback_recurrence_events),
+            "handback_timeout_count": _decision_reason_episode_count(
+                result, "handback_timeout"
+            ),
+            "reserve_failure_count": _decision_reason_episode_count(
+                result, "reserve_delivery_failure"
+            ),
+            "final_physical_zero": final_physical_zero,
+        },
         "invariant_violation_count": invariant_violations,
     }
+
+
+def _decision_reason_episode_count(result: RecoveryRunResult, reason: str) -> int:
+    episodes = 0
+    active = False
+    for decision in result.decisions:
+        matches = decision.reason == reason
+        if matches and not active:
+            episodes += 1
+        active = matches
+    return episodes
 
 
 def _first_state_tick(states: Sequence[AuthorityState], state: AuthorityState) -> int | None:
