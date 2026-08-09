@@ -3,7 +3,7 @@
 **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
 **U**ser-defined **S**cenarios
 
-Version `0.2.1` is an integration-only local package of the closed
+Version `0.2.2` is an integration-only local package of the closed
 recovery-development work. It is not a published or hardware-qualified release;
 the `0.2.0` C4/C11 artifacts remain source-pinned historical evidence.
 

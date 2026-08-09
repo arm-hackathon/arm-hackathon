@@ -68,8 +68,16 @@ def _evaluated_response_settings(
     from aeolus.config import load_scenario
 
     governor = governor_factory(load_scenario(sweep_spec.base_scenario_path))
+    return _governor_response_settings(
+        governor, factory_name=_factory_name(governor_factory)
+    )
+
+
+def _governor_response_settings(
+    governor: Any, *, factory_name: str
+) -> dict[str, Any]:
+    """Return the declared settings of one governor instance."""
     settings = getattr(governor, "settings", None)
-    factory_name = _factory_name(governor_factory)
     if settings is None:
         return {"governor_factory": factory_name, "settings_status": "unavailable"}
     if not isinstance(settings, ResponseSettings):
@@ -77,6 +85,30 @@ def _evaluated_response_settings(
             "response evidence governor settings must be ResponseSettings or unavailable"
         )
     return {"governor_factory": factory_name, **asdict(settings)}
+
+
+def _receipt_bound_governor_factory(
+    governor_factory: GovernorFactory, response_settings: dict[str, Any]
+) -> GovernorFactory:
+    """Reject factory instances whose declared settings differ from the receipt."""
+    if response_settings.get("settings_status") == "unavailable":
+        return governor_factory
+
+    factory_name = _factory_name(governor_factory)
+
+    def bound_factory(config: Any) -> BoundedRecoveryGovernor:
+        governor = governor_factory(config)
+        actual_settings = _governor_response_settings(
+            governor, factory_name=factory_name
+        )
+        if actual_settings != response_settings:
+            raise ValueError(
+                "response evidence governor factory settings differ from "
+                "receipt-bound settings"
+            )
+        return governor
+
+    return bound_factory
 
 
 def _provenance_response_settings(response_settings: dict[str, Any]) -> dict[str, Any]:
@@ -387,13 +419,18 @@ def run_response_evidence(
     response_settings = _evaluated_response_settings(
         sweep_spec=sweep_spec, governor_factory=governor_factory
     )
+    bound_governor_factory = _receipt_bound_governor_factory(
+        governor_factory, response_settings
+    )
     corpus_dir = destination / "corpus"
     corpus_dir.mkdir()
     generate_sweep(sweep_path, corpus_dir)
     manifest = load_family_manifest(corpus_dir / "families.json")
 
     rows = [
-        evaluate_family(family, corpus_dir=corpus_dir, governor_factory=governor_factory)
+        evaluate_family(
+            family, corpus_dir=corpus_dir, governor_factory=bound_governor_factory
+        )
         for family in manifest.families
     ]
     provenance = _receipt_provenance(

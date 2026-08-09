@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import get_type_hints
 
+import pytest
+
 from aeolus.response import BoundedRecoveryGovernor, ResponseSettings
 from aeolus.response_evidence import (
     metrics_for_records,
@@ -203,13 +205,31 @@ def test_receipt_binds_custom_factory_settings(tmp_path, standard_scenario_path)
     )
 
 
+def test_receipt_rejects_factory_settings_that_change_during_evidence(
+    tmp_path, standard_scenario_path
+):
+    spec_path = _write_mini_sweep(tmp_path, standard_scenario_path)
+    calls = 0
+
+    def variable_factory(config):
+        nonlocal calls
+        calls += 1
+        max_command_delta = 0.03 if calls == 1 else 0.07
+        return BoundedRecoveryGovernor(
+            config, settings=ResponseSettings(max_command_delta=max_command_delta)
+        )
+
+    with pytest.raises(ValueError, match="settings differ from receipt-bound settings"):
+        run_response_evidence(
+            spec_path, tmp_path / "variable", governor_factory=variable_factory
+        )
+
+
 def test_output_dir_must_be_empty(tmp_path, standard_scenario_path):
     spec_path = _write_mini_sweep(tmp_path, standard_scenario_path)
     output = tmp_path / "occupied"
     output.mkdir()
     (output / "leftover.txt").write_text("x", encoding="utf-8")
-    import pytest
-
     with pytest.raises(ValueError, match="not empty"):
         run_response_evidence(spec_path, output)
 
