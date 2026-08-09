@@ -1,197 +1,96 @@
-# Project AEOLUS Plan
+# Project AEOLUS plan
 
-## End goal
+## Current status
 
-Build an Arm-powered orchestration layer for otherwise independent ventilation
-actuators. The system must detect a local equipment fault, understand its
-effect on the wider habitat, and coordinate a bounded response using healthy
-equipment before environmental conditions become unsafe.
+**Outcome B — reproducible negative recovery-development result.**
 
-The final demonstration must show:
+C4 is frozen at source commit
+`74154956d64309f067ada7593e2ef8786d140b4e`. The four-arm development runner
+completed deterministically, but two required gates are negative:
+
+| Required gate | Outcome | Consequence |
+|---|---|---|
+| Transient handback physical-zero acknowledgement | Failed | Recovery authority is not accepted as a safe completed handback mechanism. |
+| Physical reserve delivery for benefit | Failed | The simulation does not demonstrate physical recovery benefit. |
+
+A duplicate A/B run and a clean-checkout reproduction matched the C4 receipt
+and every trace. Reproducibility establishes the result; it does not repair the
+failed gates.
+
+C5 is closed. No new adviser training, tuning, export, model integration, or
+final-suite operation is authorised by the C4 result.
+
+## Project goal — not yet met
+
+The intended demonstration is:
 
 ```text
-isolated actuator degrades
-→ system-wide AI identifies the fault and affected zones
-→ deterministic governor activates healthy redundant capacity
-→ airflow recovers and CO₂ exposure is reduced
+observable primary-path concern
+→ deterministic authority validates identity, topology, persistence and bounds
+→ simulated independent reserve path is commanded
+→ delivered airflow and environmental outcome improve over the exact reserve-off arm
+→ authority returns reserve-off only after physical-zero acknowledgement
 ```
 
-AI provides diagnosis and confidence. Deterministic safety logic retains
-control of every actuator command.
+A learned component, if a later protocol independently qualifies one, may advise
+only. It must never own reserve commands or write plant state.
 
-## Status — Gates 0–2 accepted; protocol-v3 experiment implemented
+This goal is not established by the current source or evidence. The C4 negative
+result prevents describing the project as a working recovery controller or an
+AI-driven recovery system.
 
-Landed: the deterministic schema-v9 simulator with separated requested/delivered
-airflow and explicit residuals; five scenarios (nominal, healthy high-demand,
-gradual degradation, blocked path, frozen sensor); the telemetry allowlist and
-model-feature projection; the HTML visualiser; the leakage-safe labelled window
-corpus; and the streaming rule baseline with its evaluation harness (111/115
-windows on corpus v1, latencies 10/5/10 ticks).
+## What is implemented and verified in source
 
-Protocol v3 replaces the inspected v2 test/stress partitions as decision
-inputs. It uses 360 training and 120 validation scenario families to select
-between softmax and temporal-MLP candidates and calibrate a 216-point rule grid.
-It then builds a separate 180-family final suite. The frozen policy binds the
-selected detector, selection receipt, calibration receipt, validation
-comparison and ONNX parity. Final evaluation replays those development decisions
-and applies them to final rows without reselection.
+- Deterministic, seeded abstract habitat simulation with strict scenario and
+  trace validation.
+- Schema-v9 standard plant scenarios and schema-v10 recovery topology.
+- Independent primary and reserve directed path pairs per non-processing zone
+  in the recovery schema.
+- Observable-only `model_input_v1` projection; hidden fault truth, schedules,
+  health, seeds, and internal noise state remain outside model features.
+- A deterministic reserve authority with bounded transitions, causal
+  completed-tick observations, command ownership checks, failure latching, and
+  write-once trace output.
+- A four-arm recovery development runner with source, sweep, settings, trace,
+  and evidence hashes.
+- C4 canonical execution: 756 families, 3,024 traces, receipt
+  `1cbb9d428824f57c500b4a1ac3859b4ea6ef0a0dd4e70012b2e6c35d230a1730`.
+- Eleven targeted stress/falsification tests and byte-identical duplicate and
+  clean-checkout reproductions.
 
-The final result does not demonstrate an AI advantage: temporal-MLP macro-F1 is
-0.5754744477098027 versus 0.642588422763726 for calibrated rules, and nominal
-false-alarm rate is 38.5698% versus 0.5631%. The MLP's 9-tick median detection
-latency versus 10 ticks for rules is only an 11.1% reduction, below the fixed
-20% latency condition. The rule baseline remains preferred. These are synthetic
-family-held-out results, not independent-window uncertainty, wall-clock
-performance, OOD robustness or Arm evidence; see
-[`docs/protocol-v3-acceptance.md`](docs/protocol-v3-acceptance.md).
+## What the evidence does not establish
 
-Gate 0 accepts the R2 semantic contract. Gate 1 adds graph-derived
-outbound/return loop pairing, the exact topology-bound `model_input_v1`
-float32[24] selector, canonical selector/topology hashes, and fail-closed
-artifact metadata validation.
+- accepted safe recovery or successful handback;
+- measured physical reserve delivery or recovery benefit;
+- a qualified adviser, AI advantage, model integration, or ONNX export for this
+  recovery protocol;
+- any final-suite result;
+- INT8 quantisation, Arm64 performance, hardware validation, deployment, or
+  real environmental control.
 
-Gate 2 is accepted. Its strict, topology-bound family manifest binds each
-healthy/fault pair to one split and rejects pairs that differ outside
-`fault_profiles`. Corpus v2 persists the frozen model-input contract and labels
-windows from the first divergent paired `model_input_v1` tensor. Windows that
-straddle that observable onset update stateful detectors but are excluded from
-training and scored metrics. The three current families are contract fixtures,
-not a training corpus; the scenario sweep is the next prerequisite for model
-work.
+Historical model experiments remain historical. They must not be reused to
+claim a C4-qualified recovery adviser.
 
-Not started: the redundant fan, INT8 quantisation, Arm64 benchmarks, and
-deployment reproducibility packaging. The bounded-response governor slice
-(no-loss parity on 129 development families, `docs/bounded-response.md`) is
-landed in development evidence; the remaining governor items below are future
-slices.
+## Frozen boundaries
 
-## Core objectives
+1. The C4 safety and benefit predicates are frozen. Green submetrics cannot
+   override a false required predicate.
+2. The C4 development corpus is not a licence to tune thresholds, architecture,
+   or physical assumptions after inspecting its result.
+3. Final-suite inputs remain outside this closeout and require a separate human
+   gate.
+4. Generated traces, corpora, package artifacts, and closeout receipts remain
+   under ignored `out/` paths.
+5. The simulation uses abstract units only. No hardware or real-safety claim is
+   valid without separately scoped evidence.
 
-1. **System awareness:** combine telemetry from independent actuators, sensors
-   and the ventilation topology into one coherent system state.
-2. **Fault diagnosis:** distinguish normal demand from fan degradation,
-   blockage and invalid sensor data.
-3. **Safe orchestration:** coordinate healthy actuators without exceeding
-   declared command limits; hand control back when evidence is invalid.
-4. **Measurable benefit:** prove that orchestration improves airflow recovery
-   and environmental outcomes over isolated local control.
-5. **Arm optimisation:** demonstrate reproducible, efficient local inference on
-   Arm64 hardware.
+## Next decision
 
-## What must be implemented
+The safe next step is a human decision on whether to open a new, explicitly
+predeclared recovery protocol. That protocol would need to diagnose the two C4
+blockers before it runs: transient physical-zero acknowledgement and actual
+reserve delivery in eligible benefit families. It must use new evidence rather
+than relabel this negative run as acceptance.
 
-### 1. Actuator and plant model
-
-- Preserve local CO₂-driven controllers for each zone. (done)
-- Separate commanded output, actual output, health, airflow and power. (done:
-  command vs measured position vs requested/delivered airflow are separate;
-  health stays hidden by design — see §3)
-- Add shared ducts or capacity constraints so actuator behaviour has
-  system-wide consequences. (mechanism done and unit-tested; a contention
-  scenario arrives with the governor slice — current habitats never saturate
-  the shared bay)
-- Add a healthy redundant fan or alternative airflow path. (pending — changes
-  scenario geometry; lands with the governor slice)
-
-### 2. Deterministic scenarios
-
-- Nominal operation. (done: `standard_habitat`, `high_demand_healthy`)
-- Gradual primary-fan degradation. (done: `primary_fan_degradation`)
-- Blocked airflow path. (done: `blocked_path`)
-- Invalid or frozen sensor. (done: `frozen_sensor`, with a lab demand step so
-  the held reading diverges from reality — a frozen sensor at saturated
-  steady state is otherwise invisible)
-- Shared-capacity contention. (pending — governor slice)
-- Identical fault runs with orchestration enabled and disabled. (pending —
-  requires the governor)
-
-### 3. Telemetry and topology
-
-- Record CO₂, actuator command and position, requested/delivered/residual
-  airflow and power. (done) Health and fault truth are deliberately NOT
-  recorded: they stay behind the telemetry boundary so model-facing data
-  contains only what honest deployment telemetry would show. Sensor validity
-  is handled as a fault class (`frozen_sensor`) and later as a governor
-  `HAND_BACK` condition, not as a telemetry field.
-- Airflow is recorded as metered duct flow. Declaring flow sensing is a
-  deliberate abstraction, kept because the requested/delivered residual is
-  the primary fault observable; a deployment-facing version would need
-  declared flow sensors or inferred flow.
-- Derive command-tracking residuals and rolling trends. (residuals done;
-  rolling trends belong to the model lane)
-- Map each actuator to the ducts and zones it affects. (done — the validated
-  scenario graph is the topology)
-- Keep every run seeded, replayable and testable. (done — byte-identical
-  replay under test)
-
-### 4. AI diagnosis
-
-- Generate labelled telemetry windows from the simulator. (done for corpus v1;
-  for the corpus-v2 contract fixture, each row is schema-validated and bound to
-  immutable family evidence for its split, role, onset and label, plus replayed
-  model-input traces; generated manifests persist frozen Gate-1 metadata, family
-  split counts and a canonical integrity hash.)
-- Train a compact temporal classifier and compare it with the rule baseline.
-  (done experimentally with IID and separately reported OOD stress families;
-  split by family, never by window; current locked result favours the rule)
-- Choose the architecture with quantisation in mind: prefer operations that
-  survive INT8 cleanly over exotic layers, so quantisation is a design
-  input, not an afterthought.
-- Export FP32 and INT8 ONNX models. (FP32 done; INT8 pending)
-- Report fault class, confidence, detection latency and false alarms. (done for
-  FP32 and rule comparison)
-
-### 5. Safety governor
-
-Landed (development slice): deterministic causal governor
-(`src/aeolus/response.py`) with declared constants, bounded commands,
-structured per-tick rationale, and a 129-family response-evidence harness
-(`src/aeolus/response_evidence.py`, `scenarios/sweep-response.json`).
-
-Remaining slices:
-
-- Require persistent model confidence before intervening.
-- Select healthy redundant capacity using topology and current demand.
-- Cap autonomous commands at 80%.
-- Produce `HAND_BACK` for invalid telemetry, invalid inference or insufficient
-  healthy capacity.
-- Record the reason for every decision.
-
-### 6. Evidence, optimisation story and presentation
-
-The judges weight technical implementation most heavily, and the challenge
-brief demands an explicit optimisation narrative: baseline, technical
-changes, measured improvement on Arm, and why it matters. The plan for that:
-
-- **Baseline vs optimised:** the FP32 ONNX classifier is the declared
-  baseline; the INT8 quantised model is the optimisation. Report model size,
-  latency, throughput, memory and detection-quality delta between them on a
-  declared Arm64 target.
-- **Declared Arm64 target (later):** Azure Arm64 (Ampere Altra, Dps v5 series,
-  Ubuntu) remains the intended benchmark class. No Azure resource is provisioned
-  during Gates 0-2 or without Ben's explicit approval. After a frozen model and
-  benchmark harness exist, record the selected VM size, CPU, OS and runtime
-  versions beside raw results so the numbers are reproducible.
-- **Reusable artifacts, not claims:** a reusable benchmark runner script,
-  raw benchmark results committed to the repo, and migration/optimisation
-  notes another developer could follow. Tooling and lessons are scored.
-- **README optimisation section:** baseline, changes made, results, and why
-  they matter, written for a judge who reads the repo before the pitch.
-- Plot fault injection, detection, commands, airflow and CO₂ recovery together.
-- Measure recovery time and CO₂ exposure with and without orchestration.
-- Provide one-command reproduction and a demonstration video under three
-  minutes.
-
-## Completion criteria
-
-The project is complete when the nominal run produces no intervention, each
-declared fault is detected and classified, invalid data causes `HAND_BACK`, the
-backup command remains within its bound, and the orchestrated run measurably
-outperforms the same untreated fault. All claims must be backed by replay
-traces, automated tests and Arm benchmark evidence.
-
-## Scope guard
-
-Do not prioritise a dashboard, database, cloud service, detailed fluid
-dynamics, physical sensors or general building-management features until the
-closed-loop orchestration demonstration and Arm measurements are complete.
+Until then, the project is a deterministic simulation and a documented negative
+recovery-development result.
