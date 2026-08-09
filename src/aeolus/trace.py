@@ -79,24 +79,30 @@ _AUTHORITY_FIELDS = frozenset(
 )
 RECOVERY_AUTHORITY_REASONS = frozenset(
     {
-        "cold_start",
-        "no_concern",
-        "unique_concern",
-        "entry_persistence_met",
-        "target_changed",
         "ambiguous_concern",
-        "observation_unavailable",
+        "cold_start",
         "degraded_clear",
+        "entry_persistence_met",
+        "failure_latched",
+        "handback_abort",
+        "handback_begin",
+        "handback_complete",
+        "handback_ramp",
+        "handback_ramp_down",
+        "handback_recurrence",
+        "handback_start",
+        "handback_timeout",
+        "handback_wait",
+        "no_concern",
+        "observation_unavailable",
         "protect_hold",
         "protect_increase",
         "recovery_clear",
-        "handback_start",
-        "handback_ramp",
-        "handback_abort",
-        "handback_complete",
         "reserve_delivery_failure",
+        "reserve_failure_handback_complete",
         "reserve_failure_shutdown",
-        "failure_latched",
+        "target_changed",
+        "unique_concern",
     }
 )
 
@@ -131,7 +137,10 @@ class TraceWriter:
 
     def __enter__(self):
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = self._path.open("w", encoding="utf-8")
+        try:
+            self._handle = self._path.open("x", encoding="utf-8")
+        except FileExistsError as exc:
+            raise FileExistsError(f"trace output already exists: {self._path}") from exc
         return self
 
     def write(self, record: TickRecord) -> None:
@@ -158,7 +167,10 @@ class RecoveryTraceWriter:
 
     def __enter__(self):
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = self._path.open("w", encoding="utf-8")
+        try:
+            self._handle = self._path.open("x", encoding="utf-8")
+        except FileExistsError as exc:
+            raise FileExistsError(f"trace output already exists: {self._path}") from exc
         return self
 
     def write(self, record: RecoveryTickRecord) -> None:

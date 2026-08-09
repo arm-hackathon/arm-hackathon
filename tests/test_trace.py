@@ -322,3 +322,24 @@ def test_recovery_writer_rejects_topology_authority_and_total_mismatches(
     with RecoveryTraceWriter(tmp_path / "mismatch.jsonl", recovery_config) as writer:
         with pytest.raises(ValueError, match=match):
             writer.write(record)
+
+
+@pytest.mark.parametrize(
+    "writer_factory",
+    (
+        lambda path, config: TraceWriter(path),
+        lambda path, config: RecoveryTraceWriter(path, config),
+    ),
+)
+def test_trace_writers_refuse_existing_output_without_mutating_it(
+    tmp_path, recovery_config, writer_factory
+):
+    output = tmp_path / "canonical.jsonl"
+    original = b"immutable canonical evidence\n"
+    output.write_bytes(original)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        with writer_factory(output, recovery_config):
+            pass
+
+    assert output.read_bytes() == original
