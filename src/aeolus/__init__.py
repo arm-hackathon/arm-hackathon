@@ -8,4 +8,4 @@ simulation units (``co2_units``, ``airflow_units_per_second``). They are
 not real spacecraft ppm, kilograms, or safety limits.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
