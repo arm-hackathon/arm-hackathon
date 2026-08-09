@@ -1,13 +1,13 @@
 # AEOLUS Hackathon Working Model Product Requirements Document
 
 **Status:** Outcome B complete; local package qualified, recovery gates negative
-**Owner:** Benedict Anokye-Davies  
-**Deadline:** 2026-08-09 09:00 BST  
-**Execution stop:** 2026-08-09 08:30 BST  
-**Report window:** 08:30–09:00 BST  
+**Owner:** Benedict Anokye-Davies
+**Deadline:** 2026-08-09 09:00 BST
+**Execution stop:** 2026-08-09 08:30 BST
+**Report window:** 08:30–09:00 BST
 **Last updated:** 2026-08-09 03:07 BST
-**Repository:** `arm-hackathon/arm-hackathon`  
-**Working branch:** `ben/independent-recovery`  
+**Repository:** `arm-hackathon/arm-hackathon`
+**Working branch:** `ben/independent-recovery`
 **Repository root:** the active `ben/independent-recovery` working tree
 
 ## 1. Purpose
