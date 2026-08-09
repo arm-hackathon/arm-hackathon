@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -9,12 +10,14 @@ from pathlib import Path
 import pytest
 
 from aeolus.config import parse_scenario
+from aeolus.early_risk import load_early_risk_artifact
 from aeolus.recovery import RecoverySettings
 from aeolus.recovery_evidence import _arm_metrics
 from aeolus.scenario import RunSpec, run_recovery_scenario
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RECOVERY_SCENARIO = REPO_ROOT / "scenarios" / "recovery_habitat.json"
+EARLY_RISK_ARTIFACT = REPO_ROOT / "models" / "early-risk-softmax-v1-candidate.json"
 
 
 def _document() -> dict:
@@ -86,6 +89,67 @@ def test_healthy_runner_is_causal_byte_stable_and_reserve_off(tmp_path):
         assert record.authority["applied_command_digest"] == decision.command_digest
         assert _reserve_delivered(record) == 0.0
     assert "PROTECT" not in _authority_states(first)
+
+
+def test_tracked_early_risk_artifact_runs_behind_governor_without_healthy_activation():
+    config = parse_scenario(_document())
+    predictor, training, calibration = load_early_risk_artifact(EARLY_RISK_ARTIFACT)
+    artifact_document = json.loads(EARLY_RISK_ARTIFACT.read_text(encoding="utf-8"))
+    with pytest.raises(ValueError, match="artifact identity"):
+        run_recovery_scenario(
+            config,
+            run_id="mismatched-early-risk-artifact",
+            governed=True,
+            run=RunSpec(
+                total_ticks=1,
+                warmup_ticks=0,
+                crew_cabin_co2_concentration_ceiling=0.30,
+            ),
+            early_risk_predictor=predictor,
+            early_risk_artifact_sha256="0" * 64,
+        )
+    tampered_weights = [list(row) for row in predictor.weights]
+    tampered_weights[0][0] += 1.0
+    tampered = replace(
+        predictor,
+        weights=tuple(tuple(row) for row in tampered_weights),
+    )
+    with pytest.raises(ValueError, match="model payload"):
+        run_recovery_scenario(
+            config,
+            run_id="tampered-early-risk-model",
+            governed=True,
+            run=RunSpec(
+                total_ticks=1,
+                warmup_ticks=0,
+                crew_cabin_co2_concentration_ceiling=0.30,
+            ),
+            early_risk_predictor=tampered,
+            early_risk_artifact_sha256=artifact_document["artifact_sha256"],
+        )
+    result = run_recovery_scenario(
+        config,
+        run_id="healthy-early-risk-artifact",
+        governed=True,
+        run=RunSpec(
+            total_ticks=60,
+            warmup_ticks=60,
+            crew_cabin_co2_concentration_ceiling=0.30,
+        ),
+        early_risk_predictor=predictor,
+        early_risk_artifact_sha256=artifact_document["artifact_sha256"],
+    )
+
+    assert hashlib.sha256(EARLY_RISK_ARTIFACT.read_bytes()).hexdigest() == (
+        "2f88fac553f3dba6abd3c6f0a4793aa921fbeeb8682b4de740eca88a490b5139"
+    )
+    assert training["corpus_sha256"] == (
+        "5cfaa01c922e5364d7af72a640e5acf4135f6f8ecdd9c12b888cfc0929d028b3"
+    )
+    assert calibration["eligible"] is True
+    assert len(result.records) == len(result.decisions) == len(result.advisories) == 60
+    assert "PROTECT" not in _authority_states(result)
+    assert all(_reserve_delivered(record) == 0.0 for record in result.records)
 
 
 def test_persistent_fault_activates_only_governed_reserve_plane():

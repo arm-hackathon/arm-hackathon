@@ -11,8 +11,10 @@ import pytest
 from aeolus.config import parse_scenario
 from aeolus.model_input import build_model_input_contract
 from aeolus.recovery import (
+    AdvisoryAcceptanceSettings,
     AuthorityState,
     DeterministicRecoverySupervisor,
+    RecoveryAdvisory,
     RecoveryObservation,
     RecoverySettings,
     ReserveCommandOwner,
@@ -119,6 +121,45 @@ def _start(supervisor):
 
 def _advance(supervisor, **kwargs):
     return supervisor.decide(_observation(supervisor, **kwargs))
+
+
+ADVISORY_ARTIFACT_SHA256 = "a" * 64
+
+
+def _advisory_supervisor(config):
+    return DeterministicRecoverySupervisor(
+        config,
+        run_id="advisory-run",
+        contract=build_model_input_contract(config),
+        advisory_settings=AdvisoryAcceptanceSettings(
+            artifact_sha256=ADVISORY_ARTIFACT_SHA256,
+            minimum_probability=0.57,
+            minimum_margin=0.17,
+            minimum_residual_ratio=0.04,
+        ),
+    )
+
+
+def _advisory(
+    supervisor: DeterministicRecoverySupervisor,
+    observation: RecoveryObservation,
+    *,
+    target: str = "cabin_a",
+    probability: float = 0.80,
+    margin: float = 0.30,
+) -> RecoveryAdvisory:
+    return RecoveryAdvisory(
+        run_id=supervisor.run_id,
+        authority_epoch=supervisor.authority_epoch,
+        completed_tick=observation.completed_tick,
+        sequence=observation.sequence,
+        target_zone_id=target,
+        probability=probability,
+        margin=margin,
+        selector_sha256=supervisor.contract.selector_hash,
+        topology_sha256=supervisor.contract.topology_hash,
+        artifact_sha256=ADVISORY_ARTIFACT_SHA256,
+    )
 
 
 def _arm(supervisor, target="cabin_a"):
@@ -263,6 +304,97 @@ class TestObservationAndApplicationGates:
             validate_recovery_decision(
                 replace(decision, reason="invented_reason"), **expected
             )
+
+
+class TestAdvisoryAcceptanceBoundary:
+    def test_no_advisory_preserves_existing_below_threshold_behavior(self, config):
+        supervisor = _advisory_supervisor(config)
+        _start(supervisor)
+        decision = supervisor.decide(
+            _observation(supervisor, target="cabin_a", target_delivered=9.4)
+        )
+
+        assert decision.state is AuthorityState.NOMINAL
+        assert decision.reason == "no_concern"
+        assert set(decision.reserve_commands.values()) == {0.0}
+
+    def test_two_persistent_supported_advisories_can_enter_protect(self, config):
+        supervisor = _advisory_supervisor(config)
+        _start(supervisor)
+        first_observation = _observation(
+            supervisor, target="cabin_a", target_delivered=9.4
+        )
+        first = supervisor.decide(
+            first_observation, _advisory(supervisor, first_observation)
+        )
+        second_observation = _observation(
+            supervisor, target="cabin_a", target_delivered=9.4
+        )
+        second = supervisor.decide(
+            second_observation, _advisory(supervisor, second_observation)
+        )
+
+        assert first.state is AuthorityState.DEGRADED
+        assert first.reason == "advisory_unique_concern"
+        assert set(first.reserve_commands.values()) == {0.0}
+        assert second.state is AuthorityState.PROTECT
+        assert second.reason == "advisory_entry_persistence_met"
+        assert second.target_zone_id == "cabin_a"
+        assert second.reserve_commands["cabin_a"] > 0.0
+        assert all(
+            value == 0.0
+            for zone_id, value in second.reserve_commands.items()
+            if zone_id != "cabin_a"
+        )
+
+    @pytest.mark.parametrize(
+        "mutation",
+        (
+            {"artifact_sha256": "b" * 64},
+            {"completed_tick": 999},
+            {"target_zone_id": "lab"},
+            {"probability": 0.56},
+            {"margin": 0.16},
+        ),
+    )
+    def test_malformed_stale_low_confidence_and_out_of_scope_advisories_are_refused(
+        self, config, mutation
+    ):
+        supervisor = _advisory_supervisor(config)
+        _start(supervisor)
+        observation = _observation(
+            supervisor, target="cabin_a", target_delivered=9.4
+        )
+        advisory = replace(_advisory(supervisor, observation), **mutation)
+        decision = supervisor.decide(observation, advisory)
+
+        assert decision.state is AuthorityState.NOMINAL
+        assert decision.reason == "no_concern"
+        assert set(decision.reserve_commands.values()) == {0.0}
+
+    def test_advisory_target_must_match_unique_physical_shortfall(self, config):
+        supervisor = _advisory_supervisor(config)
+        _start(supervisor)
+        observation = _observation(
+            supervisor, target="cabin_a", target_delivered=9.4
+        )
+        wrong_target = _advisory(supervisor, observation, target="cabin_b")
+        decision = supervisor.decide(observation, wrong_target)
+
+        assert decision.state is AuthorityState.NOMINAL
+        assert set(decision.reserve_commands.values()) == {0.0}
+
+    def test_advisory_is_refused_when_current_shortfall_is_ambiguous(self, config):
+        supervisor = _advisory_supervisor(config)
+        _start(supervisor)
+        observation = _observation(supervisor, ambiguous=True)
+        decision = supervisor.decide(
+            observation, _advisory(supervisor, observation)
+        )
+
+        assert decision.state is AuthorityState.DEGRADED
+        assert decision.reason == "ambiguous_concern"
+        assert set(decision.reserve_commands.values()) == {0.0}
 
 
 class TestAuthorityStateTable:

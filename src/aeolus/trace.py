@@ -10,7 +10,6 @@ from typing import Any
 
 from aeolus.config import HabitatConfig
 
-
 _ZONE_FIELDS = frozenset(
     {
         "co2_mass",
@@ -79,6 +78,8 @@ _AUTHORITY_FIELDS = frozenset(
 )
 RECOVERY_AUTHORITY_REASONS = frozenset(
     {
+        "advisory_entry_persistence_met",
+        "advisory_unique_concern",
         "ambiguous_concern",
         "cold_start",
         "degraded_clear",

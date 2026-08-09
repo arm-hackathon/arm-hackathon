@@ -38,6 +38,31 @@ for the receipt, hashes, limitations, and next-step gate. The earlier negative C
 result remains preserved as historical development evidence in
 [`docs/recovery-protocol-acceptance.md`](docs/recovery-protocol-acceptance.md).
 
+## Development candidate: advisory temporal early risk
+
+An opt-in compact temporal predictor now estimates whether `cabin_a` or
+`cabin_b` will cross the declared physical CO2 ceiling within twelve ticks. It
+uses ten completed `model_input_v1` telemetry ticks and cannot issue actuator
+commands.
+
+The deterministic supervisor accepts a warning only when current telemetry
+independently shows the same unique airflow shortfall, the artifact and input
+contract hashes match, and the evidence persists. Omitting the predictor keeps
+the previously verified governor path unchanged.
+
+On 72 fresh development-validation families, the bounded candidate produced
+zero healthy, frozen-sensor, or wrong-target interventions and zero invariant
+violations. It protected three of five harmful gradual families earlier and
+reduced integrated physical CO2 excess in two, with no harmful gradual family
+worsened. This is development evidence only: validation was used for
+abstention calibration, cabin-A physical benefit is not established, and no
+predictor final suite or Arm optimisation has been run.
+
+See
+[`docs/evidence/temporal-early-risk-development-result.md`](docs/evidence/temporal-early-risk-development-result.md)
+and the frozen
+[`docs/evidence/temporal-early-risk-development-contract.md`](docs/evidence/temporal-early-risk-development-contract.md).
+
 ## Implemented simulation boundary
 
 The repository currently provides:
@@ -52,6 +77,8 @@ The repository currently provides:
   `HANDBACK`) that owns the reserve command channel only while active;
 - strict, write-once recovery traces that retain the legacy plant projection
   and add separate reserve and authority telemetry; and
+- an opt-in, hash-bound temporal early-risk advisory path whose warnings remain
+  behind deterministic physical evidence and lifecycle gates; and
 - a four-arm development evidence runner:
   `reference_reserve_off`, `reference_governed`, `fault_reserve_off`, and
   `fault_governed`.

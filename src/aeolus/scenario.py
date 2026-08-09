@@ -6,6 +6,8 @@ state, so the same scenario and seed always reproduce the same trace.
 """
 
 import math
+from collections import deque
+from collections.abc import Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 
@@ -14,7 +16,11 @@ from aeolus.measurement import (
     deterministic_measurement_drift,
     deterministic_measurement_sample,
 )
-from aeolus.model_input import build_model_input_contract, model_input_v1
+from aeolus.model_input import (
+    assert_model_contract_compatible,
+    build_model_input_contract,
+    model_input_v1,
+)
 from aeolus.plant import (
     HabitatState,
     initial_state,
@@ -22,9 +28,11 @@ from aeolus.plant import (
     step_habitat,
 )
 from aeolus.recovery import (
+    AdvisoryAcceptanceSettings,
     AuthorityEvent,
     AuthorityState,
     DeterministicRecoverySupervisor,
+    RecoveryAdvisory,
     RecoveryDecision,
     RecoveryObservation,
     RecoverySettings,
@@ -65,6 +73,7 @@ class RecoveryRunResult:
     states: tuple[HabitatState, ...]
     decisions: tuple[RecoveryDecision, ...]
     events: tuple[AuthorityEvent, ...]
+    advisories: tuple[RecoveryAdvisory | None, ...] = ()
 
 
 # Declared run constants for the standard habitat. The ceiling is the
@@ -125,6 +134,8 @@ def run_recovery_scenario(
     run: RunSpec = RECOVERY_RUN,
     trace_path=None,
     settings: RecoverySettings | None = None,
+    early_risk_predictor=None,
+    early_risk_artifact_sha256: str | None = None,
 ) -> RecoveryRunResult:
     """Run one causal reserve-recovery arm through the shared plant.
 
@@ -137,6 +148,10 @@ def run_recovery_scenario(
         raise ValueError("recovery run_id must be non-empty")
     if settings is not None and not governed:
         raise ValueError("recovery settings require a governed run")
+    if (early_risk_predictor is None) != (early_risk_artifact_sha256 is None):
+        raise ValueError("early-risk predictor and artifact hash must be supplied together")
+    if early_risk_predictor is not None and not governed:
+        raise ValueError("early-risk predictor requires a governed run")
 
     state = initial_state(config)
     for warmup_index in range(run.warmup_ticks):
@@ -149,12 +164,18 @@ def run_recovery_scenario(
     state = replace(state, tick=0, captured_co2=0.0)
 
     contract = build_model_input_contract(config)
+    advisory_settings = _early_risk_advisory_settings(
+        early_risk_predictor,
+        early_risk_artifact_sha256,
+        contract,
+    )
     supervisor = (
         DeterministicRecoverySupervisor(
             config,
             run_id=run_id,
             contract=contract,
             settings=settings,
+            advisory_settings=advisory_settings,
         )
         if governed
         else None
@@ -167,6 +188,15 @@ def run_recovery_scenario(
     records: list[RecoveryTickRecord] = []
     states: list[HabitatState] = []
     decisions: list[RecoveryDecision] = []
+    advisories: list[RecoveryAdvisory | None] = []
+    advisory_window: deque[tuple[float, ...]] = deque(
+        maxlen=(
+            int(early_risk_predictor.window_ticks)
+            if early_risk_predictor is not None
+            else 1
+        )
+    )
+    advisory_for_decision: RecoveryAdvisory | None = None
     writer_context = (
         RecoveryTraceWriter(trace_path, config) if trace_path is not None else nullcontext()
     )
@@ -215,18 +245,26 @@ def run_recovery_scenario(
             records.append(record)
             states.append(state)
             decisions.append(decision)
+            advisories.append(advisory_for_decision)
 
             if tick == run.total_ticks:
                 continue
-            decision = (
-                supervisor.decide(
-                    _recovery_observation(config, contract, supervisor, record)
+            if supervisor is not None:
+                observation = _recovery_observation(config, contract, supervisor, record)
+                advisory_window.append(observation.model_input_v1)
+                advisory_for_decision = _early_risk_advisory(
+                    early_risk_predictor,
+                    early_risk_artifact_sha256,
+                    supervisor,
+                    observation,
+                    advisory_window,
                 )
-                if supervisor is not None
-                else _reserve_off_decision(
+                decision = supervisor.decide(observation, advisory_for_decision)
+            else:
+                advisory_for_decision = None
+                decision = _reserve_off_decision(
                     config, run_id=run_id, decision_tick=tick + 1
                 )
-            )
 
     events = tuple(supervisor.event_history) if supervisor is not None else ()
     return RecoveryRunResult(
@@ -234,6 +272,80 @@ def run_recovery_scenario(
         states=tuple(states),
         decisions=tuple(decisions),
         events=events,
+        advisories=tuple(advisories),
+    )
+
+
+def _early_risk_advisory_settings(predictor, artifact_sha256, contract):
+    if predictor is None:
+        return None
+    if (
+        not isinstance(artifact_sha256, str)
+        or len(artifact_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in artifact_sha256)
+    ):
+        raise ValueError("early-risk artifact hash is malformed")
+    assert_artifact_identity = getattr(predictor, "assert_artifact_identity", None)
+    if not callable(assert_artifact_identity):
+        raise ValueError("early-risk predictor has no artifact identity validator")
+    assert_artifact_identity(artifact_sha256)
+    if (
+        isinstance(getattr(predictor, "window_ticks", None), bool)
+        or not isinstance(getattr(predictor, "window_ticks", None), int)
+        or predictor.window_ticks < 1
+    ):
+        raise ValueError("early-risk predictor window is malformed")
+    if getattr(predictor, "feature_width", None) != len(contract.fields):
+        raise ValueError("early-risk predictor feature width does not match contract")
+    if tuple(getattr(predictor, "class_names", ())) != (
+        "no_early_risk",
+        "risk:cabin_a",
+        "risk:cabin_b",
+    ):
+        raise ValueError("early-risk predictor classes are not supported")
+    metadata = getattr(predictor, "contract_metadata", None)
+    if not isinstance(metadata, Mapping):
+        raise ValueError("early-risk predictor contract metadata does not match topology")
+    try:
+        assert_model_contract_compatible(metadata, contract)
+    except ValueError as exc:
+        raise ValueError(
+            "early-risk predictor contract metadata does not match topology"
+        ) from exc
+    return AdvisoryAcceptanceSettings(
+        artifact_sha256=artifact_sha256,
+        minimum_probability=float(predictor.min_probability),
+        minimum_margin=float(predictor.min_margin),
+    )
+
+
+def _early_risk_advisory(
+    predictor,
+    artifact_sha256: str | None,
+    supervisor: DeterministicRecoverySupervisor,
+    observation: RecoveryObservation,
+    window,
+) -> RecoveryAdvisory | None:
+    if predictor is None or len(window) < predictor.window_ticks:
+        return None
+    prediction = predictor.predict_window(tuple(window))
+    if prediction.label == "no_early_risk":
+        return None
+    prefix, separator, target = prediction.label.partition(":")
+    if prefix != "risk" or separator != ":" or target not in ("cabin_a", "cabin_b"):
+        raise ValueError("early-risk predictor emitted an unsupported label")
+    assert artifact_sha256 is not None
+    return RecoveryAdvisory(
+        run_id=supervisor.run_id,
+        authority_epoch=supervisor.authority_epoch,
+        completed_tick=observation.completed_tick,
+        sequence=observation.sequence,
+        target_zone_id=target,
+        probability=float(prediction.probability),
+        margin=float(prediction.margin),
+        selector_sha256=observation.selector_sha256,
+        topology_sha256=observation.topology_sha256,
+        artifact_sha256=artifact_sha256,
     )
 
 

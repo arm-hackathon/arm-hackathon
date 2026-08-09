@@ -160,6 +160,45 @@ class RecoverySettings:
 
 
 @dataclass(frozen=True)
+class AdvisoryAcceptanceSettings:
+    """Frozen deterministic gates for one learned advisory artifact."""
+
+    artifact_sha256: str
+    minimum_probability: float
+    minimum_margin: float
+    minimum_residual_ratio: float = 0.04
+
+    def __post_init__(self) -> None:
+        if not _is_digest(self.artifact_sha256):
+            raise ValueError("recovery advisory artifact hash is malformed")
+        for name, value in (
+            ("probability", self.minimum_probability),
+            ("margin", self.minimum_margin),
+            ("residual", self.minimum_residual_ratio),
+        ):
+            if not _is_finite_number(value) or not 0.0 <= float(value) <= 1.0:
+                raise ValueError(f"recovery advisory {name} threshold is invalid")
+        if not 0.0 < self.minimum_residual_ratio < RecoverySettings().entry_residual_ratio:
+            raise ValueError("recovery advisory residual floor must be below normal entry")
+
+
+@dataclass(frozen=True)
+class RecoveryAdvisory:
+    """One causal learned warning with no actuator-command authority."""
+
+    run_id: str
+    authority_epoch: int
+    completed_tick: int
+    sequence: int
+    target_zone_id: str
+    probability: float
+    margin: float
+    selector_sha256: str
+    topology_sha256: str
+    artifact_sha256: str
+
+
+@dataclass(frozen=True)
 class RecoveryObservation:
     """Completed-tick telemetry accepted at the recovery authority boundary."""
 
@@ -247,6 +286,7 @@ class _ObservationAnalysis:
     candidates: tuple[str, ...]
     target: str | None
     ambiguous: bool
+    advisory_target: str | None = None
 
 
 def _is_finite_number(value: object) -> bool:
@@ -631,6 +671,7 @@ class DeterministicRecoverySupervisor:
         run_id: str,
         contract: Any,
         settings: RecoverySettings | None = None,
+        advisory_settings: AdvisoryAcceptanceSettings | None = None,
     ) -> None:
         if not isinstance(run_id, str) or not run_id:
             raise ValueError("recovery run_id must be a non-empty string")
@@ -638,6 +679,11 @@ class DeterministicRecoverySupervisor:
         self.settings = settings if settings is not None else RecoverySettings()
         if not isinstance(self.settings, RecoverySettings):
             raise ValueError("recovery settings are malformed")
+        if advisory_settings is not None and not isinstance(
+            advisory_settings, AdvisoryAcceptanceSettings
+        ):
+            raise ValueError("recovery advisory settings are malformed")
+        self.advisory_settings = advisory_settings
         self._zone_ids = _expected_zone_ids(config)
         (
             self._primary_outbound,
@@ -756,6 +802,7 @@ class DeterministicRecoverySupervisor:
         self._protect_age = 0
         self._protect_clear_count = 0
         self._protect_command = 0.0
+        self._protect_entered_by_advisory = False
         self._reserve_delivery_failure_count = 0
         self._reserve_failed = False
         self._failure_handback = False
@@ -788,11 +835,26 @@ class DeterministicRecoverySupervisor:
             reason="cold_start",
         )
 
-    def decide(self, observation: RecoveryObservation) -> RecoveryDecision:
+    def decide(
+        self,
+        observation: RecoveryObservation,
+        advisory: RecoveryAdvisory | None = None,
+    ) -> RecoveryDecision:
         """Consume one fresh completed-tick observation and decide causally."""
         self._validate_observation(observation)
         self._last_observation_sequence = observation.sequence
         analysis = self._analyze(observation)
+        advisory_target = self._accepted_advisory_target(
+            observation, analysis, advisory
+        )
+        if advisory_target is not None:
+            analysis = _ObservationAnalysis(
+                residuals=analysis.residuals,
+                candidates=analysis.candidates,
+                target=analysis.target,
+                ambiguous=analysis.ambiguous,
+                advisory_target=advisory_target,
+            )
         if self._state is AuthorityState.NOMINAL:
             return self._decide_nominal(observation, analysis)
         if self._state is AuthorityState.DEGRADED:
@@ -1025,20 +1087,71 @@ class DeterministicRecoverySupervisor:
             ambiguous=ambiguous,
         )
 
+    def _accepted_advisory_target(
+        self,
+        observation: RecoveryObservation,
+        analysis: _ObservationAnalysis,
+        advisory: RecoveryAdvisory | None,
+    ) -> str | None:
+        """Return a physically supported advisory target or refuse it."""
+        settings = self.advisory_settings
+        if settings is None or not isinstance(advisory, RecoveryAdvisory):
+            return None
+        if analysis.target is not None or analysis.ambiguous:
+            return None
+        if (
+            advisory.run_id != self._run_id
+            or advisory.authority_epoch != self._authority_epoch
+            or advisory.completed_tick != observation.completed_tick
+            or advisory.sequence != observation.sequence
+            or advisory.selector_sha256 != self._selector_hash
+            or advisory.topology_sha256 != self._topology_hash
+            or advisory.artifact_sha256 != settings.artifact_sha256
+        ):
+            return None
+        target = advisory.target_zone_id
+        if target not in ("cabin_a", "cabin_b") or target not in self._zone_ids:
+            return None
+        if (
+            not _is_finite_number(advisory.probability)
+            or not 0.0 <= float(advisory.probability) <= 1.0
+            or float(advisory.probability) < settings.minimum_probability
+            or not _is_finite_number(advisory.margin)
+            or not 0.0 <= float(advisory.margin) <= 1.0
+            or float(advisory.margin) < settings.minimum_margin
+        ):
+            return None
+        target_residual = float(analysis.residuals[target])
+        if target_residual < settings.minimum_residual_ratio:
+            return None
+        other_max = max(
+            (
+                float(analysis.residuals[zone_id])
+                for zone_id in self._zone_ids
+                if zone_id != target
+            ),
+            default=0.0,
+        )
+        if target_residual - other_max < self.settings.entry_isolation_margin:
+            return None
+        return target
+
     def _decide_nominal(
         self, observation: RecoveryObservation, analysis: _ObservationAnalysis
     ) -> RecoveryDecision:
         previous = self._last_decision
         assert previous is not None
         old_state = self._state
-        if analysis.target is not None:
+        concern_target = analysis.target or analysis.advisory_target
+        advisory_concern = analysis.target is None and analysis.advisory_target is not None
+        if concern_target is not None:
             self._state = AuthorityState.DEGRADED
-            self._entry_target = analysis.target
+            self._entry_target = concern_target
             self._entry_streak = 1
             self._degraded_clear_count = 0
-            self._target_zone_id = analysis.target
-            target = analysis.target
-            reason = "unique_concern"
+            self._target_zone_id = concern_target
+            target = concern_target
+            reason = "advisory_unique_concern" if advisory_concern else "unique_concern"
         elif analysis.ambiguous:
             self._state = AuthorityState.DEGRADED
             self._entry_target = None
@@ -1075,16 +1188,18 @@ class DeterministicRecoverySupervisor:
         assert previous is not None
         old_state = self._state
         commands = self._zero_commands()
-        if analysis.target is not None:
-            target_changed = analysis.target != self._entry_target
+        concern_target = analysis.target or analysis.advisory_target
+        advisory_concern = analysis.target is None and analysis.advisory_target is not None
+        if concern_target is not None:
+            target_changed = concern_target != self._entry_target
             if not target_changed:
                 self._entry_streak += 1
             else:
-                self._entry_target = analysis.target
+                self._entry_target = concern_target
                 self._entry_streak = 1
             self._degraded_clear_count = 0
-            self._target_zone_id = analysis.target
-            target = analysis.target
+            self._target_zone_id = concern_target
+            target = concern_target
             if (
                 self._entry_streak >= self.settings.entry_persistence_ticks
                 and not self._reserve_failed
@@ -1093,18 +1208,29 @@ class DeterministicRecoverySupervisor:
                     self._authority_epoch += 1
                     self._epoch_rearm_pending = False
                 self._state = AuthorityState.PROTECT
-                self._target_zone_id = analysis.target
+                self._target_zone_id = concern_target
                 self._protect_age = 0
                 self._protect_clear_count = 0
                 self._protect_command = 0.0
+                self._protect_entered_by_advisory = advisory_concern
                 self._reserve_delivery_failure_count = 0
-                desired = self._desired_command(observation, analysis.target)
+                desired = self._desired_command(observation, concern_target)
                 command = self._slew_up(0.0, desired)
                 self._protect_command = command
-                commands = self._commands_for_target(command, analysis.target)
-                reason = "entry_persistence_met"
+                commands = self._commands_for_target(command, concern_target)
+                reason = (
+                    "advisory_entry_persistence_met"
+                    if advisory_concern
+                    else "entry_persistence_met"
+                )
             else:
-                reason = "target_changed" if target_changed else "unique_concern"
+                reason = (
+                    "target_changed"
+                    if target_changed
+                    else "advisory_unique_concern"
+                    if advisory_concern
+                    else "unique_concern"
+                )
         elif analysis.ambiguous:
             self._entry_target = None
             self._entry_streak = 0
@@ -1265,7 +1391,10 @@ class DeterministicRecoverySupervisor:
             self._reserve_delivery_failure_count = 0
             commands = self._restore_protect_commands(previous.reserve_commands)
             reason = "handback_abort"
-        elif analysis.residuals[target] >= self.settings.handback_abort_residual_ratio:
+        elif (
+            analysis.residuals[target] >= self.settings.handback_abort_residual_ratio
+            or analysis.advisory_target == target
+        ):
             self._handback_abort_streak += 1
             self._handback_zero_ack_count = 0
             if (
@@ -1345,6 +1474,7 @@ class DeterministicRecoverySupervisor:
         return (
             not analysis.candidates
             and not analysis.ambiguous
+            and analysis.advisory_target != target
             and analysis.residuals[target] <= self.settings.exit_residual_ratio
             and float(observation.co2_concentration[target])
             <= float(self.config.control.upper_threshold)
@@ -1357,6 +1487,7 @@ class DeterministicRecoverySupervisor:
         return (
             not analysis.candidates
             and not analysis.ambiguous
+            and analysis.advisory_target != target
             and analysis.residuals[target] < self.settings.handback_abort_residual_ratio
         )
 
