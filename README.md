@@ -38,30 +38,40 @@ for the receipt, hashes, limitations, and next-step gate. The earlier negative C
 result remains preserved as historical development evidence in
 [`docs/recovery-protocol-acceptance.md`](docs/recovery-protocol-acceptance.md).
 
-## Development candidate: advisory temporal early risk
+## Rejected research candidate: advisory temporal early risk
 
-An opt-in compact temporal predictor now estimates whether `cabin_a` or
-`cabin_b` will cross the declared physical CO2 ceiling within twelve ticks. It
-uses ten completed `model_input_v1` telemetry ticks and cannot issue actuator
-commands.
+The repository preserves an opt-in compact temporal predictor that estimates
+whether `cabin_a` or `cabin_b` will cross the declared physical CO2 ceiling
+within twelve ticks. It uses ten completed `model_input_v1` telemetry ticks and
+cannot issue actuator commands. It is research evidence only and is not admitted
+to a release path.
 
-The deterministic supervisor accepts a warning only when current telemetry
-independently shows the same unique airflow shortfall, the artifact and input
-contract hashes match, and the evidence persists. Omitting the predictor keeps
-the previously verified governor path unchanged.
+The candidate was frozen and evaluated once on 144 untouched, final-only
+families. It produced zero healthy, frozen-sensor, or wrong-target physical
+interventions, zero invariant violations, and no worsened harmful physical
+families. However, nine transient families ended without acknowledged physical
+reserve zero, violating the predeclared lifecycle gate. Only seven families
+qualified as harmful-gradual physical evidence, below the frozen minimum of
+eight. The binding verdict is **`REJECT_SAFETY`**.
 
-On 72 fresh development-validation families, the bounded candidate produced
-zero healthy, frozen-sensor, or wrong-target interventions and zero invariant
-violations. It protected three of five harmful gradual families earlier and
-reduced integrated physical CO2 excess in two, with no harmful gradual family
-worsened. This is development evidence only: validation was used for
-abstention calibration, cabin-A physical benefit is not established, and no
-predictor final suite or Arm optimisation has been run.
+The receipt does not show that accepted model advice caused the nine lifecycle
+failures: all nine recorded zero accepted advisory observations and matched the
+governor-alone arm on the stored timing, entry-count, and excess metrics. It did
+not preserve governor-alone final-zero status, so formal differential
+attribution is unavailable and replay is forbidden. This limitation does not
+change the rejection verdict.
 
-See
-[`docs/evidence/temporal-early-risk-development-result.md`](docs/evidence/temporal-early-risk-development-result.md)
-and the frozen
-[`docs/evidence/temporal-early-risk-development-contract.md`](docs/evidence/temporal-early-risk-development-contract.md).
+The deterministic governor remains the only safety and actuator authority.
+Omitting the predictor keeps its separately verified path unchanged. No Arm
+export, quantisation, benchmarking, optimisation, calibration, or final-corpus
+reuse is permitted.
+
+See the final
+[`docs/evidence/temporal-early-risk-final-result.md`](docs/evidence/temporal-early-risk-final-result.md),
+the frozen
+[`docs/evidence/temporal-early-risk-final-contract.md`](docs/evidence/temporal-early-risk-final-contract.md),
+and the earlier development-only
+[`docs/evidence/temporal-early-risk-development-result.md`](docs/evidence/temporal-early-risk-development-result.md).
 
 ## Implemented simulation boundary
 
