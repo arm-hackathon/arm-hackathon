@@ -6,8 +6,13 @@ import json
 import math
 from typing import Any, Mapping
 
-SCENARIO_SCHEMA_VERSION = "aeolus_habitat_v2_scenario_v1"
-TRACE_SCHEMA_VERSION = "aeolus_habitat_v2_trace_v1"
+SCENARIO_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_scenario_v1"
+SCENARIO_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_scenario_v2"
+TRACE_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_trace_v1"
+TRACE_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_trace_v2"
+# V1 aliases are retained for callers that import the original contract names.
+SCENARIO_SCHEMA_VERSION = SCENARIO_SCHEMA_VERSION_V1
+TRACE_SCHEMA_VERSION = TRACE_SCHEMA_VERSION_V1
 EQUATION_CONTRACT_REVISION = "aeolus_habitat_v2_equations_v1"
 
 _TOP_LEVEL_FIELDS = {
@@ -72,13 +77,15 @@ _INITIAL_UTILITY_FIELDS = {
     "external_heat_rejected_j",
     "external_heat_received_j",
 }
-_TIMELINE_FIELDS = {
+_TIMELINE_FIELDS_V1 = {
     "start_step",
     "end_step",
     "generation_w",
     "loads",
     "command",
 }
+_TIMELINE_FIELDS_V2 = _TIMELINE_FIELDS_V1 | {"operating_mode"}
+_OPERATING_MODES = {"occupied", "eva_transition", "contingency", "dormant"}
 _ZONE_LOAD_FIELDS = {
     "co2_generation_mol_s",
     "o2_consumption_mol_s",
@@ -143,6 +150,25 @@ def _reject_unknown_fields(
         raise ScenarioValidationError(f"missing {label} fields: {', '.join(missing)}")
 
 
+def _timeline_fields_for_schema(schema_version: str) -> set[str]:
+    if schema_version == SCENARIO_SCHEMA_VERSION_V1:
+        return _TIMELINE_FIELDS_V1
+    if schema_version == SCENARIO_SCHEMA_VERSION_V2:
+        return _TIMELINE_FIELDS_V2
+    raise ScenarioValidationError(
+        "schema_version must be "
+        f"{SCENARIO_SCHEMA_VERSION_V1!r} or {SCENARIO_SCHEMA_VERSION_V2!r}"
+    )
+
+
+def _trace_schema_for_scenario(schema_version: str) -> str:
+    if schema_version == SCENARIO_SCHEMA_VERSION_V1:
+        return TRACE_SCHEMA_VERSION_V1
+    if schema_version == SCENARIO_SCHEMA_VERSION_V2:
+        return TRACE_SCHEMA_VERSION_V2
+    raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
+
+
 def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
     for zone in scenario["zones"]:
         _reject_unknown_fields(zone, _ZONE_FIELDS, label="zone")
@@ -158,7 +184,11 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
     )
 
     for segment in scenario["timeline"]:
-        _reject_unknown_fields(segment, _TIMELINE_FIELDS, label="timeline segment")
+        _reject_unknown_fields(
+            segment,
+            _timeline_fields_for_schema(str(scenario["schema_version"])),
+            label="timeline segment",
+        )
         for load in segment["loads"].values():
             _reject_unknown_fields(load, _ZONE_LOAD_FIELDS, label="zone load")
         _reject_unknown_fields(
@@ -377,6 +407,13 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             _invalid(prefix, "segments must cover steps contiguously from 0 to steps")
         expected_start = end
         _nonnegative(segment["generation_w"], path=f"{prefix}.generation_w")
+        if scenario["schema_version"] == SCENARIO_SCHEMA_VERSION_V2:
+            mode = segment["operating_mode"]
+            if not isinstance(mode, str) or mode not in _OPERATING_MODES:
+                _invalid(
+                    f"{prefix}.operating_mode",
+                    "must be one of occupied, eva_transition, contingency, dormant",
+                )
 
         for zone_id, load in segment["loads"].items():
             for field in _ZONE_LOAD_FIELDS:
@@ -445,7 +482,46 @@ class Scenario:
     data: Mapping[str, Any]
     canonical_bytes: bytes
     scenario_sha256: str
+    scenario_schema_version: str
+    trace_schema_version: str
+    equation_contract_revision: str
     run_id: str
+
+    def validate_contract_identities(self) -> None:
+        try:
+            current_canonical_bytes = _canonical_bytes(self.data)
+        except (TypeError, ValueError) as error:
+            raise ScenarioValidationError(
+                "scenario data cannot be canonicalized"
+            ) from error
+        if current_canonical_bytes != self.canonical_bytes:
+            raise ScenarioValidationError(
+                "scenario data does not match stored canonical bytes"
+            )
+        expected_scenario_sha256 = hashlib.sha256(self.canonical_bytes).hexdigest()
+        if self.scenario_sha256 != expected_scenario_sha256:
+            raise ScenarioValidationError(
+                "scenario digest does not match stored canonical bytes"
+            )
+        if self.data.get("schema_version") != self.scenario_schema_version:
+            raise ScenarioValidationError(
+                "scenario schema identity does not match parsed scenario data"
+            )
+        expected_trace_schema = _trace_schema_for_scenario(self.scenario_schema_version)
+        if self.trace_schema_version != expected_trace_schema:
+            raise ScenarioValidationError(
+                "trace schema does not match scenario schema identity"
+            )
+        if self.equation_contract_revision != EQUATION_CONTRACT_REVISION:
+            raise ScenarioValidationError("unsupported equation contract identity")
+        expected_run_id = derive_run_id(
+            scenario_sha256=self.scenario_sha256,
+            scenario_schema_version=self.scenario_schema_version,
+            trace_schema_version=self.trace_schema_version,
+            equation_contract_revision=self.equation_contract_revision,
+        )
+        if self.run_id != expected_run_id:
+            raise ScenarioValidationError("run_id does not match scenario identities")
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> "Scenario":
@@ -465,20 +541,28 @@ class Scenario:
             )
 
         schema_version = normalised.get("schema_version")
-        if schema_version != SCENARIO_SCHEMA_VERSION:
-            raise ScenarioValidationError(
-                f"schema_version must be {SCENARIO_SCHEMA_VERSION!r}"
-            )
+        if not isinstance(schema_version, str):
+            raise ScenarioValidationError("schema_version must be a string")
+        _timeline_fields_for_schema(schema_version)
         _validate_nested_schema(normalised)
         _validate_topology(normalised)
         _validate_values(normalised)
 
         canonical = _canonical_bytes(normalised)
         scenario_sha256 = hashlib.sha256(canonical).hexdigest()
-        run_id = derive_run_id(scenario_sha256=scenario_sha256)
+        trace_schema_version = _trace_schema_for_scenario(schema_version)
+        run_id = derive_run_id(
+            scenario_sha256=scenario_sha256,
+            scenario_schema_version=schema_version,
+            trace_schema_version=trace_schema_version,
+            equation_contract_revision=EQUATION_CONTRACT_REVISION,
+        )
         return cls(
             data=normalised,
             canonical_bytes=canonical,
             scenario_sha256=scenario_sha256,
+            scenario_schema_version=schema_version,
+            trace_schema_version=trace_schema_version,
+            equation_contract_revision=EQUATION_CONTRACT_REVISION,
             run_id=run_id,
         )

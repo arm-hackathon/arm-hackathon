@@ -7,10 +7,8 @@ from typing import Any, Mapping
 
 from .physics import StepResult, advance_one_step, initial_state
 from .scenario import (
-    EQUATION_CONTRACT_REVISION,
-    SCENARIO_SCHEMA_VERSION,
-    TRACE_SCHEMA_VERSION,
     Scenario,
+    TRACE_SCHEMA_VERSION_V2,
 )
 from .state import PlantState
 
@@ -321,14 +319,14 @@ def _row(
     segment: Mapping[str, Any] | None,
     receipt: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    return {
-        "schema_version": TRACE_SCHEMA_VERSION,
+    row = {
+        "schema_version": scenario.trace_schema_version,
         "lineage": {
             "run_id": scenario.run_id,
             "scenario_sha256": scenario.scenario_sha256,
-            "scenario_schema_version": SCENARIO_SCHEMA_VERSION,
-            "trace_schema_version": TRACE_SCHEMA_VERSION,
-            "equation_contract_revision": EQUATION_CONTRACT_REVISION,
+            "scenario_schema_version": scenario.scenario_schema_version,
+            "trace_schema_version": scenario.trace_schema_version,
+            "equation_contract_revision": scenario.equation_contract_revision,
         },
         "step": state.step,
         "time_s": state.step * float(scenario.data["dt_seconds"]),
@@ -340,6 +338,11 @@ def _row(
         "accounting_receipt": receipt,
         "invariant_status": {"passed": True},
     }
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2:
+        row["applied_operating_mode"] = (
+            None if segment is None else segment["operating_mode"]
+        )
+    return row
 
 
 def _canonical_trace_bytes(rows: list[Mapping[str, Any]]) -> bytes:
@@ -357,6 +360,7 @@ def _canonical_trace_bytes(rows: list[Mapping[str, Any]]) -> bytes:
 
 
 def run_scenario(scenario: Scenario) -> SimulationRun:
+    scenario.validate_contract_identities()
     state = initial_state(scenario)
     _assert_state_invariants(scenario, state)
     rows: list[Mapping[str, Any]] = [_row(scenario, state, segment=None, receipt=None)]
