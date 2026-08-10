@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-10 — Habitat Plant V2 operating-mode contract / 0.4.0
+
+- Added closed scenario-v2 timeline context with exact `occupied`,
+  `eva_transition`, `contingency`, and `dormant` operating-mode values.
+- Added trace-v2 `applied_operating_mode` receipts: `null` for the initial row
+  and the exact producing interval's mode for each post-step row.
+- Kept modes declarative only. They do not select loads, commands, capacities,
+  thresholds, or physics, and mode-only changes leave physical evolution
+  unchanged while producing distinct scenario and run lineage.
+- Preserved the original scenario-v1 digest, run ID, trace schema and reference
+  trace bytes exactly.
+- Added a checked-in four-mode scenario, CLI/replay coverage, focused malformed
+  trace rejection, and package/runtime version agreement at `0.4.0`.
+- Version impact: `minor`. This is a local stacked candidate, not a published
+  release, flight system, digital twin, or claim of greater physical realism.
+
 ## 2026-08-09 — Habitat Plant V2 deterministic foundation / 0.3.0
 
 - Added a separate two-zone grey-box habitat plant with explicit species,

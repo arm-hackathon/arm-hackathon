@@ -3,10 +3,10 @@
 **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
 **U**ser-defined **S**cenarios
 
-Version `0.3.0` adds the local Habitat Plant V2 deterministic foundation while
-preserving the closed recovery-development evidence. It is not a published or
-hardware-qualified release. The `0.2.0` C4/C11 artifacts remain source-pinned
-historical evidence.
+Version `0.4.0` adds a versioned Habitat Plant V2 operating-mode context while
+preserving the `0.3.0` deterministic foundation and closed recovery-development
+evidence. It is not a published or hardware-qualified release. The `0.2.0`
+C4/C11 artifacts remain source-pinned historical evidence.
 
 AEOLUS contains a legacy deterministic simulator in abstract units and a
 separate Habitat Plant V2 grey-box research analogue with explicit SI
@@ -85,6 +85,21 @@ Run the checked-in Habitat Plant V2 reference scenario from a source checkout:
 uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
   scenarios/habitat_v2_reference.json out/habitat-v2-reference.jsonl
 ```
+
+Run the checked-in scenario-v2 operating-mode example:
+
+```bash
+uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
+  scenarios/habitat_v2_operating_modes.json out/habitat-v2-modes.jsonl
+```
+
+Scenario-v2 requires every timeline segment to declare exactly one of
+`occupied`, `eva_transition`, `contingency`, or `dormant`. Trace-v2 records the
+mode applied to each completed interval. The initial row records `null` because
+no interval has produced it yet. Modes are context only: they do not select
+loads, commands, capacities, thresholds, or physics. The checked-in example
+intentionally holds physical inputs constant across all four labels so this
+boundary remains visible.
 
 The V2 command validates the strict scenario schema, executes the deterministic
 plant, validates every trace row against the parsed scenario and refuses to
