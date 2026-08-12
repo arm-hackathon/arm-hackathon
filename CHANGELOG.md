@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-12 — Habitat V2 multizone air network / 0.5.0
+
+- Added scenario-v3 and trace-v3 contracts for a reduced-order multizone air
+  network with a quadratic fan curve, shared and branch pressure losses, and one
+  motorised damper per declared zone.
+- Added explicit SI-labelled volumetric flow, fixed-reference-density mass flow,
+  fan air/electrical power, actuator and operating-point receipts.
+- Bound network receipts to the parsed scenario and exact pre-step actuator
+  state through canonical step recomputation, cross-checked fan power against
+  the electrical bus receipt, and retained full byte-for-byte replay validation.
+- Added a checked-in eight-zone notional habitat covering all four operating
+  modes while preserving frozen scenario-v1 and scenario-v2 replay bytes.
+- Added fail-closed standalone fan, resistance, leak, topology, actuator and
+  receipt validation.
+- Version impact: `minor`. Faults, sensor disagreement, corpus generation,
+  learned-model work, Arm64 measurements and the browser viewer remain separate
+  future slices. This is not a published or hardware-qualified release.
+
 ## 2026-08-10 — Habitat Plant V2 operating-mode contract / 0.4.0
 
 - Added closed scenario-v2 timeline context with exact `occupied`,

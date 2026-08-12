@@ -3,10 +3,12 @@
 **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
 **U**ser-defined **S**cenarios
 
-Version `0.4.0` adds a versioned Habitat Plant V2 operating-mode context while
-preserving the `0.3.0` deterministic foundation and closed recovery-development
-evidence. It is not a published or hardware-qualified release. The `0.2.0`
-C4/C11 artifacts remain source-pinned historical evidence.
+Version `0.5.0` adds a scenario-v3 reduced-order multizone air network with an
+explicit fan curve, pressure-loss branches, motorised dampers, SI-labelled flow
+and power receipts, and a checked-in eight-zone notional habitat. It preserves
+the scenario-v1 and scenario-v2 contracts and their frozen replay bytes. It is
+not a published or hardware-qualified release. The `0.2.0` C4/C11 artifacts
+remain source-pinned historical evidence.
 
 AEOLUS contains a legacy deterministic simulator in abstract units and a
 separate Habitat Plant V2 grey-box research analogue with explicit SI
@@ -75,8 +77,8 @@ verification, not for model training, selection, or tuning.
 ```bash
 uv sync --locked --python 3.11 --extra dev
 uv run --locked --python 3.11 --extra dev python -m pytest -q
-uv run --locked --python 3.11 --extra dev ruff check .
-python -m compileall -q src tests
+uvx ruff@0.14.10 check .
+uv run --locked --python 3.11 --extra dev python -m compileall -q src tests
 ```
 
 Run the checked-in Habitat Plant V2 reference scenario from a source checkout:
@@ -100,6 +102,27 @@ no interval has produced it yet. Modes are context only: they do not select
 loads, commands, capacities, thresholds, or physics. The checked-in example
 intentionally holds physical inputs constant across all four labels so this
 boundary remains visible.
+
+Run the checked-in scenario-v3 multizone air-network example:
+
+```bash
+uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
+  scenarios/habitat_v2_air_network.json out/habitat-v2-air-network.jsonl
+```
+
+Scenario-v3 replaces direct per-zone airflow commands with a fan-speed command
+and one damper command per declared zone. The deterministic solver derives a
+single fan/system operating point, per-zone volumetric flow in `m³/s`, fixed-
+reference-density mass flow in `kg/s`, pressure losses in Pa, and fan power in
+W. Trace-v3 records commanded and achieved actuator positions plus an explicit
+network receipt. The validator binds the receipt to the parsed scenario,
+cross-checks fan electrical power against the electrical bus receipt, and then
+replays the full scenario byte-for-byte.
+
+The checked-in eight-zone habitat and its dimensions, resistances, schedules,
+and loads are declared research assumptions for deterministic software testing.
+They are not a NASA floor plan, calibrated CFD, a certified digital twin, or
+evidence about flight hardware.
 
 The V2 command validates the strict scenario schema, executes the deterministic
 plant, validates every trace row against the parsed scenario and refuses to

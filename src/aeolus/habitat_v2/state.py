@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from typing import Mapping
 
@@ -72,6 +72,8 @@ class UtilityState:
     actual_condenser_duty: float
     external_heat_rejected_j: float
     external_heat_received_j: float
+    actual_fan_speed_fraction: float | None = None
+    actual_damper_position_by_id: Mapping[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
