@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased - Habitat V2 operational observability qualification / 0.8.0
+
+- Added closed V5 operational projection, ordered feature-manifest descriptors
+  with a canonical SHA-256 identity, and explicit fixture identities.
+- Added pair-manifest and report bindings for V5 scenario/run/trace hashes,
+  actuator-feedback revision/config, treatment IDs and half-open interval,
+  decision tolerance, evaluation window and canonical report identity.
+- Added provenance-bound traces and pair enforcement before scoring, explicit
+  treatment IDs, immutable feature descriptors with compared/asserted-equal/
+  deliberately-unscored treatment, and closed semantic parsers.
+- Added finite completed-row persistence qualification with decision-time
+  latency, fixed-contract substitution rejection, separate abnormality/
+  localisation/exact-identification answers, temporally complete clearance/
+  recovery/post-tail fixtures, an individual elevated healthy hard-negative
+  boundary, and aggregate identities bound to ordered case/report grading and
+  hard-negative manifests with explicit polarity and denominators.
+- Preserved V1–V5 simulation scenario/trace contracts; no learned model,
+  training, corpus, viewer, Arm64 measurement, publication, or hardware claim
+  is included.
+- Version impact: `minor` in the consolidated, still-unreleased integration line.
+
 ## Unreleased - Habitat V2 integration corrections / 0.7.0
 
 - Bound external-command accounting validation to the exact supplied command,

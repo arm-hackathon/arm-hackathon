@@ -197,6 +197,19 @@ Do not implement a learned model, select model architecture in code, quantize a 
 ## Submission claims boundary
 
 AEOLUS is a deterministic, reduced-order, physics-informed research simulator and AI-control evaluation environment. It is not CFD, a certified spacecraft digital twin, flight software or real-world validation.
+## Habitat V2 operational observability qualification (inserted evidence gate)
+
+The bounded V5 observability slice is implemented at package version `0.8.0`.
+It qualifies matched open-loop operational projections without evaluator-truth
+leakage; provenance-binds scenario/run/source-trace/fixture identities and
+rejects manifest/trace substitution before scoring. It uses explicit treatment
+IDs, an immutable ordered manifest with declared scoring treatment, decision-time
+completed-row latency, and separate abnormality/localisation/exact-identification
+answers. Fixtures include clearance, bounded recovery, and a post-recovery tail;
+hard-negative and aggregate artifacts bind their exact operational provenance,
+ordered report/grading inputs, and explicit denominators. The checked V1–V5
+simulator lineage remains unchanged.
+
 ## Habitat V2 actuator feedback (PR E)
 
 The V5 bounded slice is implemented at package version `0.7.0`. It keeps the
