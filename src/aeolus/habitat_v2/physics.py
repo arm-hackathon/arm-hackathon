@@ -1190,6 +1190,15 @@ def _canonical_command_bytes(command: Mapping[str, Any]) -> bytes:
     ).encode("utf-8")
 
 
+def _external_command_number(value: Any, *, path: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ScenarioValidationError(f"external command {path} must be finite numeric data")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ScenarioValidationError(f"external command {path} must be finite numeric data")
+    return number
+
+
 def _validate_external_command(
     scenario: Scenario, command: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -1238,22 +1247,32 @@ def _validate_external_command(
             )
     equipment = scenario.data["equipment"]
     for field in ("scrubber_duty", "condenser_duty"):
-        value = float(normalised[field])
-        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        value = _external_command_number(normalised[field], path=field)
+        if not 0.0 <= value <= 1.0:
             raise ScenarioValidationError(f"external command {field} is out of bounds")
     for field in ("cooling_removed_w", "oxygen_injection_mol_s"):
         for zone_id, value in normalised[field].items():
-            value_float = float(value)
-            if not math.isfinite(value_float) or value_float < 0.0:
+            value_float = _external_command_number(
+                value, path=f"{field}.{zone_id}"
+            )
+            if value_float < 0.0:
                 raise ScenarioValidationError(
                     f"external command {field}.{zone_id} is out of bounds"
                 )
     if any(
-        float(value) > float(equipment["cooling_max_thermal_w_per_zone"])
-        for value in normalised["cooling_removed_w"].values()
+        _external_command_number(
+            value, path=f"cooling_removed_w.{zone_id}"
+        )
+        > float(equipment["cooling_max_thermal_w_per_zone"])
+        for zone_id, value in normalised["cooling_removed_w"].items()
     ):
         raise ScenarioValidationError("external command cooling exceeds capacity")
-    if sum(float(value) for value in normalised["oxygen_injection_mol_s"].values()) > float(
+    if sum(
+        _external_command_number(
+            value, path=f"oxygen_injection_mol_s.{zone_id}"
+        )
+        for zone_id, value in normalised["oxygen_injection_mol_s"].items()
+    ) > float(
         equipment["oxygen_injection_max_total_mol_s"]
     ):
         raise ScenarioValidationError("external command oxygen exceeds capacity")
@@ -1262,20 +1281,26 @@ def _validate_external_command(
         SCENARIO_SCHEMA_VERSION_V4,
         SCENARIO_SCHEMA_VERSION_V5,
     }:
-        for value in normalised["damper_position_by_id"].values():
-            value_float = float(value)
-            if not math.isfinite(value_float) or not 0.0 <= value_float <= 1.0:
+        for damper_id, value in normalised["damper_position_by_id"].items():
+            value_float = _external_command_number(
+                value, path=f"damper_position_by_id.{damper_id}"
+            )
+            if not 0.0 <= value_float <= 1.0:
                 raise ScenarioValidationError(
                     "external command damper position is out of bounds"
                 )
-        fan_speed = float(normalised["fan_speed_fraction"])
-        if not math.isfinite(fan_speed) or not 0.0 <= fan_speed <= 1.0:
+        fan_speed = _external_command_number(
+            normalised["fan_speed_fraction"], path="fan_speed_fraction"
+        )
+        if not 0.0 <= fan_speed <= 1.0:
             raise ScenarioValidationError(
                 "external command fan speed is out of bounds"
             )
     else:
-        for value in normalised["airflow_m3_s"].values():
-            if not math.isfinite(float(value)) or float(value) < 0.0:
+        for zone_id, value in normalised["airflow_m3_s"].items():
+            if _external_command_number(
+                value, path=f"airflow_m3_s.{zone_id}"
+            ) < 0.0:
                 raise ScenarioValidationError(
                     "external command airflow is out of bounds"
                 )
