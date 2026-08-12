@@ -197,3 +197,9 @@ Do not implement a learned model, select model architecture in code, quantize a 
 ## Submission claims boundary
 
 AEOLUS is a deterministic, reduced-order, physics-informed research simulator and AI-control evaluation environment. It is not CFD, a certified spacecraft digital twin, flight software or real-world validation.
+## Habitat V2 actuator feedback (PR E)
+
+The V5 bounded slice is implemented at package version `0.7.0`. It keeps the
+V1–V4 lineage closed, models achieved cooling/oxygen response and effective
+delivery faults, emits deterministic operational feedback, and exposes the
+validated `advance_one_step_with_command` boundary.

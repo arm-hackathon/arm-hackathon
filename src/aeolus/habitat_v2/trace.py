@@ -10,6 +10,7 @@ from .scenario import (
     TRACE_SCHEMA_VERSION_V2,
     TRACE_SCHEMA_VERSION_V3,
     TRACE_SCHEMA_VERSION_V4,
+    TRACE_SCHEMA_VERSION_V5,
     derive_run_id,
 )
 
@@ -36,6 +37,7 @@ _ACTUAL_ACTION_FIELDS_V3 = _ACTION_FIELDS | {
     "fan_speed_fraction",
     "damper_position_by_id",
 }
+_ACTUAL_ACTION_FIELDS_V5 = _ACTUAL_ACTION_FIELDS_V3 - {"airflow_m3_s"}
 _RESOURCE_FIELDS = {
     "co2_sorbent_remaining_mol",
     "oxygen_store_mol",
@@ -77,6 +79,10 @@ _TRACE_FIELDS_V1 = {
 _TRACE_FIELDS_V2 = _TRACE_FIELDS_V1 | {"applied_operating_mode"}
 _TRACE_FIELDS_V3 = _TRACE_FIELDS_V2 | {"air_network_receipt"}
 _TRACE_FIELDS_V4 = _TRACE_FIELDS_V3 | {"sensor_disagreement", "fault_receipt"}
+_TRACE_FIELDS_V5 = _TRACE_FIELDS_V4 | {
+    "operational_feedback",
+    "actuator_receipt",
+}
 _SENSOR_DISAGREEMENT_FIELDS = {"secondary", "primary_minus_secondary"}
 _FAULT_RECEIPT_FIELDS = {
     "truth_telemetry",
@@ -119,6 +125,53 @@ _LINEAGE_FIELDS = {
     "trace_schema_version",
     "equation_contract_revision",
 }
+_LINEAGE_FIELDS_V5 = _LINEAGE_FIELDS | {
+    "actuator_feedback_contract_revision"
+}
+_OPERATIONAL_FEEDBACK_FIELDS = {
+    "fan_speed_fraction",
+    "fan_dc_bus_current_a",
+    "damper_position_by_id",
+    "branch_airflow_m3_s",
+    "branch_differential_pressure_pa",
+    "scrubber_capture_rate_mol_s",
+    "condenser_removal_rate_mol_s",
+    "cooling_delivery_w",
+    "oxygen_delivery_mol_s",
+    "battery_state_of_charge",
+    "oxygen_store_fraction",
+    "sorbent_remaining_fraction",
+}
+_ACTUATOR_RECEIPT_FIELDS = {
+    "fan",
+    "dampers",
+    "scrubber",
+    "condenser",
+    "cooling",
+    "oxygen",
+}
+_FAN_ACTUATOR_FIELDS = {
+    "requested_fraction",
+    "achieved_fraction",
+    "effective_fraction",
+}
+_DAMPER_ACTUATOR_FIELDS = {
+    "requested_by_id",
+    "achieved_by_id",
+    "effective_by_id",
+}
+_DUTY_ACTUATOR_FIELDS = {
+    "requested_duty",
+    "achieved_duty",
+    "effectiveness_multiplier",
+    "effective_duty",
+}
+_COOLING_ACTUATOR_FIELDS = {"requested_w", "achieved_w", "effective_w"}
+_OXYGEN_ACTUATOR_FIELDS = {
+    "requested_mol_s",
+    "achieved_mol_s",
+    "effective_mol_s",
+}
 
 
 class TraceValidationError(ValueError):
@@ -134,7 +187,15 @@ def _trace_fields_for_scenario(scenario: Scenario) -> set[str]:
         return _TRACE_FIELDS_V3
     if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
         return _TRACE_FIELDS_V4
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5:
+        return _TRACE_FIELDS_V5
     raise TraceValidationError("unsupported trace schema in parsed scenario")
+
+
+def _lineage_fields_for_scenario(scenario: Scenario) -> set[str]:
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5:
+        return _LINEAGE_FIELDS_V5
+    return _LINEAGE_FIELDS
 
 
 def _zone_ids(scenario: Scenario) -> set[str]:
@@ -150,6 +211,7 @@ def _damper_ids(scenario: Scenario) -> set[str]:
     if scenario.trace_schema_version not in {
         TRACE_SCHEMA_VERSION_V3,
         TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
     }:
         return set()
     return {
@@ -206,9 +268,16 @@ def _validate_action(
     if scenario.trace_schema_version in {
         TRACE_SCHEMA_VERSION_V3,
         TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
     }:
         expected_fields = (
-            _COMMAND_ACTION_FIELDS_V3 if commanded else _ACTUAL_ACTION_FIELDS_V3
+            _COMMAND_ACTION_FIELDS_V3
+            if commanded
+            else (
+                _ACTUAL_ACTION_FIELDS_V5
+                if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5
+                else _ACTUAL_ACTION_FIELDS_V3
+            )
         )
     else:
         expected_fields = _ACTION_FIELDS
@@ -216,10 +285,15 @@ def _validate_action(
     for field in ("scrubber_duty", "condenser_duty"):
         _finite_number(action[field], label=f"{label} {field}")
     zone_fields = ["cooling_removed_w", "oxygen_injection_mol_s"]
-    if not commanded or scenario.trace_schema_version not in {
+    if scenario.trace_schema_version not in {
         TRACE_SCHEMA_VERSION_V3,
         TRACE_SCHEMA_VERSION_V4,
-    }:
+        TRACE_SCHEMA_VERSION_V5,
+    } or (
+        not commanded
+        and scenario.trace_schema_version
+        in {TRACE_SCHEMA_VERSION_V3, TRACE_SCHEMA_VERSION_V4}
+    ):
         zone_fields.append("airflow_m3_s")
     for field in zone_fields:
         zone_values = _as_mapping(action[field], label=f"{label} {field}")
@@ -228,6 +302,7 @@ def _validate_action(
     if scenario.trace_schema_version in {
         TRACE_SCHEMA_VERSION_V3,
         TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
     }:
         _finite_number(
             action["fan_speed_fraction"], label=f"{label} fan_speed_fraction"
@@ -256,7 +331,10 @@ def _validate_air_network_receipt(
     receipt = _as_mapping(value, label=label)
     expected_fields = (
         _AIR_NETWORK_RECEIPT_FIELDS_V4
-        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4
+        if scenario.trace_schema_version in {
+            TRACE_SCHEMA_VERSION_V4,
+            TRACE_SCHEMA_VERSION_V5,
+        }
         else _AIR_NETWORK_RECEIPT_FIELDS
     )
     _exact_fields(receipt, expected_fields, label=label)
@@ -275,7 +353,10 @@ def _validate_air_network_receipt(
         "operating_point_residual_pa",
     ):
         _finite_number(receipt[field], label=f"{label} {field}")
-    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
         _finite_number(
             receipt["effective_fan_speed_fraction"],
             label=f"{label} effective_fan_speed_fraction",
@@ -296,6 +377,107 @@ def _validate_air_network_receipt(
         values = _as_mapping(receipt[field], label=f"{label} {field}")
         _exact_fields(values, zone_ids, label=f"{label} {field}")
         _validate_numeric_tree(values, label=f"{label} {field}")
+
+
+def _validate_operational_feedback(
+    value: Any, *, label: str, scenario: Scenario
+) -> None:
+    feedback = _as_mapping(value, label=label)
+    _exact_fields(feedback, _OPERATIONAL_FEEDBACK_FIELDS, label=label)
+    zone_ids = _zone_ids(scenario)
+    damper_ids = _damper_ids(scenario)
+    map_fields = {
+        "damper_position_by_id": damper_ids,
+        "branch_airflow_m3_s": zone_ids,
+        "branch_differential_pressure_pa": zone_ids,
+        "cooling_delivery_w": zone_ids,
+        "oxygen_delivery_mol_s": zone_ids,
+    }
+    for channel, expected_ids in map_fields.items():
+        values = _as_mapping(feedback[channel], label=f"{label} {channel}")
+        _exact_fields(values, expected_ids, label=f"{label} {channel}")
+        _validate_numeric_tree(values, label=f"{label} {channel}")
+    for channel in _OPERATIONAL_FEEDBACK_FIELDS - set(map_fields):
+        number = _finite_number(feedback[channel], label=f"{label} {channel}")
+        if channel in {
+            "fan_speed_fraction",
+            "battery_state_of_charge",
+            "oxygen_store_fraction",
+            "sorbent_remaining_fraction",
+        } and not 0.0 <= number <= 1.0:
+            raise TraceValidationError(f"{label} {channel} outside [0, 1]")
+        if channel not in {
+            "fan_speed_fraction",
+            "battery_state_of_charge",
+            "oxygen_store_fraction",
+            "sorbent_remaining_fraction",
+        } and number < 0.0:
+            raise TraceValidationError(f"{label} {channel} must be non-negative")
+
+
+def _validate_fraction(value: Any, *, label: str) -> float:
+    number = _finite_number(value, label=label)
+    if not 0.0 <= number <= 1.0:
+        raise TraceValidationError(f"{label} outside [0, 1]")
+    return number
+
+
+def _validate_actuator_receipt(
+    value: Any, *, label: str, scenario: Scenario
+) -> None:
+    receipt = _as_mapping(value, label=label)
+    _exact_fields(receipt, _ACTUATOR_RECEIPT_FIELDS, label=label)
+
+    fan = _as_mapping(receipt["fan"], label=f"{label} fan")
+    _exact_fields(fan, _FAN_ACTUATOR_FIELDS, label=f"{label} fan")
+    for field in sorted(_FAN_ACTUATOR_FIELDS):
+        _validate_fraction(fan[field], label=f"{label} fan {field}")
+
+    dampers = _as_mapping(receipt["dampers"], label=f"{label} dampers")
+    _exact_fields(dampers, _DAMPER_ACTUATOR_FIELDS, label=f"{label} dampers")
+    for field in sorted(_DAMPER_ACTUATOR_FIELDS):
+        values = _as_mapping(dampers[field], label=f"{label} dampers {field}")
+        _exact_fields(values, _damper_ids(scenario), label=f"{label} dampers {field}")
+        for damper_id in sorted(values):
+            _validate_fraction(
+                values[damper_id],
+                label=f"{label} dampers {field} {damper_id}",
+            )
+
+    for component in ("scrubber", "condenser"):
+        duty = _as_mapping(receipt[component], label=f"{label} {component}")
+        _exact_fields(duty, _DUTY_ACTUATOR_FIELDS, label=f"{label} {component}")
+        for field in sorted(_DUTY_ACTUATOR_FIELDS):
+            _validate_fraction(duty[field], label=f"{label} {component} {field}")
+        expected_effective = float(duty["achieved_duty"]) * float(
+            duty["effectiveness_multiplier"]
+        )
+        if float(duty["effective_duty"]) != expected_effective:
+            raise TraceValidationError(
+                f"{label} {component} effective duty arithmetic mismatch"
+            )
+
+    zone_ids = _zone_ids(scenario)
+    for component, fields in (
+        ("cooling", _COOLING_ACTUATOR_FIELDS),
+        ("oxygen", _OXYGEN_ACTUATOR_FIELDS),
+    ):
+        delivery = _as_mapping(receipt[component], label=f"{label} {component}")
+        _exact_fields(delivery, fields, label=f"{label} {component}")
+        for field in sorted(fields):
+            values = _as_mapping(
+                delivery[field], label=f"{label} {component} {field}"
+            )
+            _exact_fields(values, zone_ids, label=f"{label} {component} {field}")
+            for zone_id in sorted(values):
+                number = _finite_number(
+                    values[zone_id],
+                    label=f"{label} {component} {field} {zone_id}",
+                )
+                if number < 0.0:
+                    raise TraceValidationError(
+                        f"{label} {component} {field} {zone_id} must be non-negative"
+                    )
 
 
 def _validate_fault_sensor_receipt(
@@ -476,6 +658,7 @@ def validate_trace_bytes(
             TRACE_SCHEMA_VERSION_V2,
             TRACE_SCHEMA_VERSION_V3,
             TRACE_SCHEMA_VERSION_V4,
+            TRACE_SCHEMA_VERSION_V5,
         }:
             applied_mode = row["applied_operating_mode"]
             if index == 0 and applied_mode is not None:
@@ -513,10 +696,19 @@ def validate_trace_bytes(
                 raise TraceValidationError("accounting receipt row 0 must be null")
             if (
                 scenario.trace_schema_version
-                in {TRACE_SCHEMA_VERSION_V3, TRACE_SCHEMA_VERSION_V4}
+                in {
+                    TRACE_SCHEMA_VERSION_V3,
+                    TRACE_SCHEMA_VERSION_V4,
+                    TRACE_SCHEMA_VERSION_V5,
+                }
                 and row["air_network_receipt"] is not None
             ):
                 raise TraceValidationError("air network receipt row 0 must be null")
+            if (
+                scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5
+                and row["actuator_receipt"] is not None
+            ):
+                raise TraceValidationError("actuator receipt row 0 must be null")
         else:
             _validate_action(
                 row["commanded_action"],
@@ -534,6 +726,7 @@ def validate_trace_bytes(
                 TRACE_SCHEMA_VERSION_V2,
                 TRACE_SCHEMA_VERSION_V3,
                 TRACE_SCHEMA_VERSION_V4,
+                TRACE_SCHEMA_VERSION_V5,
             } and (
                 row["applied_operating_mode"] != segment["operating_mode"]
             ):
@@ -563,6 +756,7 @@ def validate_trace_bytes(
             if scenario.trace_schema_version in {
                 TRACE_SCHEMA_VERSION_V3,
                 TRACE_SCHEMA_VERSION_V4,
+                TRACE_SCHEMA_VERSION_V5,
             }:
                 _validate_air_network_receipt(
                     row["air_network_receipt"],
@@ -570,8 +764,24 @@ def validate_trace_bytes(
                     scenario=scenario,
                 )
 
-        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+        if scenario.trace_schema_version in {
+            TRACE_SCHEMA_VERSION_V4,
+            TRACE_SCHEMA_VERSION_V5,
+        }:
             _validate_fault_sensor_receipt(row, row_index=index, scenario=scenario)
+
+        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5:
+            _validate_operational_feedback(
+                row["operational_feedback"],
+                label=f"operational feedback row {index}",
+                scenario=scenario,
+            )
+            if index > 0:
+                _validate_actuator_receipt(
+                    row["actuator_receipt"],
+                    label=f"actuator receipt row {index}",
+                    scenario=scenario,
+                )
 
         _validate_action(
             row["actual_action"],
@@ -600,8 +810,9 @@ def validate_trace_bytes(
         lineage = row["lineage"]
         if not isinstance(lineage, Mapping):
             raise TraceValidationError(f"lineage at row {index} must be an object")
-        _exact_fields(lineage, _LINEAGE_FIELDS, label=f"lineage row {index}")
-        for field in _LINEAGE_FIELDS:
+        lineage_fields = _lineage_fields_for_scenario(scenario)
+        _exact_fields(lineage, lineage_fields, label=f"lineage row {index}")
+        for field in lineage_fields:
             if not isinstance(lineage[field], str):
                 raise TraceValidationError(
                     f"lineage row {index} {field} must be a string"
@@ -612,6 +823,12 @@ def validate_trace_bytes(
             raise TraceValidationError("unsupported trace schema in lineage")
         if lineage["equation_contract_revision"] != scenario.equation_contract_revision:
             raise TraceValidationError("unsupported equation contract in lineage")
+        if (
+            scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5
+            and lineage["actuator_feedback_contract_revision"]
+            != scenario.actuator_feedback_contract_revision
+        ):
+            raise TraceValidationError("unsupported actuator feedback contract in lineage")
         if lineage["scenario_sha256"] != scenario.scenario_sha256:
             raise TraceValidationError(
                 f"scenario digest does not match parsed scenario at row {index}"
@@ -621,6 +838,9 @@ def validate_trace_bytes(
             scenario_schema_version=str(lineage["scenario_schema_version"]),
             trace_schema_version=str(lineage["trace_schema_version"]),
             equation_contract_revision=str(lineage["equation_contract_revision"]),
+            actuator_feedback_contract_revision=(
+                scenario.actuator_feedback_contract_revision
+            ),
         )
         if lineage["run_id"] != expected_run_id:
             raise TraceValidationError("run_id does not match lineage")
