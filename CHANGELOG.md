@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-12 - Habitat V2 honest actuator feedback / 0.7.0
+
+- Added the closed V5 scenario and trace lineage with actuator-feedback identity.
+- Added rate-limited achieved cooling and oxygen state, bounded effective delivery
+  faults, deterministic operational feedback, feedback bias/stuck faults, and
+  externally commanded canonical stepping with a command digest.
+- Preserved V1–V4 scenario and trace identities and bytes.
+
 ## 2026-08-12 - Habitat V2 fault and observation layer / 0.6.0
 
 - Added closed scenario-v4, trace-v4 and equations-v3 identities while

@@ -8,4 +8,4 @@ simulator defines real spacecraft geometry, qualified safety limits, or a
 physical equipment control system.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
