@@ -369,14 +369,9 @@ def validate_accounting_receipt(
         scenario, pre_step_state
     ).receipt
     _require_causal_receipt_match(
-        network,
-        recomputed_receipt["air_network"],
-        path="air-network receipt",
-    )
-    _require_causal_receipt_match(
-        electrical["fan_load_wh"],
-        recomputed_receipt["electrical"]["fan_load_wh"],
-        path="electrical fan load",
+        receipt,
+        recomputed_receipt,
+        path="accounting receipt",
     )
 
 
@@ -642,6 +637,11 @@ def run_scenario(scenario: Scenario) -> SimulationRun:
             if segment["start_step"] <= state.step < segment["end_step"]
         )
         result: StepResult = advance_one_step(scenario, state)
+        canonical_result = physics_module.advance_one_step(scenario, state)
+        if result.state != canonical_result.state:
+            raise StateInvariantError(
+                "post-step state does not match causal recomputation"
+            )
         validate_accounting_receipt(
             result.receipt,
             scenario=scenario,
