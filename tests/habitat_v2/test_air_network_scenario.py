@@ -4,7 +4,8 @@ from copy import deepcopy
 
 import pytest
 
-from aeolus.habitat_v2.physics import advance_one_step, initial_state
+import aeolus.habitat_v2.runner as runner_module
+from aeolus.habitat_v2.physics import StepResult, advance_one_step, initial_state
 from aeolus.habitat_v2.runner import (
     AccountingInvariantError,
     run_scenario,
@@ -101,6 +102,87 @@ def scenario_v3_mapping() -> dict:
     return mapping
 
 
+def _run_with_first_receipt_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: Scenario,
+    mutate_receipt,
+) -> None:
+    canonical_advance = advance_one_step
+
+    def advance_with_forged_receipt(
+        active_scenario: Scenario, state
+    ) -> StepResult:
+        result = canonical_advance(active_scenario, state)
+        if state.step != 0:
+            return result
+        forged = deepcopy(result.receipt)
+        mutate_receipt(forged)
+        return StepResult(state=result.state, receipt=forged)
+
+    monkeypatch.setattr(
+        runner_module, "advance_one_step", advance_with_forged_receipt
+    )
+    runner_module.run_scenario(scenario)
+
+
+def _replace_with_coherent_zero_flow_receipt(
+    receipt: dict, scenario: Scenario
+) -> None:
+    network = receipt["air_network"]
+    zone_ids = sorted(network["zone_flow_m3_s"])
+    damper_ids = sorted(network["actual_damper_position_by_id"])
+    network.update(
+        {
+            "requested_fan_speed_fraction": 0.0,
+            "actual_fan_speed_fraction": 0.0,
+            "requested_damper_position_by_id": {
+                damper_id: 0.0 for damper_id in damper_ids
+            },
+            "actual_damper_position_by_id": {
+                damper_id: 0.0 for damper_id in damper_ids
+            },
+            "fan_pressure_rise_pa": 0.0,
+            "shared_pressure_loss_pa": 0.0,
+            "branch_pressure_loss_pa": {zone_id: 0.0 for zone_id in zone_ids},
+            "total_flow_m3_s": 0.0,
+            "zone_flow_m3_s": {zone_id: 0.0 for zone_id in zone_ids},
+            "zone_mass_flow_kg_s": {zone_id: 0.0 for zone_id in zone_ids},
+            "fan_air_power_w": 0.0,
+            "fan_electrical_power_w": 0.0,
+            "operating_point_residual_pa": 0.0,
+            "mass_balance_residual_kg_s": {
+                zone_id: 0.0 for zone_id in zone_ids
+            },
+        }
+    )
+
+    electrical = receipt["electrical"]
+    original_fan_load_wh = float(electrical["fan_load_wh"])
+    electrical["fan_load_wh"] = 0.0
+    electrical["served_load_wh"] -= original_fan_load_wh
+    electrical["battery_charge_input_wh"] = (
+        electrical["generation_wh"] - electrical["served_load_wh"]
+    )
+    charge_efficiency = float(
+        scenario.data["equipment"]["battery_charge_efficiency"]
+    )
+    electrical["battery_charge_stored_wh"] = (
+        electrical["battery_charge_input_wh"] * charge_efficiency
+    )
+    electrical["charge_conversion_loss_wh"] = (
+        electrical["battery_charge_input_wh"]
+        - electrical["battery_charge_stored_wh"]
+    )
+    electrical["battery_energy_delta_wh"] = electrical[
+        "battery_charge_stored_wh"
+    ]
+    electrical["residual_wh"] = 0.0
+
+    receipt["thermal"]["external_heat_rejected_j"] -= (
+        original_fan_load_wh * 3600.0
+    )
+
+
 def test_scenario_v3_has_distinct_schema_trace_and_equation_identity() -> None:
     scenario = Scenario.from_mapping(scenario_v3_mapping())
 
@@ -177,17 +259,23 @@ def test_scenario_v3_trace_replays_with_network_command_and_receipts() -> None:
 
 def test_network_accounting_rejects_corrupted_fan_power() -> None:
     scenario = Scenario.from_mapping(scenario_v3_mapping())
-    result = advance_one_step(scenario, initial_state(scenario))
+    pre_step_state = initial_state(scenario)
+    result = advance_one_step(scenario, pre_step_state)
     corrupted = deepcopy(result.receipt)
     corrupted["air_network"]["fan_electrical_power_w"] += 1.0
 
     with pytest.raises(AccountingInvariantError, match="fan electrical power"):
-        validate_accounting_receipt(corrupted, scenario=scenario)
+        validate_accounting_receipt(
+            corrupted,
+            scenario=scenario,
+            pre_step_state=pre_step_state,
+        )
 
 
 def test_network_accounting_binds_reference_density_to_scenario() -> None:
     scenario = Scenario.from_mapping(scenario_v3_mapping())
-    result = advance_one_step(scenario, initial_state(scenario))
+    pre_step_state = initial_state(scenario)
+    result = advance_one_step(scenario, pre_step_state)
     corrupted = deepcopy(result.receipt)
     corrupted["air_network"]["air_density_kg_m3"] = 0.90
     corrupted["air_network"]["zone_mass_flow_kg_s"] = {
@@ -196,12 +284,17 @@ def test_network_accounting_binds_reference_density_to_scenario() -> None:
     }
 
     with pytest.raises(AccountingInvariantError, match="declared reference density"):
-        validate_accounting_receipt(corrupted, scenario=scenario)
+        validate_accounting_receipt(
+            corrupted,
+            scenario=scenario,
+            pre_step_state=pre_step_state,
+        )
 
 
 def test_network_accounting_binds_fan_power_to_electrical_bus() -> None:
     scenario = Scenario.from_mapping(scenario_v3_mapping())
-    result = advance_one_step(scenario, initial_state(scenario))
+    pre_step_state = initial_state(scenario)
+    result = advance_one_step(scenario, pre_step_state)
     corrupted = deepcopy(result.receipt)
     network = corrupted["air_network"]
 
@@ -221,4 +314,64 @@ def test_network_accounting_binds_fan_power_to_electrical_bus() -> None:
     network["operating_point_residual_pa"] = 0.0
 
     with pytest.raises(AccountingInvariantError, match="electrical fan load"):
-        validate_accounting_receipt(corrupted, scenario=scenario)
+        validate_accounting_receipt(
+            corrupted,
+            scenario=scenario,
+            pre_step_state=pre_step_state,
+        )
+
+
+def test_network_accounting_rejects_coherent_alternative_operating_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario = Scenario.from_mapping(scenario_v3_mapping())
+
+    with pytest.raises(AccountingInvariantError, match="causal recomputation"):
+        _run_with_first_receipt_mutation(
+            monkeypatch,
+            scenario,
+            lambda receipt: _replace_with_coherent_zero_flow_receipt(
+                receipt, scenario
+            ),
+        )
+
+
+def test_network_accounting_requires_v3_network_receipt() -> None:
+    scenario = Scenario.from_mapping(scenario_v3_mapping())
+    pre_step_state = initial_state(scenario)
+    receipt = deepcopy(advance_one_step(scenario, pre_step_state).receipt)
+    del receipt["air_network"]
+
+    with pytest.raises(AccountingInvariantError, match="air-network receipt"):
+        validate_accounting_receipt(
+            receipt,
+            scenario=scenario,
+            pre_step_state=pre_step_state,
+        )
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "requested_fan_speed_fraction",
+        "actual_fan_speed_fraction",
+        "requested_damper_position_by_id",
+        "actual_damper_position_by_id",
+    ),
+)
+def test_network_accounting_rejects_forged_actuator_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    scenario = Scenario.from_mapping(scenario_v3_mapping())
+
+    def mutate(receipt: dict) -> None:
+        network = receipt["air_network"]
+        if field.endswith("damper_position_by_id"):
+            damper_id = sorted(network[field])[0]
+            network[field][damper_id] = 0.0
+        else:
+            network[field] = 0.0
+
+    with pytest.raises(AccountingInvariantError, match="causal recomputation"):
+        _run_with_first_receipt_mutation(monkeypatch, scenario, mutate)
