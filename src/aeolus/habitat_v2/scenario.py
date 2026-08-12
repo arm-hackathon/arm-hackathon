@@ -9,14 +9,17 @@ from typing import Any, Mapping
 SCENARIO_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_scenario_v1"
 SCENARIO_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_scenario_v2"
 SCENARIO_SCHEMA_VERSION_V3 = "aeolus_habitat_v2_scenario_v3"
+SCENARIO_SCHEMA_VERSION_V4 = "aeolus_habitat_v2_scenario_v4"
 TRACE_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_trace_v1"
 TRACE_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_trace_v2"
 TRACE_SCHEMA_VERSION_V3 = "aeolus_habitat_v2_trace_v3"
+TRACE_SCHEMA_VERSION_V4 = "aeolus_habitat_v2_trace_v4"
 # V1 aliases are retained for callers that import the original contract names.
 SCENARIO_SCHEMA_VERSION = SCENARIO_SCHEMA_VERSION_V1
 TRACE_SCHEMA_VERSION = TRACE_SCHEMA_VERSION_V1
 EQUATION_CONTRACT_REVISION = "aeolus_habitat_v2_equations_v1"
 EQUATION_CONTRACT_REVISION_V2 = "aeolus_habitat_v2_equations_v2"
+EQUATION_CONTRACT_REVISION_V3 = "aeolus_habitat_v2_equations_v3"
 
 _TOP_LEVEL_FIELDS = {
     "schema_version",
@@ -104,6 +107,7 @@ _COMMAND_FIELDS = {
 }
 
 _TOP_LEVEL_FIELDS_V3 = _TOP_LEVEL_FIELDS | {"air_network"}
+_TOP_LEVEL_FIELDS_V4 = _TOP_LEVEL_FIELDS_V3 | {"sensor_model", "fault_profiles"}
 _ZONE_FIELDS_V3 = _ZONE_FIELDS | {"geometry"}
 _ZONE_GEOMETRY_FIELDS = {"center_m", "size_m"}
 _EQUIPMENT_FIELDS_V3 = _EQUIPMENT_FIELDS - {
@@ -150,6 +154,62 @@ _BRANCH_FIELDS = {
     "return_grille_position_m",
     "damper_position_m",
     "duct_polyline_m",
+}
+_SENSOR_CHANNELS = {
+    "temperature_k",
+    "pressure_pa",
+    "co2_ppm",
+    "o2_mole_fraction",
+    "relative_humidity",
+}
+_SENSOR_MODEL_FIELDS = {
+    "random_seed",
+    "primary_noise_amplitude",
+    "secondary_noise_amplitude",
+}
+_FAN_DEGRADATION_FIELDS = {
+    "id",
+    "type",
+    "start_step",
+    "end_step",
+    "start_multiplier",
+    "end_multiplier",
+}
+_BRANCH_RESISTANCE_FIELDS = {
+    "id",
+    "type",
+    "zone_id",
+    "start_step",
+    "end_step",
+    "start_multiplier",
+    "end_multiplier",
+}
+_DAMPER_JAM_FIELDS = {
+    "id",
+    "type",
+    "damper_id",
+    "start_step",
+    "end_step",
+}
+_SENSOR_BIAS_DRIFT_FIELDS = {
+    "id",
+    "type",
+    "zone_id",
+    "sensor_head",
+    "channel",
+    "start_step",
+    "end_step",
+    "start_bias",
+    "end_bias",
+}
+_SENSOR_STUCK_FIELDS = {
+    "id",
+    "type",
+    "zone_id",
+    "sensor_head",
+    "channel",
+    "start_step",
+    "end_step",
 }
 
 
@@ -207,13 +267,15 @@ def _top_level_fields_for_schema(schema_version: str) -> set[str]:
         return _TOP_LEVEL_FIELDS
     if schema_version == SCENARIO_SCHEMA_VERSION_V3:
         return _TOP_LEVEL_FIELDS_V3
+    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+        return _TOP_LEVEL_FIELDS_V4
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
 def _zone_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
         return _ZONE_FIELDS
-    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
         return _ZONE_FIELDS_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
@@ -221,7 +283,7 @@ def _zone_fields_for_schema(schema_version: str) -> set[str]:
 def _equipment_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
         return _EQUIPMENT_FIELDS
-    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
         return _EQUIPMENT_FIELDS_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
@@ -229,7 +291,7 @@ def _equipment_fields_for_schema(schema_version: str) -> set[str]:
 def _initial_utility_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
         return _INITIAL_UTILITY_FIELDS
-    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
         return _INITIAL_UTILITY_FIELDS_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
@@ -237,7 +299,7 @@ def _initial_utility_fields_for_schema(schema_version: str) -> set[str]:
 def _command_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
         return _COMMAND_FIELDS
-    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
         return _COMMAND_FIELDS_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
@@ -245,12 +307,16 @@ def _command_fields_for_schema(schema_version: str) -> set[str]:
 def _timeline_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version == SCENARIO_SCHEMA_VERSION_V1:
         return _TIMELINE_FIELDS_V1
-    if schema_version in {SCENARIO_SCHEMA_VERSION_V2, SCENARIO_SCHEMA_VERSION_V3}:
+    if schema_version in {
+        SCENARIO_SCHEMA_VERSION_V2,
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+    }:
         return _TIMELINE_FIELDS_V2
     raise ScenarioValidationError(
         "schema_version must be "
         f"{SCENARIO_SCHEMA_VERSION_V1!r}, {SCENARIO_SCHEMA_VERSION_V2!r}, "
-        f"or {SCENARIO_SCHEMA_VERSION_V3!r}"
+        f"{SCENARIO_SCHEMA_VERSION_V3!r}, or {SCENARIO_SCHEMA_VERSION_V4!r}"
     )
 
 
@@ -261,6 +327,8 @@ def _trace_schema_for_scenario(schema_version: str) -> str:
         return TRACE_SCHEMA_VERSION_V2
     if schema_version == SCENARIO_SCHEMA_VERSION_V3:
         return TRACE_SCHEMA_VERSION_V3
+    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+        return TRACE_SCHEMA_VERSION_V4
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
@@ -269,6 +337,8 @@ def _equation_contract_for_scenario(schema_version: str) -> str:
         return EQUATION_CONTRACT_REVISION
     if schema_version == SCENARIO_SCHEMA_VERSION_V3:
         return EQUATION_CONTRACT_REVISION_V2
+    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+        return EQUATION_CONTRACT_REVISION_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
@@ -281,7 +351,7 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
         _reject_unknown_fields(
             zone["initial"], _ZONE_INITIAL_FIELDS, label="zone initial state"
         )
-        if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
             _reject_unknown_fields(
                 zone["geometry"], _ZONE_GEOMETRY_FIELDS, label="zone geometry"
             )
@@ -297,7 +367,7 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
         label="initial utility",
     )
 
-    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
         network = scenario["air_network"]
         _reject_unknown_fields(network, _AIR_NETWORK_FIELDS, label="air network")
         _reject_unknown_fields(network["fan"], _FAN_FIELDS, label="air network fan")
@@ -309,6 +379,48 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
         for branch in network["branches"]:
             _reject_unknown_fields(
                 branch, _BRANCH_FIELDS, label="air network branch"
+            )
+
+    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+        sensor_model = scenario["sensor_model"]
+        _reject_unknown_fields(
+            sensor_model, _SENSOR_MODEL_FIELDS, label="sensor model"
+        )
+        for head in ("primary_noise_amplitude", "secondary_noise_amplitude"):
+            _reject_unknown_fields(
+                sensor_model[head],
+                _SENSOR_CHANNELS,
+                label=f"sensor model {head}",
+            )
+        if not isinstance(scenario["fault_profiles"], list):
+            raise ScenarioValidationError("fault_profiles must be an array")
+        for profile in scenario["fault_profiles"]:
+            if not isinstance(profile, Mapping):
+                raise ScenarioValidationError("fault profile must be an object")
+            profile_type = profile.get("type")
+            if profile_type == "fan_speed_degradation":
+                profile_fields = _FAN_DEGRADATION_FIELDS
+                profile_label = "fan speed degradation profile"
+            elif profile_type == "branch_resistance_increase":
+                profile_fields = _BRANCH_RESISTANCE_FIELDS
+                profile_label = "branch resistance increase profile"
+            elif profile_type == "damper_jam":
+                profile_fields = _DAMPER_JAM_FIELDS
+                profile_label = "damper jam profile"
+            elif profile_type == "sensor_bias_drift":
+                profile_fields = _SENSOR_BIAS_DRIFT_FIELDS
+                profile_label = "sensor bias drift profile"
+            elif profile_type == "sensor_stuck":
+                profile_fields = _SENSOR_STUCK_FIELDS
+                profile_label = "sensor stuck profile"
+            else:
+                raise ScenarioValidationError(
+                    f"unsupported fault profile type {profile_type!r}"
+                )
+            _reject_unknown_fields(
+                profile,
+                profile_fields,
+                label=profile_label,
             )
 
     for segment in scenario["timeline"]:
@@ -454,6 +566,119 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
     _positive(scenario["dt_seconds"], path="dt_seconds")
     steps = _positive_int(scenario["steps"], path="steps")
 
+    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+        seen_profile_ids: set[str] = set()
+        fan_intervals: list[tuple[int, int]] = []
+        branch_intervals_by_zone: dict[str, list[tuple[int, int]]] = {}
+        damper_intervals_by_id: dict[str, list[tuple[int, int]]] = {}
+        sensor_intervals_by_target: dict[str, list[tuple[int, int]]] = {}
+        declared_zone_ids = {str(zone["id"]) for zone in scenario["zones"]}
+        declared_damper_ids = {
+            str(branch["damper_id"])
+            for branch in scenario["air_network"]["branches"]
+        }
+        for index, profile in enumerate(scenario["fault_profiles"]):
+            prefix = f"fault_profiles[{index}]"
+            profile_id = profile["id"]
+            if not isinstance(profile_id, str) or not profile_id.strip():
+                _invalid(f"{prefix}.id", "must be a non-empty string")
+            if profile_id in seen_profile_ids:
+                _invalid(f"{prefix}.id", "must be unique")
+            seen_profile_ids.add(profile_id)
+            start_step = profile["start_step"]
+            end_step = profile["end_step"]
+            if isinstance(start_step, bool) or not isinstance(start_step, int):
+                _invalid(f"{prefix}.start_step", "must be an integer")
+            if isinstance(end_step, bool) or not isinstance(end_step, int):
+                _invalid(f"{prefix}.end_step", "must be an integer")
+            if not 1 <= start_step < end_step <= steps + 1:
+                _invalid(prefix, "interval must satisfy 1 <= start < end <= steps + 1")
+            profile_type = profile["type"]
+
+            if profile_type == "fan_speed_degradation":
+                for field in ("start_multiplier", "end_multiplier"):
+                    multiplier = _number(profile[field], path=f"{prefix}.{field}")
+                    if not 0.0 < multiplier <= 1.0:
+                        _invalid(f"{prefix}.{field}", "must be in (0, 1]")
+                for prior_start, prior_end in fan_intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(prefix, "fan degradation profiles may not overlap")
+                fan_intervals.append((start_step, end_step))
+                continue
+
+            if profile_type == "damper_jam":
+                damper_id = profile["damper_id"]
+                if (
+                    not isinstance(damper_id, str)
+                    or not damper_id.strip()
+                    or damper_id not in declared_damper_ids
+                ):
+                    _invalid(
+                        f"{prefix}.damper_id", "must identify a declared damper"
+                    )
+                damper_intervals = damper_intervals_by_id.setdefault(damper_id, [])
+                for prior_start, prior_end in damper_intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(
+                            prefix,
+                            f"damper jam profiles for {damper_id} may not overlap",
+                        )
+                damper_intervals.append((start_step, end_step))
+                continue
+
+            if profile_type in {"sensor_bias_drift", "sensor_stuck"}:
+                zone_id = profile["zone_id"]
+                sensor_head = profile["sensor_head"]
+                channel = profile["channel"]
+                if (
+                    not isinstance(zone_id, str)
+                    or not zone_id.strip()
+                    or zone_id not in declared_zone_ids
+                ):
+                    _invalid(f"{prefix}.zone_id", "must identify a declared zone")
+                if sensor_head not in {"primary", "secondary"}:
+                    _invalid(
+                        f"{prefix}.sensor_head", "must be primary or secondary"
+                    )
+                if channel not in _SENSOR_CHANNELS:
+                    _invalid(
+                        f"{prefix}.channel",
+                        "must identify a declared sensor channel",
+                    )
+                if profile_type == "sensor_bias_drift":
+                    _number(profile["start_bias"], path=f"{prefix}.start_bias")
+                    _number(profile["end_bias"], path=f"{prefix}.end_bias")
+                target_id = f"{zone_id}/{sensor_head}/{channel}"
+                sensor_intervals = sensor_intervals_by_target.setdefault(target_id, [])
+                for prior_start, prior_end in sensor_intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(
+                            prefix,
+                            f"sensor fault profiles for {target_id} may not overlap",
+                        )
+                sensor_intervals.append((start_step, end_step))
+                continue
+
+            zone_id = profile["zone_id"]
+            if (
+                not isinstance(zone_id, str)
+                or not zone_id.strip()
+                or zone_id not in declared_zone_ids
+            ):
+                _invalid(f"{prefix}.zone_id", "must identify a declared zone")
+            for field in ("start_multiplier", "end_multiplier"):
+                multiplier = _number(profile[field], path=f"{prefix}.{field}")
+                if multiplier < 1.0:
+                    _invalid(f"{prefix}.{field}", "must be at least 1")
+            branch_intervals = branch_intervals_by_zone.setdefault(zone_id, [])
+            for prior_start, prior_end in branch_intervals:
+                if max(start_step, prior_start) < min(end_step, prior_end):
+                    _invalid(
+                        prefix,
+                        f"branch resistance profiles for {zone_id} may not overlap",
+                    )
+            branch_intervals.append((start_step, end_step))
+
     for zone_index, zone in enumerate(scenario["zones"]):
         prefix = f"zones[{zone_index}]"
         _positive(zone["volume_m3"], path=f"{prefix}.volume_m3")
@@ -499,7 +724,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             initial["relative_humidity"],
             path=f"{prefix}.initial.relative_humidity",
         )
-        if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
             _vector3(zone["geometry"]["center_m"], path=f"{prefix}.geometry.center_m")
             _vector3(
                 zone["geometry"]["size_m"],
@@ -670,6 +895,18 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                     path=f"{branch_prefix}.duct_polyline_m[{point_index}]",
                 )
 
+    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+        sensor_model = scenario["sensor_model"]
+        seed = sensor_model["random_seed"]
+        if isinstance(seed, bool) or not isinstance(seed, int):
+            _invalid("sensor_model.random_seed", "must be an integer")
+        for head in ("primary_noise_amplitude", "secondary_noise_amplitude"):
+            for channel in sorted(_SENSOR_CHANNELS):
+                _nonnegative(
+                    sensor_model[head][channel],
+                    path=f"sensor_model.{head}.{channel}",
+                )
+
     timeline = scenario["timeline"]
     if not timeline:
         _invalid("timeline", "must contain at least one segment")
@@ -686,7 +923,11 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             _invalid(prefix, "segments must cover steps contiguously from 0 to steps")
         expected_start = end
         _nonnegative(segment["generation_w"], path=f"{prefix}.generation_w")
-        if schema_version in {SCENARIO_SCHEMA_VERSION_V2, SCENARIO_SCHEMA_VERSION_V3}:
+        if schema_version in {
+            SCENARIO_SCHEMA_VERSION_V2,
+            SCENARIO_SCHEMA_VERSION_V3,
+            SCENARIO_SCHEMA_VERSION_V4,
+        }:
             mode = segment["operating_mode"]
             if not isinstance(mode, str) or mode not in _OPERATING_MODES:
                 _invalid(

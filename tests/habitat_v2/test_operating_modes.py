@@ -91,7 +91,7 @@ def test_scenario_v2_checks_operating_mode_on_later_segments() -> None:
 
 def test_unknown_scenario_contract_version_fails_closed() -> None:
     mapping = reference_scenario_mapping()
-    mapping["schema_version"] = "aeolus_habitat_v2_scenario_v4"
+    mapping["schema_version"] = "aeolus_habitat_v2_scenario_v999"
 
     with pytest.raises(ScenarioValidationError, match="schema_version must be"):
         Scenario.from_mapping(mapping)
