@@ -1,0 +1,45 @@
+{
+  "contract_id": "aeolus_habitat_v2_observability_qualification_v1",
+  "purpose": "OPEN-LOOP matched healthy-versus-treatment operational qualification over provenance-bound V5 projections only; it is not fault-truth classification.",
+  "operational_feature_manifest_id": "aeolus_habitat_v2_operational_feature_manifest_v1",
+  "operational_row_fields": ["step", "time_s", "mode", "primary_telemetry", "secondary_telemetry", "primary_minus_secondary", "commanded_action", "actual_action", "operational_feedback"],
+  "feature_descriptor_treatment": {
+    "compared": ["primary_minus_secondary", "operational_feedback"],
+    "asserted_equal": ["commanded_action"],
+    "deliberately_unscored": ["primary_telemetry", "secondary_telemetry", "actual_action"],
+    "rule": "No finite tolerance may exist for a deliberately unscored descriptor."
+  },
+  "excluded_before_evaluation": ["fault_receipt", "active_fault_ids_types_timing", "truth_telemetry", "primary_secondary_residuals", "air_network_receipt", "actuator_receipt", "exact_unmeasured_effective_values", "realised_hidden_loads", "random_seed", "future_schedule", "family_labels", "resource_state"],
+  "trace_provenance": ["fixture_id", "scenario_sha256", "run_id", "source_trace_sha256"],
+  "pair_manifest": {
+    "only_allowed_difference": "explicit treatment_fault_ids",
+    "treatment_ids_required": true,
+    "binding_identities": ["healthy_scenario_sha256", "fault_scenario_sha256", "healthy_run_id", "fault_run_id", "treatment_fault_profiles_sha256", "structural_baseline_sha256", "actuator_feedback_contract_revision", "actuator_feedback_config_sha256", "operational_feature_manifest_sha256", "decision_tolerance_contract_sha256"],
+    "trace_match_required_before_scoring": true,
+    "structural_equality_includes": ["name", "topology", "initial_state", "equipment", "actuator_feedback", "sensor_seed", "loads", "generation", "modes", "commands", "duration", "timestep"]
+  },
+  "window_contract": {
+    "completed_rows_only": true,
+    "fixed_window_steps": 2,
+    "persistence_steps": 2,
+    "comparison": "strict absolute difference greater than declared channel tolerance",
+    "first_divergence": "first persistent completed step inside the declared treatment interval",
+    "decision_step": "first_divergence + window_steps - 1",
+    "latency": "decision_step - treatment_start_step",
+    "half_open_treatment_interval_bound": true,
+    "temporal_phases": ["baseline", "treatment", "recovery", "post_recovery"],
+    "clearance": "first two-row post-treatment window with no compared-feature divergence",
+    "stable_tail": "final two completed rows contain no compared-feature divergence"
+  },
+  "answers": {
+    "abnormality_detection": "boolean persistent operational concern",
+    "subsystem_localisation": "known subsystem or UNKNOWN",
+    "exact_identification": "always UNKNOWN; no exact treatment/fault identity is asserted"
+  },
+  "outcomes": ["NO_OBSERVABLE_CONCERN", "ABNORMAL_OPERATION", "SUBSYSTEM_LOCALISED", "UNKNOWN"],
+  "report_contract_id": "aeolus_habitat_v2_observability_report_v1",
+  "decision_contract_id": "aeolus_habitat_v2_observability_decision_v1",
+  "hard_negative_scope": "direct primary-telemetry operational-boundary check, explicitly narrower than paired comparison",
+  "aggregate_provenance": ["ordered report SHA-256 plus grading declaration per qualification case", "ordered hard-negative result SHA-256 manifest", "explicit numerators and denominators"],
+  "parser_requirements": ["closed fields", "semantic types", "fixed decision/tolerance/boundary contract identities", "non-empty explicit fixture and treatment IDs", "unique treatment IDs", "non-empty 64-hex identities", "provenance-bound traces and pair manifests", "valid outcome combinations", "content-hash integrity"]
+}
