@@ -1,6 +1,6 @@
 # Deterministic recovery final-verification contract
 
-Status: frozen before the blind final run  
+Status: frozen before the blind final run
 Version impact if proposed as a code PR: `patch`
 
 ## Purpose
