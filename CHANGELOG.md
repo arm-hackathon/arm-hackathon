@@ -9,6 +9,8 @@
   target validation and same-target overlap rejection.
 - Added redundant primary and secondary sensor observations with stateless
   SHA-256 noise, additive bias/drift and runner-local stuck-observation memory.
+- Applied active sensor faults to raw truth-plus-noise observations before one
+  final channel clamp, with lower- and upper-bound ordering regressions.
 - Separated operational observations from evaluator-only physical truth,
   residuals and deterministically ordered active-fault receipts.
 - Added a checked-in eight-zone compound-fault scenario, exact deterministic

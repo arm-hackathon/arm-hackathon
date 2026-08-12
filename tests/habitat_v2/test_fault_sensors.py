@@ -626,6 +626,44 @@ def test_sensor_stuck_holds_previous_completed_observation_then_releases() -> No
     )
 
 
+@pytest.mark.parametrize(
+    ("seed", "bias", "expected_co2_ppm"),
+    (
+        (3, 1_000.0, 0.0),
+        (5, -1_000.0, 1_000_000.0),
+    ),
+)
+def test_sensor_bias_is_applied_before_the_single_final_channel_clamp(
+    seed: int,
+    bias: float,
+    expected_co2_ppm: float,
+) -> None:
+    mapping = scenario_v4_mapping()
+    mapping["sensor_model"]["random_seed"] = seed
+    mapping["sensor_model"]["primary_noise_amplitude"][
+        "co2_ppm"
+    ] = 1_000_000_000.0
+    mapping["fault_profiles"] = [
+        {
+            "id": "cabin-primary-co2-bias",
+            "type": "sensor_bias_drift",
+            "zone_id": "crew_cabin",
+            "sensor_head": "primary",
+            "channel": "co2_ppm",
+            "start_step": 1,
+            "end_step": 2,
+            "start_bias": bias,
+            "end_bias": bias,
+        }
+    ]
+    scenario = Scenario.from_mapping(mapping)
+
+    run = run_scenario(scenario)
+
+    assert run.rows[1]["telemetry"]["crew_cabin"]["co2_ppm"] == expected_co2_ppm
+    assert validate_trace_bytes(run.trace_bytes, scenario=scenario) == run.rows
+
+
 def test_sensor_stuck_conflicts_with_bias_on_same_head_channel() -> None:
     mapping = scenario_v4_mapping()
     mapping["fault_profiles"] = [
