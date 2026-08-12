@@ -455,7 +455,10 @@ class ObservabilityReport:
             raise QualificationError("abnormal or unknown outcome requires separately detected abnormality")
         first = value["first_divergence_step"]
         decision = value["decision_step"]
+        earliest = value["earliest_divergence_step"]
         latency = value["detection_latency_steps"]
+        if earliest != first:
+            raise QualificationError("report earliest divergence contradicts first divergence")
         if value["abnormality_detected"]:
             if first is None or decision != first + value["window_steps"] - 1 or latency != decision - value["treatment_start_step"]:
                 raise QualificationError("report decision and latency receipts are inconsistent")
