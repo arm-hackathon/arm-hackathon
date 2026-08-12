@@ -3,7 +3,16 @@
 **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
 **U**ser-defined **S**cenarios
 
-Version `0.7.0` adds a closed scenario-v5 actuator-feedback layer on
+Version `0.8.0` adds a closed V5 operational-observability qualification layer on
+the actuator-feedback world: explicit fixture identities, a SHA-256-bound ordered
+feature manifest, matched treatment-pair/report identity bindings, finite
+completed-row decision windows, provenance-bound trace/pair matching, separate
+abnormality/localisation/exact-identification answers, explicit treatment IDs,
+temporally complete clearance/recovery fixtures, hard-negative checks, and
+denominator-explicit aggregate metrics. See
+[`docs/evidence/habitat-v2-operational-observability-qualification.md`](docs/evidence/habitat-v2-operational-observability-qualification.md)
+for the bounded contract and qualification receipt. Version `0.7.0` added the
+closed scenario-v5 actuator-feedback layer on
 the corrected scenario-v3 multizone air network. It provides fan degradation,
 branch-resistance increase, damper jam, sensor bias/drift and stuck-sensor
 profiles, plus redundant primary/secondary observations and evaluator-only
