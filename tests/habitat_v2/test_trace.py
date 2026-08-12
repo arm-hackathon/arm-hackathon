@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import math
 
 import pytest
 
@@ -258,6 +259,70 @@ def test_receipt_validator_rejects_electrical_residual_beyond_tolerance() -> Non
     receipt["electrical"]["residual_wh"] = 1.0
 
     with pytest.raises(AccountingInvariantError, match="electrical residual"):
+        validate_accounting_receipt(receipt)
+
+
+@pytest.mark.parametrize("non_finite", [math.nan, math.inf, -math.inf])
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("species_accounting", "tolerance_mol"),
+        ("species_accounting", "co2_residual_mol"),
+        ("species_accounting", "o2_residual_mol"),
+        ("species_accounting", "water_residual_mol"),
+        ("species_accounting", "inert_residual_mol"),
+        ("thermal", "system_residual_j"),
+        ("electrical", "generation_wh"),
+        ("electrical", "battery_withdrawn_wh"),
+        ("electrical", "served_load_wh"),
+        ("electrical", "battery_charge_stored_wh"),
+        ("electrical", "curtailed_generation_wh"),
+        ("electrical", "charge_conversion_loss_wh"),
+        ("electrical", "discharge_conversion_loss_wh"),
+        ("electrical", "residual_wh"),
+    ],
+)
+def test_receipt_validator_rejects_non_finite_accounting_values(
+    path, non_finite
+) -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    receipt = deepcopy(advance_one_step(scenario, initial_state(scenario)).receipt)
+    receipt[path[0]][path[1]] = non_finite
+
+    with pytest.raises(AccountingInvariantError, match="finite numeric data"):
+        validate_accounting_receipt(receipt)
+
+
+@pytest.mark.parametrize("non_finite", [math.nan, math.inf, -math.inf])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "metabolic_heat_added_j",
+        "recirculation_heat_added_j",
+        "cooling_heat_removed_j",
+        "passive_heat_rejected_j",
+        "passive_heat_received_j",
+        "zone_thermal_energy_delta_j",
+        "zone_thermal_residual_j",
+    ],
+)
+def test_receipt_validator_rejects_non_finite_zone_thermal_values(
+    field, non_finite
+) -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    receipt = deepcopy(advance_one_step(scenario, initial_state(scenario)).receipt)
+    receipt["thermal"]["zones"]["crew_cabin"][field] = non_finite
+
+    with pytest.raises(AccountingInvariantError, match="finite numeric data"):
+        validate_accounting_receipt(receipt)
+
+
+def test_receipt_validator_rejects_negative_species_tolerance() -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    receipt = deepcopy(advance_one_step(scenario, initial_state(scenario)).receipt)
+    receipt["species_accounting"]["tolerance_mol"] = -1.0
+
+    with pytest.raises(AccountingInvariantError, match="must be non-negative"):
         validate_accounting_receipt(receipt)
 
 
