@@ -10,9 +10,11 @@ from . import physics as physics_module
 from .physics import StepResult, advance_one_step, initial_state
 from .scenario import (
     Scenario,
+    SCENARIO_SCHEMA_VERSION_V5,
     TRACE_SCHEMA_VERSION_V2,
     TRACE_SCHEMA_VERSION_V3,
     TRACE_SCHEMA_VERSION_V4,
+    TRACE_SCHEMA_VERSION_V5,
 )
 from .state import PlantState
 
@@ -149,6 +151,7 @@ def validate_accounting_receipt(
         if scenario is not None and scenario.trace_schema_version in {
             TRACE_SCHEMA_VERSION_V3,
             TRACE_SCHEMA_VERSION_V4,
+            TRACE_SCHEMA_VERSION_V5,
         }:
             raise AccountingInvariantError(
                 "scenario-v3/v4 accounting requires an air-network receipt"
@@ -371,7 +374,7 @@ def _state_payload(scenario: Scenario, state: PlantState) -> dict[str, Any]:
             ),
         }
     utility = state.utility
-    return {
+    payload = {
         "zones": zones,
         "utility": {
             "co2_sorbent_remaining_mol": utility.co2_sorbent_remaining_mol,
@@ -389,6 +392,31 @@ def _state_payload(scenario: Scenario, state: PlantState) -> dict[str, Any]:
             "actual_condenser_duty": utility.actual_condenser_duty,
         },
     }
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        payload["utility"].update(
+            {
+                "actual_cooling_removed_w": dict(
+                    utility.actual_cooling_removed_w
+                ),
+                "actual_oxygen_injection_mol_s": dict(
+                    utility.actual_oxygen_injection_mol_s
+                ),
+                "effective_scrubber_capture_ability": (
+                    utility.effective_scrubber_capture_ability
+                ),
+                "effective_condenser_removal_ability": (
+                    utility.effective_condenser_removal_ability
+                ),
+                "effective_cooling_delivery_by_zone": dict(
+                    utility.effective_cooling_delivery_by_zone
+                ),
+                "effective_oxygen_delivery_by_zone": dict(
+                    utility.effective_oxygen_delivery_by_zone
+                ),
+                "last_operational_feedback": utility.last_operational_feedback,
+            }
+        )
+    return payload
 
 
 def _assert_state_invariants(scenario: Scenario, state: PlantState) -> None:
@@ -428,6 +456,26 @@ def _assert_state_invariants(scenario: Scenario, state: PlantState) -> None:
         raise StateInvariantError("condenser duty outside [0, 1]")
     if any(value < 0.0 for value in utility.actual_airflow_m3_s.values()):
         raise StateInvariantError("negative actual airflow")
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        zone_ids = set(state.zones)
+        for field in (
+            "actual_cooling_removed_w",
+            "actual_oxygen_injection_mol_s",
+            "effective_cooling_delivery_by_zone",
+            "effective_oxygen_delivery_by_zone",
+        ):
+            values = getattr(utility, field)
+            if set(values) != zone_ids:
+                raise StateInvariantError(f"{field} topology does not match zones")
+            if any(float(value) < -_STATE_TOLERANCE for value in values.values()):
+                raise StateInvariantError(f"negative V5 actuator state: {field}")
+        for field in (
+            "effective_scrubber_capture_ability",
+            "effective_condenser_removal_ability",
+        ):
+            value = float(getattr(utility, field))
+            if not 0.0 <= value <= 1.0:
+                raise StateInvariantError(f"{field} outside [0, 1]")
 
 
 def _trace_telemetry(scenario: Scenario, state: PlantState) -> dict[str, Any]:
@@ -678,9 +726,20 @@ def _trace_actual_action(
             for zone_id in zone_ids
         },
     }
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5:
+        action.pop("airflow_m3_s")
+        action["cooling_removed_w"] = {
+            zone_id: float(state.utility.actual_cooling_removed_w[zone_id])
+            for zone_id in zone_ids
+        }
+        action["oxygen_injection_mol_s"] = {
+            zone_id: float(state.utility.actual_oxygen_injection_mol_s[zone_id])
+            for zone_id in zone_ids
+        }
     if scenario.trace_schema_version in {
         TRACE_SCHEMA_VERSION_V3,
         TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
     }:
         action["fan_speed_fraction"] = state.utility.actual_fan_speed_fraction
         action["damper_position_by_id"] = {
@@ -711,13 +770,14 @@ def _trace_command(
     if scenario.trace_schema_version in {
         TRACE_SCHEMA_VERSION_V3,
         TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
     }:
         action["fan_speed_fraction"] = float(command["fan_speed_fraction"])
         action["damper_position_by_id"] = {
             damper_id: float(command["damper_position_by_id"][damper_id])
             for damper_id in sorted(command["damper_position_by_id"])
         }
-    else:
+    elif scenario.trace_schema_version not in {TRACE_SCHEMA_VERSION_V5}:
         action["airflow_m3_s"] = {
             zone_id: float(command["airflow_m3_s"][zone_id])
             for zone_id in sorted(command["airflow_m3_s"])
@@ -737,16 +797,28 @@ def _row(
     if receipt is not None and scenario.trace_schema_version in {
         TRACE_SCHEMA_VERSION_V3,
         TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
     }:
         accounting_receipt = {
             key: value
             for key, value in receipt.items()
-            if key not in {"air_network", "active_faults"}
+            if key
+            not in {
+                "air_network",
+                "active_faults",
+                "actuators",
+                "operational_feedback",
+                "realised_loads",
+                "external_command_digest",
+            }
         }
     telemetry = _trace_telemetry(scenario, state)
     sensor_disagreement = None
     fault_receipt = None
-    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
         previous_primary = None
         previous_secondary = None
         if previous_row is not None:
@@ -762,6 +834,15 @@ def _row(
             previous_primary=previous_primary,
             previous_secondary=previous_secondary,
         )
+    operational_feedback = (
+        state.utility.last_operational_feedback
+        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5
+        else None
+    )
+    actuator_receipt = None
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5 and receipt is not None:
+        operational_feedback = receipt["operational_feedback"]
+        actuator_receipt = receipt["actuators"]
     row = {
         "schema_version": scenario.trace_schema_version,
         "lineage": {
@@ -770,6 +851,15 @@ def _row(
             "scenario_schema_version": scenario.scenario_schema_version,
             "trace_schema_version": scenario.trace_schema_version,
             "equation_contract_revision": scenario.equation_contract_revision,
+            **(
+                {
+                    "actuator_feedback_contract_revision": (
+                        scenario.actuator_feedback_contract_revision
+                    )
+                }
+                if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5
+                else {}
+            ),
         },
         "step": state.step,
         "time_s": state.step * float(scenario.data["dt_seconds"]),
@@ -792,7 +882,10 @@ def _row(
         row["air_network_receipt"] = (
             None if receipt is None else receipt["air_network"]
         )
-    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
         row["applied_operating_mode"] = (
             None if segment is None else segment["operating_mode"]
         )
@@ -801,6 +894,9 @@ def _row(
         )
         row["sensor_disagreement"] = sensor_disagreement
         row["fault_receipt"] = fault_receipt
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5:
+        row["operational_feedback"] = operational_feedback
+        row["actuator_receipt"] = actuator_receipt
     return row
 
 
