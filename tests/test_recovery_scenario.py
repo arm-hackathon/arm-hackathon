@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from aeolus.config import parse_scenario
+from aeolus.recovery import RecoverySettings
+from aeolus.recovery_evidence import _arm_metrics
 from aeolus.scenario import RunSpec, run_recovery_scenario
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -112,6 +117,72 @@ def test_persistent_fault_activates_only_governed_reserve_plane():
     )
 
 
+def test_default_candidate_reaches_real_reserve_path_legacy_does_not():
+    document = _document()
+    document["telemetry"] = {
+        "airflow_noise_fraction": 0.0,
+        "airflow_bias_fraction": 0.0,
+        "airflow_drift_fraction": 0.0,
+        "actuator_position_noise_fraction": 0.0,
+        "co2_sensor_noise_fraction": 0.0,
+        "co2_sensor_bias_fraction": 0.0,
+        "co2_sensor_drift_fraction": 0.0,
+    }
+    document["fault_profiles"] = [
+        {
+            "type": "blocked_path",
+            "connection_id": "cabin_a_to_processing",
+            "start_tick": 5,
+            "blocked_effectiveness": 0.84,
+        }
+    ]
+    config = parse_scenario(document)
+    run = RunSpec(
+        total_ticks=30,
+        warmup_ticks=60,
+        crew_cabin_co2_concentration_ceiling=0.30,
+    )
+    legacy = RecoverySettings(
+        entry_residual_ratio=0.18,
+        entry_isolation_margin=0.10,
+        entry_persistence_ticks=3,
+        exit_residual_ratio=0.10,
+        handback_abort_residual_ratio=0.15,
+        handback_abort_persistence_ticks=1,
+    )
+
+    legacy_result = run_recovery_scenario(
+        config,
+        run_id="subtle-legacy",
+        governed=True,
+        run=run,
+        settings=legacy,
+    )
+    governed = run_recovery_scenario(
+        config,
+        run_id="subtle-default-candidate",
+        governed=True,
+        run=run,
+    )
+
+    assert "PROTECT" not in _authority_states(legacy_result)
+    assert all(_reserve_delivered(record) == 0.0 for record in legacy_result.records)
+    assert "PROTECT" in _authority_states(governed)
+    assert any(_reserve_delivered(record) > 0.0 for record in governed.records)
+
+
+def test_reserve_off_run_rejects_explicit_recovery_settings():
+    config = parse_scenario(_document())
+
+    with pytest.raises(ValueError, match="settings require a governed run"):
+        run_recovery_scenario(
+            config,
+            run_id="reserve-off-settings",
+            governed=False,
+            settings=RecoverySettings(),
+        )
+
+
 def test_frozen_sensor_fault_never_receives_reserve_authority():
     config = _config_with_fault(
         {
@@ -174,15 +245,16 @@ def test_reserve_delivery_failure_latches_and_shuts_down_within_bound():
         }:
             connection["health"] = 0.0
     config = parse_scenario(document)
+    run = RunSpec(
+        total_ticks=80,
+        warmup_ticks=60,
+        crew_cabin_co2_concentration_ceiling=0.30,
+    )
     result = run_recovery_scenario(
         config,
         run_id="reserve-failure",
         governed=True,
-        run=RunSpec(
-            total_ticks=80,
-            warmup_ticks=60,
-            crew_cabin_co2_concentration_ceiling=0.30,
-        ),
+        run=run,
     )
 
     failure_events = [
@@ -202,6 +274,14 @@ def test_reserve_delivery_failure_latches_and_shuts_down_within_bound():
         decision.state.value != "PROTECT"
         for decision in result.decisions[zero.decision_tick :]
     )
+    no_failure_transition_event = replace(
+        result,
+        events=tuple(
+            event for event in result.events if event.reason != "reserve_delivery_failure"
+        ),
+    )
+    metrics = _arm_metrics(no_failure_transition_event, config=config, run=run)
+    assert metrics["lifecycle"]["reserve_failure_count"] == 1
 
 
 def test_recovery_runner_preserves_valid_scenario_zone_order():
