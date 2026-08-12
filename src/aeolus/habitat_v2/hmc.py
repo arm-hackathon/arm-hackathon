@@ -321,7 +321,7 @@ class HabitatManagementComputer:
 
     def observe(
         self,
-    ) -> tuple[OperationalSnapshot, SnapshotVerificationReceipt]:
+    ) -> tuple[OperationalSnapshot, SnapshotVerificationReceipt] | TerminalFailureReceipt:
         if self._phase in {LifecyclePhase.OBSERVED, LifecyclePhase.STEPPED}:
             if (
                 self._cached_snapshot is None
@@ -337,38 +337,57 @@ class HabitatManagementComputer:
                 f"observe is not valid during lifecycle phase {self._phase.value}"
             )
 
-        measurement = instrument_v5_operational_measurement(
-            self._scenario,
-            self._state,
-            None,
-        )
-        health = reduce_health(
-            measurement=measurement,
-            scenario=self._scenario,
-            contract=self._contract,
-            previous_tracker=self._health_tracker,
-            previous_measurement=self._last_operational_measurement,
-            last_final_command=None,
-        )
-        hold = command_from_achieved_state(self._scenario, self._state)
-        null_roots = self._contract.data["null_roots"]
-        null_plant = str(null_roots["plant_receipt"]["sha256"])
-        null_step = str(null_roots["step_receipt"]["sha256"])
-        null_verification = str(null_roots["verification_receipt"]["sha256"])
+        try:
+            measurement = instrument_v5_operational_measurement(
+                self._scenario,
+                self._state,
+                None,
+            )
+        except Exception:
+            return self._enter_terminal(
+                reason_code="OPERATIONAL_MEASUREMENT_INVALID",
+                application_step=None,
+            )
+        try:
+            health = reduce_health(
+                measurement=measurement,
+                scenario=self._scenario,
+                contract=self._contract,
+                previous_tracker=self._health_tracker,
+                previous_measurement=self._last_operational_measurement,
+                last_final_command=None,
+            )
+        except Exception:
+            return self._enter_terminal(
+                reason_code="HEALTH_REDUCTION_FAILED",
+                application_step=None,
+            )
 
-        primary = [sample.to_mapping() for sample in measurement.primary]
-        secondary = [sample.to_mapping() for sample in measurement.secondary]
-        disagreement = [
-            sample.to_mapping() for sample in measurement.primary_minus_secondary
-        ]
-        feedback = [sample.to_mapping() for sample in measurement.operational_feedback]
-        feedback_by_id = {str(sample["descriptor_id"]): sample for sample in feedback}
-        resource_gauges = [
-            feedback_by_id[channel_id]
-            for channel_id in self._observable_topology.operational_resource_gauge_channels
-        ]
-        snapshot = _issue_operational_snapshot(
-            {
+        try:
+            hold = command_from_achieved_state(self._scenario, self._state)
+            null_roots = self._contract.data["null_roots"]
+            null_plant = str(null_roots["plant_receipt"]["sha256"])
+            null_step = str(null_roots["step_receipt"]["sha256"])
+            null_verification = str(null_roots["verification_receipt"]["sha256"])
+            primary = [sample.to_mapping() for sample in measurement.primary]
+            secondary = [sample.to_mapping() for sample in measurement.secondary]
+            disagreement = [
+                sample.to_mapping() for sample in measurement.primary_minus_secondary
+            ]
+            feedback = [
+                sample.to_mapping() for sample in measurement.operational_feedback
+            ]
+            feedback_by_id = {
+                str(sample["descriptor_id"]): sample for sample in feedback
+            }
+            resource_gauges = [
+                feedback_by_id[channel_id]
+                for channel_id in (
+                    self._observable_topology.operational_resource_gauge_channels
+                )
+            ]
+            snapshot = _issue_operational_snapshot(
+                {
                 "schema_version": self._contract.snapshot_schema_version,
                 "control_run_id": self._control_run_id,
                 "authority_epoch": self._authority_epoch,
@@ -415,26 +434,26 @@ class HabitatManagementComputer:
                 "observable_topology_sha256": self._observable_topology.sha256,
                 "completed_plant_receipt_digest": null_plant,
                 "completed_step_receipt_digest": null_step,
-            }
-        )
-        issuer_id = _domain_hash(
-            "aeolus-habitat-v2-hmc-issuer-v1",
-            _decode_sha256(self._control_run_id, label="control run identity"),
-            _decode_sha256(self._authority_epoch, label="authority epoch"),
-            _decode_sha256(
-                self._contract.hmc_contract_sha256,
-                label="HMC contract identity",
-            ),
-        )
-        cycle_id = _domain_hash(
-            "aeolus-habitat-v2-hmc-cycle-v1",
-            _decode_sha256(self._control_run_id, label="control run identity"),
-            _decode_sha256(self._authority_epoch, label="authority epoch"),
-            (0).to_bytes(8, "big"),
-            _decode_sha256(snapshot.snapshot_sha256, label="snapshot identity"),
-        )
-        receipt = _issue_snapshot_verification_receipt(
-            {
+                }
+            )
+            issuer_id = _domain_hash(
+                "aeolus-habitat-v2-hmc-issuer-v1",
+                _decode_sha256(self._control_run_id, label="control run identity"),
+                _decode_sha256(self._authority_epoch, label="authority epoch"),
+                _decode_sha256(
+                    self._contract.hmc_contract_sha256,
+                    label="HMC contract identity",
+                ),
+            )
+            cycle_id = _domain_hash(
+                "aeolus-habitat-v2-hmc-cycle-v1",
+                _decode_sha256(self._control_run_id, label="control run identity"),
+                _decode_sha256(self._authority_epoch, label="authority epoch"),
+                (0).to_bytes(8, "big"),
+                _decode_sha256(snapshot.snapshot_sha256, label="snapshot identity"),
+            )
+            receipt = _issue_snapshot_verification_receipt(
+                {
                 "receipt_schema_sha256": (
                     self._contract.snapshot_verification_receipt_schema_sha256
                 ),
@@ -457,13 +476,18 @@ class HabitatManagementComputer:
                 "previous_verification_receipt_digest": null_verification,
                 "event_ordinal": 0,
                 "previous_control_chain_sha256": (self._current_control_chain_sha256),
-            }
-        )
-        event = _issue_control_event(
-            event_ordinal=0,
-            event_kind="SNAPSHOT_VERIFICATION",
-            receipt=receipt,
-        )
+                }
+            )
+            event = _issue_control_event(
+                event_ordinal=0,
+                event_kind="SNAPSHOT_VERIFICATION",
+                receipt=receipt,
+            )
+        except Exception:
+            return self._enter_terminal(
+                reason_code="SNAPSHOT_ISSUANCE_FAILED",
+                application_step=None,
+            )
         self._sensor_memory = measurement.sensor_memory
         self._health_tracker = health.tracker
         self._last_operational_measurement = measurement
@@ -868,14 +892,21 @@ class HabitatManagementComputer:
             else:
                 raise RuntimeError("proposal lifecycle evidence is inconsistent")
 
-        preflight = preflight_external_command(
-            self._scenario,
-            self._state,
-            final_command.to_mapping(),
-            application_step,
-        )
+        def attempt_preflight(command: CanonicalExternalCommand):
+            try:
+                return preflight_external_command(
+                    self._scenario,
+                    self._state,
+                    command.to_mapping(),
+                    application_step,
+                )
+            except Exception:
+                return None
+
+        preflight = attempt_preflight(final_command)
         if (
-            preflight.classification != "FEASIBLE"
+            preflight is None
+            or preflight.classification != "FEASIBLE"
             or preflight.preflight_contract_sha256
             != self._contract.preflight_contract_sha256
         ):
@@ -889,14 +920,10 @@ class HabitatManagementComputer:
                     reason_codes = ["emergency_override"]
                 else:
                     reason_codes = ["rejected_resource_infeasible"]
-                preflight = preflight_external_command(
-                    self._scenario,
-                    self._state,
-                    safe_hold.to_mapping(),
-                    application_step,
-                )
+                preflight = attempt_preflight(safe_hold)
             if (
-                preflight.classification != "FEASIBLE"
+                preflight is None
+                or preflight.classification != "FEASIBLE"
                 or preflight.preflight_contract_sha256
                 != self._contract.preflight_contract_sha256
             ):
