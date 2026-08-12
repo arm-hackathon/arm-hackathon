@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-12 - Habitat V2 fault and observation layer / 0.6.0
+
+- Added closed scenario-v4, trace-v4 and equations-v3 identities while
+  preserving scenario-v1 through scenario-v3 dispatch and replay behavior.
+- Added deterministic fan-speed degradation, per-zone supply-resistance
+  increase and damper-jam faults with half-open emitted-step intervals,
+  target validation and same-target overlap rejection.
+- Added redundant primary and secondary sensor observations with stateless
+  SHA-256 noise, additive bias/drift and runner-local stuck-observation memory.
+- Applied active sensor faults to raw truth-plus-noise observations before one
+  final channel clamp, with lower- and upper-bound ordering regressions.
+- Separated operational observations from evaluator-only physical truth,
+  residuals and deterministically ordered active-fault receipts.
+- Added a checked-in eight-zone compound-fault scenario, exact deterministic
+  replay, finite-mutation rejection and V4 causal network-receipt validation.
+- Version impact: `minor`. No corpus, learned model, training, tuning,
+  quantisation, browser viewer, Arm64 measurement or publication is included.
+
 ## 2026-08-12 — Habitat V2 multizone air network / 0.5.0
 
 - Added scenario-v3 and trace-v3 contracts for a reduced-order multizone air

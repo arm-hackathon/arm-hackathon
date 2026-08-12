@@ -9,7 +9,10 @@ Current pre-model objective: complete the Habitat V2 deterministic world, data a
 - accepted recovery foundation: `89ff124`
 - Habitat V2 conservation kernel: `8712ea0`
 - versioned operating modes: `087b1e9`
-- active stack: `ben/habitat-v2-air-network`
+- rejected air-network candidate: `5df56c0`
+- independently approved air-network receipt authority: `6cbb8a4`
+- rejected fault/sensor candidate: `940608b`
+- active stack: `ben/habitat-v2-fault-sensors`
 
 ## Verified foundations
 
@@ -42,8 +45,8 @@ Current pre-model objective: complete the Habitat V2 deterministic world, data a
 
 ### 1. Explicit multizone air network
 
-Status: candidate frozen for bounded review
-Branch: `ben/habitat-v2-air-network`
+Status: corrected and independently approved local candidate
+Branch: `ben/habitat-v2-receipt-authority-fix`
 Target version: `0.5.0`
 
 Deliverables:
@@ -57,9 +60,16 @@ Deliverables:
 - scenario-v3 and trace-v3
 - old-contract byte preservation
 
-Verification on the candidate bytes:
+The first candidate at `5df56c0` was rejected because standalone accounting
+validation accepted a causally false but internally coherent zero-flow receipt.
+The correction at `6cbb8a4` requires exact pre-step state, recomputes the
+canonical transition and rejects omitted or forged network evidence. Its
+bounded independent rereview returned `APPROVE` with no release-blocking
+regression.
 
-- repository suite: `595 passed in 118.86s`
+Verification on the corrected candidate bytes:
+
+- repository suite: `601 passed in 121.14s`
 - Ruff 0.14.10: passed
 - Python 3.11 compilation: passed
 - wheel and source distribution built as `0.5.0`
@@ -69,9 +79,9 @@ Verification on the candidate bytes:
 - installed trace SHA-256:
   `dd3b3a579f5eaa8b08b0ffa5a230f5ef833f39233dcefc07a12e2ad4d6b3bd8d`
 - wheel SHA-256:
-  `6610f6bb7f67ad445b90630444204e10cd9fb8a89aadd306714e1844e1be5e95`
+  `a1fd00a63f0026afc01b827ab795d072e92a64e2c2d8b3aa362a7262d4f06eb4`
 - source distribution SHA-256:
-  `9b77e023308ebe0d2aedc30bc0dc9d505b0099db8e584e09f54bd9d2c16ec882`
+  `f94bc229cbcf55b9316a22229e9c4dc663464e2d36fdf5e92cf5c43810bf05f1`
 - maximum installed-run residuals:
   - species: `9.094947017729282e-13 mol`
   - zone thermal: `2.0942752598784864e-07 J`
@@ -84,18 +94,53 @@ Verification on the candidate bytes:
 
 ### 2. Fault and observation layer
 
-Status: pending
+Status: finding-specific local correction complete; replacement freeze and
+bounded correction rereview gate publication
+Branch: `ben/habitat-v2-fault-sensors`
+Target version: `0.6.0`
 
 Deliverables:
 
-- duct blockage
-- filter loading
-- fan degradation
-- stuck and lagging dampers
-- sensor bias, drift and freeze
-- command versus delivered disagreement
-- truth versus observed telemetry
-- deterministic fault manifests and receipts
+- scenario-v4, trace-v4 and equations-v3 identities
+- fan degradation and per-zone supply-resistance increase
+- damper jam with previous-achieved-position hold and post-fault slew resumption
+- primary and secondary deterministic sensor observations
+- sensor bias/drift and stuck-observation memory
+- command, achieved actuator and effective-performance separation
+- observed telemetry, disagreement and evaluator-truth separation
+- deterministic fault manifests, receipts and compound replay
+- checked-in eight-zone compound-fault scenario
+
+The immutable candidate at `940608b` was rejected because it clamped
+truth-plus-noise before applying sensor bias. This violated the frozen order of
+truth plus noise, then active sensor fault, then one final channel clamp. The
+replacement defers clamping until after fault application while retaining stuck
+sensor memory as the previous completed final observation.
+
+Correction evidence before replacement freeze:
+
+- RED lower-bound case: observed `1000.0`, required `0.0`
+- RED upper-bound case: observed `999000.0`, required `1000000.0`
+- focused bias-boundary, ordinary bias, stuck-memory and compound replay family:
+  `5 passed`
+- complete fault/sensor plus CLI boundary: `34 passed`
+- version contract: `1 passed`
+- full repository suite: `630 passed in 117.72s`
+- Ruff 0.14.10, Python compilation, `uv lock --check` and
+  `git diff --check`: passed
+
+Rejected-candidate source verification retained for historical identity:
+
+- focused fault/sensor, CLI and version tests: `33 passed`
+- complete Habitat V2 suite: `157 passed`
+- full repository suite: `628 passed in 118.98s`
+- Ruff 0.14.10, compilation, lock and `git diff --check`: passed
+- checked-in compound trace: 5 rows, 8 zones, final step 4
+- active-fault counts by row: `0,5,5,4,0`
+- compound trace SHA-256:
+  `7151a62b5db6c001d4131d1711c53a63f2fc3d57444b46c823f1c1bda70e0ded`
+- replacement package artifacts, full-repository verification and rereview are
+  required before the corrected candidate can be approved
 
 ### 3. Scenario families and corpus-v3
 

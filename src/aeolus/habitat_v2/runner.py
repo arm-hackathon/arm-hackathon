@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import math
 from typing import Any, Mapping
@@ -11,10 +12,18 @@ from .scenario import (
     Scenario,
     TRACE_SCHEMA_VERSION_V2,
     TRACE_SCHEMA_VERSION_V3,
+    TRACE_SCHEMA_VERSION_V4,
 )
 from .state import PlantState
 
 _STATE_TOLERANCE = 1e-12
+_SENSOR_CHANNELS = (
+    "temperature_k",
+    "pressure_pa",
+    "co2_ppm",
+    "o2_mole_fraction",
+    "relative_humidity",
+)
 
 
 class AccountingInvariantError(RuntimeError):
@@ -183,12 +192,12 @@ def validate_accounting_receipt(
 
     network = receipt.get("air_network")
     if network is None:
-        if (
-            scenario is not None
-            and scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3
-        ):
+        if scenario is not None and scenario.trace_schema_version in {
+            TRACE_SCHEMA_VERSION_V3,
+            TRACE_SCHEMA_VERSION_V4,
+        }:
             raise AccountingInvariantError(
-                "scenario-v3 accounting requires an air-network receipt"
+                "scenario-v3/v4 accounting requires an air-network receipt"
             )
         return
     if scenario is None:
@@ -480,6 +489,191 @@ def _trace_telemetry(scenario: Scenario, state: PlantState) -> dict[str, Any]:
     }
 
 
+def _sensor_sample(
+    *, seed: int, zone_id: str, sensor_head: str, channel: str, step: int
+) -> float:
+    payload = (
+        f"{seed}\0{zone_id}\0{sensor_head}\0{channel}\0{step}".encode("utf-8")
+    )
+    integer = int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
+    return (2.0 * integer / float(1 << 64)) - 1.0
+
+
+def _clamp_sensor_value(channel: str, value: float) -> float:
+    lower, upper = {
+        "temperature_k": (0.0, math.inf),
+        "pressure_pa": (0.0, math.inf),
+        "co2_ppm": (0.0, 1_000_000.0),
+        "o2_mole_fraction": (0.0, 1.0),
+        "relative_humidity": (0.0, 1.0),
+    }[channel]
+    return min(upper, max(lower, value))
+
+
+def _healthy_sensor_head(
+    scenario: Scenario,
+    truth_telemetry: Mapping[str, Mapping[str, float]],
+    *,
+    sensor_head: str,
+    step: int,
+) -> dict[str, dict[str, float]]:
+    model = scenario.data["sensor_model"]
+    amplitudes = model[f"{sensor_head}_noise_amplitude"]
+    seed = int(model["random_seed"])
+    return {
+        zone_id: {
+            channel: float(truth_telemetry[zone_id][channel])
+            + float(amplitudes[channel])
+            * _sensor_sample(
+                seed=seed,
+                zone_id=zone_id,
+                sensor_head=sensor_head,
+                channel=channel,
+                step=step,
+            )
+            for channel in _SENSOR_CHANNELS
+        }
+        for zone_id in sorted(truth_telemetry)
+    }
+
+
+def _linear_sensor_bias(profile: Mapping[str, Any], *, emitted_step: int) -> float:
+    start_step = int(profile["start_step"])
+    end_step = int(profile["end_step"])
+    start_bias = float(profile["start_bias"])
+    end_bias = float(profile["end_bias"])
+    count = end_step - start_step
+    if count == 1:
+        return end_bias
+    progress = (emitted_step - start_step) / float(count - 1)
+    return start_bias + (end_bias - start_bias) * progress
+
+
+def _apply_sensor_faults(
+    scenario: Scenario,
+    *,
+    emitted_step: int,
+    primary: dict[str, dict[str, float]],
+    secondary: dict[str, dict[str, float]],
+    previous_primary: Mapping[str, Mapping[str, float]] | None,
+    previous_secondary: Mapping[str, Mapping[str, float]] | None,
+) -> list[Mapping[str, Any]]:
+    observations = {"primary": primary, "secondary": secondary}
+    previous_observations = {
+        "primary": previous_primary,
+        "secondary": previous_secondary,
+    }
+    active: list[Mapping[str, Any]] = []
+    for profile in scenario.data["fault_profiles"]:
+        if profile["type"] not in {"sensor_bias_drift", "sensor_stuck"} or not (
+            int(profile["start_step"])
+            <= emitted_step
+            < int(profile["end_step"])
+        ):
+            continue
+        zone_id = str(profile["zone_id"])
+        sensor_head = str(profile["sensor_head"])
+        channel = str(profile["channel"])
+        target_id = f"{zone_id}/{sensor_head}/{channel}"
+        if profile["type"] == "sensor_bias_drift":
+            bias = _linear_sensor_bias(profile, emitted_step=emitted_step)
+            observations[sensor_head][zone_id][channel] += bias
+            active.append(
+                {
+                    "fault_id": str(profile["id"]),
+                    "fault_type": "sensor_bias_drift",
+                    "target_id": target_id,
+                    "effect_name": "additive_sensor_bias",
+                    "effect_value": bias,
+                }
+            )
+            continue
+
+        previous_head = previous_observations[sensor_head]
+        if previous_head is None:
+            raise StateInvariantError(
+                "sensor stuck fault requires a previous completed observation"
+            )
+        held_value = float(previous_head[zone_id][channel])
+        observations[sensor_head][zone_id][channel] = held_value
+        active.append(
+            {
+                "fault_id": str(profile["id"]),
+                "fault_type": "sensor_stuck",
+                "target_id": target_id,
+                "effect_name": "held_sensor_observation",
+                "effect_value": held_value,
+            }
+        )
+    return active
+
+
+def _v4_sensor_projection(
+    scenario: Scenario,
+    state: PlantState,
+    *,
+    active_faults: list[Mapping[str, Any]],
+    previous_primary: Mapping[str, Mapping[str, float]] | None,
+    previous_secondary: Mapping[str, Mapping[str, float]] | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    truth = _trace_telemetry(scenario, state)
+    primary = _healthy_sensor_head(
+        scenario, truth, sensor_head="primary", step=state.step
+    )
+    secondary = _healthy_sensor_head(
+        scenario, truth, sensor_head="secondary", step=state.step
+    )
+    sensor_faults = _apply_sensor_faults(
+        scenario,
+        emitted_step=state.step,
+        primary=primary,
+        secondary=secondary,
+        previous_primary=previous_primary,
+        previous_secondary=previous_secondary,
+    )
+    for observations in (primary, secondary):
+        for zone_id in sorted(observations):
+            for channel in _SENSOR_CHANNELS:
+                observations[zone_id][channel] = _clamp_sensor_value(
+                    channel, observations[zone_id][channel]
+                )
+    disagreement = {
+        zone_id: {
+            "secondary": dict(secondary[zone_id]),
+            "primary_minus_secondary": {
+                channel: primary[zone_id][channel] - secondary[zone_id][channel]
+                for channel in _SENSOR_CHANNELS
+            },
+        }
+        for zone_id in sorted(truth)
+    }
+    if state.step == 0:
+        return primary, disagreement, None
+    receipt = {
+        "truth_telemetry": truth,
+        "primary_residual": {
+            zone_id: {
+                channel: primary[zone_id][channel] - truth[zone_id][channel]
+                for channel in _SENSOR_CHANNELS
+            }
+            for zone_id in sorted(truth)
+        },
+        "secondary_residual": {
+            zone_id: {
+                channel: secondary[zone_id][channel] - truth[zone_id][channel]
+                for channel in _SENSOR_CHANNELS
+            }
+            for zone_id in sorted(truth)
+        },
+        "active_faults": sorted(
+            [dict(value) for value in active_faults]
+            + [dict(value) for value in sensor_faults],
+            key=lambda value: str(value["fault_id"]),
+        ),
+    }
+    return primary, disagreement, receipt
+
+
 def _trace_resources(state: PlantState) -> dict[str, float]:
     utility = state.utility
     return {
@@ -525,7 +719,10 @@ def _trace_actual_action(
             for zone_id in zone_ids
         },
     }
-    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+    }:
         action["fan_speed_fraction"] = state.utility.actual_fan_speed_fraction
         action["damper_position_by_id"] = {
             damper_id: float(state.utility.actual_damper_position_by_id[damper_id])
@@ -552,7 +749,10 @@ def _trace_command(
             for zone_id in sorted(command["oxygen_injection_mol_s"])
         },
     }
-    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+    }:
         action["fan_speed_fraction"] = float(command["fan_speed_fraction"])
         action["damper_position_by_id"] = {
             damper_id: float(command["damper_position_by_id"][damper_id])
@@ -572,12 +772,37 @@ def _row(
     *,
     segment: Mapping[str, Any] | None,
     receipt: Mapping[str, Any] | None,
+    previous_row: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     accounting_receipt = receipt
-    if receipt is not None and scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+    if receipt is not None and scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+    }:
         accounting_receipt = {
-            key: value for key, value in receipt.items() if key != "air_network"
+            key: value
+            for key, value in receipt.items()
+            if key not in {"air_network", "active_faults"}
         }
+    telemetry = _trace_telemetry(scenario, state)
+    sensor_disagreement = None
+    fault_receipt = None
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+        previous_primary = None
+        previous_secondary = None
+        if previous_row is not None:
+            previous_primary = previous_row["telemetry"]
+            previous_secondary = {
+                zone_id: previous_row["sensor_disagreement"][zone_id]["secondary"]
+                for zone_id in sorted(previous_row["sensor_disagreement"])
+            }
+        telemetry, sensor_disagreement, fault_receipt = _v4_sensor_projection(
+            scenario,
+            state,
+            active_faults=([] if receipt is None else list(receipt["active_faults"])),
+            previous_primary=previous_primary,
+            previous_secondary=previous_secondary,
+        )
     row = {
         "schema_version": scenario.trace_schema_version,
         "lineage": {
@@ -589,7 +814,7 @@ def _row(
         },
         "step": state.step,
         "time_s": state.step * float(scenario.data["dt_seconds"]),
-        "telemetry": _trace_telemetry(scenario, state),
+        "telemetry": telemetry,
         "commanded_action": _trace_command(scenario, segment),
         "actual_action": _trace_actual_action(scenario, state, segment=segment),
         "resource_state": _trace_resources(state),
@@ -608,6 +833,15 @@ def _row(
         row["air_network_receipt"] = (
             None if receipt is None else receipt["air_network"]
         )
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+        row["applied_operating_mode"] = (
+            None if segment is None else segment["operating_mode"]
+        )
+        row["air_network_receipt"] = (
+            None if receipt is None else receipt["air_network"]
+        )
+        row["sensor_disagreement"] = sensor_disagreement
+        row["fault_receipt"] = fault_receipt
     return row
 
 
@@ -629,7 +863,15 @@ def run_scenario(scenario: Scenario) -> SimulationRun:
     scenario.validate_contract_identities()
     state = initial_state(scenario)
     _assert_state_invariants(scenario, state)
-    rows: list[Mapping[str, Any]] = [_row(scenario, state, segment=None, receipt=None)]
+    rows: list[Mapping[str, Any]] = [
+        _row(
+            scenario,
+            state,
+            segment=None,
+            receipt=None,
+            previous_row=None,
+        )
+    ]
     while state.step < int(scenario.data["steps"]):
         segment = next(
             segment
@@ -649,7 +891,15 @@ def run_scenario(scenario: Scenario) -> SimulationRun:
         )
         state = result.state
         _assert_state_invariants(scenario, state)
-        rows.append(_row(scenario, state, segment=segment, receipt=result.receipt))
+        rows.append(
+            _row(
+                scenario,
+                state,
+                segment=segment,
+                receipt=result.receipt,
+                previous_row=rows[-1],
+            )
+        )
     return SimulationRun(
         final_state=state,
         rows=tuple(rows),
