@@ -27,6 +27,7 @@ from aeolus.recovery import (
     DeterministicRecoverySupervisor,
     RecoveryDecision,
     RecoveryObservation,
+    RecoverySettings,
     ReserveCommandOwner,
     _decision_digest,
     validate_recovery_decision,
@@ -123,12 +124,19 @@ def run_recovery_scenario(
     governed: bool,
     run: RunSpec = RECOVERY_RUN,
     trace_path=None,
+    settings: RecoverySettings | None = None,
 ) -> RecoveryRunResult:
-    """Run one causal reserve-recovery arm through the shared plant."""
+    """Run one causal reserve-recovery arm through the shared plant.
+
+    Explicit settings are accepted only for governed runs so an experimental
+    policy cannot be silently ignored by a reserve-off counterfactual arm.
+    """
     if config.version != 10 or not config.reserve_connections:
         raise ValueError("recovery runs require a validated version-10 topology")
     if not isinstance(run_id, str) or not run_id:
         raise ValueError("recovery run_id must be non-empty")
+    if settings is not None and not governed:
+        raise ValueError("recovery settings require a governed run")
 
     state = initial_state(config)
     for warmup_index in range(run.warmup_ticks):
@@ -142,7 +150,12 @@ def run_recovery_scenario(
 
     contract = build_model_input_contract(config)
     supervisor = (
-        DeterministicRecoverySupervisor(config, run_id=run_id, contract=contract)
+        DeterministicRecoverySupervisor(
+            config,
+            run_id=run_id,
+            contract=contract,
+            settings=settings,
+        )
         if governed
         else None
     )

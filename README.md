@@ -11,34 +11,32 @@ AEOLUS is a deterministic habitat simulation in abstract CO₂ and airflow units
 It is not a spacecraft, life-support, building-control, or safety-critical
 system, and it must not control physical equipment.
 
-## Current status: Outcome B — reproducible negative development result
+## Current status: deterministic recovery passes blind final verification
 
-The C4 recovery-development gate was run from immutable source commit
-`74154956d64309f067ada7593e2ef8786d140b4e` on branch
-`ben/independent-recovery`.
+The repaired deterministic recovery policy was frozen at source commit
+`d1d39d04d5c2bb2c8a7d7c32eb2a77faa518df26` and evaluated once against the
+untouched version-4 final suite.
 
-- The development sweep generated **756** independent scenario families and
-  **3,024** four-arm recovery traces.
-- The canonical receipt self-hash is
-  `1cbb9d428824f57c500b4a1ac3859b4ea6ef0a0dd4e70012b2e6c35d230a1730`.
-- A duplicate run compared 3,801 files and all 3,024 traces byte-for-byte;
-  a clean-checkout reproduction agreed with the same evidence identity.
-- Eleven targeted stress/falsification tests passed. They exercise delivery
-  failure, recurrence, observation dropout, ambiguity, malformed authority,
-  saturation, high noise/drift, and zero-denominator paths.
-- The recovery safety gate is **false** because transient scenarios did not
-  establish physical-zero acknowledgement inside the frozen handback bound.
-- The benefit gate is **false** because the physical-reserve-delivery criterion
-  failed for eligible, defined validation families. Other aggregate submetrics
-  do not override that required criterion.
+- **252** final scenario families produced **1,008** four-arm traces.
+- All **79/79** harmful physical airflow families entered protection.
+- Healthy activations, frozen-sensor activations, wrong-zone actions, repeated
+  protection episodes, handback recurrences, handback timeouts, and invariant
+  violations were all **zero**.
+- All **72/72** transient families handed back with acknowledged physical zero.
+- Median integrated physical CO2-excess reduction was **80.396%**; **72/79**
+  eligible families improved and seven were unchanged. None were worsened.
+- The safety and physical-benefit gates both passed.
 
-The gate is therefore a completed negative result. The deterministic recovery
-implementation is not accepted as demonstrated recovery, and C5 is closed:
-no new adviser corpus, training, tuning, ONNX export, integration, or final-suite
-operation is authorised by this result.
+The accepted architecture retains deterministic actuator authority. This result
+does not justify a learned recovery controller, and Arm model export or
+optimisation remains blocked until a bounded learned component demonstrates
+reproducible closed-loop value on separate untouched evidence.
 
-See [`docs/recovery-protocol-acceptance.md`](docs/recovery-protocol-acceptance.md)
-for the frozen contract, receipts, and exact scope boundary.
+See
+[`docs/evidence/recovery-final-verification-result.md`](docs/evidence/recovery-final-verification-result.md)
+for the receipt, hashes, limitations, and next-step gate. The earlier negative C4
+result remains preserved as historical development evidence in
+[`docs/recovery-protocol-acceptance.md`](docs/recovery-protocol-acceptance.md).
 
 ## Implemented simulation boundary
 
@@ -65,9 +63,10 @@ readiness, or Arm optimisation.
 ## Historical model work
 
 The repository retains historical protocol-v3 model and FP32 ONNX code and its
-archived documentation. It is not the basis of this recovery closeout. No
-final-suite data was run, inspected, or used for C4/C6 decisions, and no
-historical model is qualified to control the reserve path.
+archived documentation. It is not the basis of the deterministic recovery
+result, and no historical model is qualified to control the reserve path. The
+final suite was used only for the frozen deterministic policy's one-time
+verification, not for model training, selection, or tuning.
 
 ## Source-checkout verification
 

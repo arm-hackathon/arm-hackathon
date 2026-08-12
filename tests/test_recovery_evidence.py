@@ -12,9 +12,11 @@ from pathlib import Path
 import pytest
 
 import aeolus.recovery_evidence as recovery_evidence
+from aeolus.recovery import RecoverySettings
 from aeolus.recovery_evidence import (
     RECOVERY_ARMS,
     _canonical_sha256,
+    _evaluate_gates,
     main,
     reproduce_recovery_evidence,
     run_recovery_evidence,
@@ -113,8 +115,57 @@ def test_recovery_evidence_runs_exactly_four_write_once_arms_per_family(tmp_path
                 "reserve_delivered_airflow_integral",
                 "integrated_physical_co2",
                 "states",
+                "lifecycle",
                 "invariant_violation_count",
             }
+            assert set(arm["metrics"]["lifecycle"]) == {
+                "protect_target_zone_ids",
+                "protect_entry_count",
+                "handback_recurrence_count",
+                "handback_timeout_count",
+                "reserve_failure_count",
+                "final_physical_zero",
+            }
+
+
+def test_recovery_evidence_admits_final_suite_without_changing_four_arm_contract(
+    tmp_path,
+):
+    sweep_path = _mini_recovery_sweep(tmp_path)
+    document = json.loads(sweep_path.read_text(encoding="utf-8"))
+    document["suite_role"] = "final"
+    document["splits"] = {"final": document["splits"]["validation"]}
+    sweep_path.write_text(json.dumps(document), encoding="utf-8")
+
+    receipt = run_recovery_evidence(
+        sweep_path,
+        tmp_path / "final-evidence",
+        run=RunSpec(
+            total_ticks=30,
+            warmup_ticks=10,
+            crew_cabin_co2_concentration_ceiling=0.30,
+        ),
+        require_clean_source=False,
+    )
+
+    assert receipt["sweep"]["suite_role"] == "final"
+    assert {family["split"] for family in receipt["per_family"]} == {"final"}
+    assert all(tuple(family["arms"]) == RECOVERY_ARMS for family in receipt["per_family"])
+    assert receipt["gates"]["benefit"]["evaluation_split"] == "final"
+
+
+def test_recovery_evidence_rejects_malformed_settings_before_output(tmp_path):
+    output = tmp_path / "malformed-settings"
+
+    with pytest.raises(TypeError, match="settings are malformed"):
+        run_recovery_evidence(
+            _mini_recovery_sweep(tmp_path),
+            output,
+            require_clean_source=False,
+            settings=object(),
+        )
+
+    assert not output.exists()
 
 
 def test_recovery_evidence_emits_paired_safety_and_benefit_gates(tmp_path):
@@ -138,6 +189,12 @@ def test_recovery_evidence_emits_paired_safety_and_benefit_gates(tmp_path):
         "reserve_off_zero_delivery",
         "healthy_governed_no_protect",
         "frozen_sensor_no_protect",
+        "harmful_physical_fault_protected",
+        "fault_governed_expected_target_only",
+        "transient_single_protect_episode",
+        "transient_zero_handback_recurrence",
+        "transient_zero_handback_timeout",
+        "transient_final_physical_zero",
         "preactivation_physical_parity",
         "transient_handback_acknowledged",
         "failed_reserve_no_rearm",
@@ -156,6 +213,52 @@ def test_recovery_evidence_emits_paired_safety_and_benefit_gates(tmp_path):
         assert family["paired_metrics"]["steady_state_restoration_fraction"][
             "status"
         ] in {"defined", "not_applicable", "undefined_zero_denominator"}
+
+
+def test_final_verdict_lifecycle_gates_fail_closed(tmp_path):
+    receipt = run_recovery_evidence(
+        _mini_recovery_sweep(tmp_path),
+        tmp_path / "evidence",
+        run=RunSpec(
+            total_ticks=30,
+            warmup_ticks=10,
+            crew_cabin_co2_concentration_ceiling=0.30,
+        ),
+        require_clean_source=False,
+    )
+    rows = receipt["per_family"]
+    physical = next(
+        row
+        for row in rows
+        if row["paired_metrics"]["eligible_physical_airflow_fault"]
+    )
+    target = physical["paired_metrics"]["target_zone_id"]
+    physical["arms"]["fault_reserve_off"]["metrics"][
+        "integrated_physical_co2_excess"
+    ][target] = 1.0
+    physical["arms"]["fault_governed"]["metrics"]["states"][
+        "first_protect_tick"
+    ] = None
+    physical["arms"]["fault_governed"]["metrics"]["lifecycle"][
+        "protect_target_zone_ids"
+    ] = ["not-the-target"]
+
+    transient = next(row for row in rows if row["fault_class"].startswith("transient_"))
+    lifecycle = transient["arms"]["fault_governed"]["metrics"]["lifecycle"]
+    lifecycle["protect_entry_count"] = 2
+    lifecycle["handback_recurrence_count"] = 1
+    lifecycle["handback_timeout_count"] = 1
+    lifecycle["final_physical_zero"] = False
+
+    safety = _evaluate_gates(rows, evaluation_split="validation")["safety"]
+
+    assert safety["passed"] is False
+    assert safety["harmful_physical_fault_protected"]["passed"] is False
+    assert safety["fault_governed_expected_target_only"]["passed"] is False
+    assert safety["transient_single_protect_episode"]["passed"] is False
+    assert safety["transient_zero_handback_recurrence"]["passed"] is False
+    assert safety["transient_zero_handback_timeout"]["passed"] is False
+    assert safety["transient_final_physical_zero"]["passed"] is False
 
 
 def test_recovery_evidence_counts_full_reserve_request_as_saturation(tmp_path):
@@ -356,6 +459,46 @@ def test_canonical_recovery_evidence_clean_gate_precedes_output_creation(
         run_recovery_evidence(_mini_recovery_sweep(tmp_path), output)
 
     assert not output.exists()
+
+
+def test_recovery_evidence_records_and_applies_explicit_settings(tmp_path):
+    sweep_path = _mini_recovery_sweep(tmp_path)
+    document = json.loads(sweep_path.read_text(encoding="utf-8"))
+    for split in document["splits"].values():
+        split["blocked_effectiveness"] = [0.84]
+    sweep_path.write_text(json.dumps(document), encoding="utf-8")
+    settings = RecoverySettings(
+        entry_residual_ratio=0.10,
+        entry_isolation_margin=0.05,
+        entry_persistence_ticks=2,
+        exit_residual_ratio=0.05,
+        handback_abort_residual_ratio=0.08,
+    )
+
+    receipt = run_recovery_evidence(
+        sweep_path,
+        tmp_path / "explicit-settings",
+        run=RunSpec(
+            total_ticks=30,
+            warmup_ticks=10,
+            crew_cabin_co2_concentration_ceiling=0.30,
+        ),
+        require_clean_source=False,
+        settings=settings,
+    )
+
+    assert receipt["recovery_settings"]["entry_residual_ratio"] == 0.10
+    assert receipt["recovery_settings"]["entry_isolation_margin"] == 0.05
+    assert receipt["recovery_settings"]["entry_persistence_ticks"] == 2
+    blocked = next(
+        family
+        for family in receipt["per_family"]
+        if family["fault_class"] == "blocked_path"
+        and family["split"] == "validation"
+    )
+    governed = blocked["arms"]["fault_governed"]["metrics"]
+    assert governed["states"]["first_protect_tick"] is not None
+    assert governed["reserve_delivered_airflow_integral"] > 0.0
 
 
 def test_recovery_evidence_canonical_hash_rejects_non_finite_values():
