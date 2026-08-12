@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from aeolus.habitat_v2.physics import advance_one_step, initial_state
-from aeolus.habitat_v2.runner import run_scenario
+from aeolus.habitat_v2.runner import (
+    AccountingInvariantError,
+    run_scenario,
+    validate_accounting_receipt,
+)
 from aeolus.habitat_v2.scenario import Scenario, ScenarioValidationError
 from aeolus.habitat_v2.trace import validate_trace_bytes
 
@@ -348,12 +352,182 @@ def test_v5_external_command_is_validated_before_mutation_and_bound_to_receipt()
 
     assert result.receipt["external_command_digest"]
     assert result.receipt["realised_loads"] == scenario.data["timeline"][0]["loads"]
+    validate_accounting_receipt(
+        result.receipt,
+        scenario=scenario,
+        pre_step_state=state,
+        command=command,
+    )
 
     bad_command = deepcopy(command)
     bad_command["damper_position_by_id"].popitem()
     with pytest.raises(ValueError):
         advance_one_step_with_command(scenario, state, bad_command)
     assert state == initial_state(scenario)
+
+
+@pytest.mark.parametrize(
+    "scenario_filename",
+    [
+        "habitat_v2_reference.json",
+        "habitat_v2_operating_modes.json",
+        "habitat_v2_air_network.json",
+        "habitat_v2_compound_faults.json",
+        "habitat_v2_actuator_feedback.json",
+    ],
+)
+def test_external_receipt_binds_command_for_every_public_schema(
+    scenario_filename: str,
+) -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario_path = Path(__file__).parents[2] / "scenarios" / scenario_filename
+    scenario = Scenario.from_mapping(
+        json.loads(scenario_path.read_text(encoding="utf-8"))
+    )
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    command["scrubber_duty"] = 0.4
+    result = advance_one_step_with_command(scenario, state, command)
+    assert result.receipt["external_command_digest"]
+    validate_accounting_receipt(
+        result.receipt,
+        scenario=scenario,
+        pre_step_state=state,
+        command=command,
+    )
+
+    wrong_command = deepcopy(command)
+    wrong_command["scrubber_duty"] = 0.5
+
+    with pytest.raises(AccountingInvariantError, match="causal recomputation"):
+        validate_accounting_receipt(
+            result.receipt,
+            scenario=scenario,
+            pre_step_state=state,
+            command=wrong_command,
+        )
+
+
+@pytest.mark.parametrize(
+    "scenario_filename",
+    [
+        "habitat_v2_reference.json",
+        "habitat_v2_operating_modes.json",
+        "habitat_v2_air_network.json",
+        "habitat_v2_compound_faults.json",
+        "habitat_v2_actuator_feedback.json",
+    ],
+)
+def test_external_receipt_rejects_null_digest_without_command_context(
+    scenario_filename: str,
+) -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario_path = Path(__file__).parents[2] / "scenarios" / scenario_filename
+    scenario = Scenario.from_mapping(
+        json.loads(scenario_path.read_text(encoding="utf-8"))
+    )
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    receipt = deepcopy(advance_one_step_with_command(scenario, state, command).receipt)
+    receipt["external_command_digest"] = None
+
+    with pytest.raises(
+        AccountingInvariantError, match="requires the supplied command"
+    ):
+        validate_accounting_receipt(
+            receipt,
+            scenario=scenario,
+            pre_step_state=state,
+        )
+
+
+@pytest.mark.parametrize(
+    "scenario_filename",
+    [
+        "habitat_v2_reference.json",
+        "habitat_v2_operating_modes.json",
+        "habitat_v2_air_network.json",
+        "habitat_v2_compound_faults.json",
+        "habitat_v2_actuator_feedback.json",
+    ],
+)
+def test_external_receipt_cannot_hide_changed_command_by_deleting_digest(
+    scenario_filename: str,
+) -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario_path = Path(__file__).parents[2] / "scenarios" / scenario_filename
+    scenario = Scenario.from_mapping(
+        json.loads(scenario_path.read_text(encoding="utf-8"))
+    )
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    command["scrubber_duty"] = 0.4
+    receipt = deepcopy(advance_one_step_with_command(scenario, state, command).receipt)
+    del receipt["external_command_digest"]
+
+    with pytest.raises(AccountingInvariantError, match="causal recomputation"):
+        validate_accounting_receipt(
+            receipt,
+            scenario=scenario,
+            pre_step_state=state,
+        )
+
+
+def test_v5_external_receipt_accepts_timeline_command_with_explicit_context() -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario = Scenario.from_mapping(v5_mapping())
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    result = advance_one_step_with_command(scenario, state, command)
+
+    validate_accounting_receipt(
+        result.receipt,
+        scenario=scenario,
+        pre_step_state=state,
+        command=command,
+    )
+
+
+def test_v5_external_receipt_rejects_wrong_validation_command() -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario = Scenario.from_mapping(v5_mapping())
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    command["fan_speed_fraction"] = 0.4
+    result = advance_one_step_with_command(scenario, state, command)
+    wrong_command = deepcopy(command)
+    wrong_command["fan_speed_fraction"] = 0.5
+
+    with pytest.raises(AccountingInvariantError, match="causal recomputation"):
+        validate_accounting_receipt(
+            result.receipt,
+            scenario=scenario,
+            pre_step_state=state,
+            command=wrong_command,
+        )
+
+
+def test_v5_external_receipt_requires_command_validation_context() -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario = Scenario.from_mapping(v5_mapping())
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    result = advance_one_step_with_command(scenario, state, command)
+
+    with pytest.raises(
+        AccountingInvariantError, match="requires the supplied command"
+    ):
+        validate_accounting_receipt(
+            result.receipt,
+            scenario=scenario,
+            pre_step_state=state,
+        )
 
 
 @pytest.mark.parametrize(
