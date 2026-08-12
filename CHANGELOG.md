@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Habitat V2 integration corrections / 0.7.0
+
+- Bound external-command accounting validation to the exact supplied command,
+  including its canonical digest, and reject missing or mismatched command context.
+- Made CI execute Ruff from the checked-in locked development environment rather
+  than a separately resolved dependency overlay.
+- Version impact: `patch` within the still-unreleased `0.7.0` integration line.
+
 ## 2026-08-12 - Habitat V2 honest actuator feedback / 0.7.0
 
 - Added the closed V5 scenario and trace lineage with actuator-feedback identity.

@@ -1,10 +1,17 @@
 # Habitat V2 actuator-feedback verification result
 
 Date: 2026-08-12
-Status: exact candidate commit pending
+Status: integrated into `alex/ai-2` at
+`49e3d84b35f03e551344fdbc730926cd99188455` on 2026-08-12;
+post-merge integration corrections pending on
+`fix/habitat-v2-integration-audit`
 Base: `42e85e23bf065203b3d5b68d4b7398300bbb807a`
 Version impact: minor
 Resulting version: `0.7.0`
+
+> Historical evidence note: the verification counts below describe the original
+> V5 candidate before the final stacked merges and post-merge audit. Current
+> integration verification belongs in the correction branch/PR evidence.
 
 ## Implemented boundary
 
@@ -71,4 +78,9 @@ Evidence directory: `C:/Users/Nxiss/AppData/Local/hermes/cache/aeolus-actuator-f
 
 ## Claims boundary
 
-This evidence qualifies deterministic software behaviour on local x86 Windows/Python 3.11 only. It is not native Arm64 evidence, hardware validation, CFD, flight software or certification. No HMC, learned model, training, corpus generation, quantisation, tag, release or merge was performed.
+This evidence qualified deterministic software behaviour on local x86
+Windows/Python 3.11 only. It is not native Arm64 evidence, hardware validation,
+CFD, flight software or certification. At the time of candidate verification,
+no HMC, learned model, training, corpus generation, quantisation, tag, release or
+merge had been performed. The integration status above supersedes that
+historical publication state.

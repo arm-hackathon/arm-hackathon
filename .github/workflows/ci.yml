@@ -30,8 +30,8 @@ jobs:
       - name: Run full locked test suite
         run: uv run --locked --python 3.11 --extra dev python -m pytest -q
 
-      - name: Lint with Ruff
-        run: uv run --locked --python 3.11 --with ruff==0.14.10 ruff check .
+      - name: Lint with locked Ruff
+        run: uv run --locked --python 3.11 --extra dev ruff check .
 
       - name: Compile Python sources and tests
         run: uv run --locked --python 3.11 --extra dev python -m compileall -q src tests scripts

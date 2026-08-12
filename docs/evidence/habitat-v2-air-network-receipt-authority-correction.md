@@ -4,7 +4,13 @@ Date: 2026-08-12
 Branch: `ben/habitat-v2-receipt-authority-fix`
 Rejected candidate: `5df56c0327a1557a99cfca085ce620f042cccb88`
 Version impact: `patch` within the still-unreleased `0.5.0` minor candidate
-Publication status: local and unpushed
+Publication status at correction time: local and unpushed
+Integration update: merged through PR #26 into `alex/ai-2` at
+`ba025817920158ab59c6f68b4bf61f31aac301c9` on 2026-08-12
+
+> Historical evidence note: the RED/GREEN counts and publication statements
+> below describe the correction candidate before its merge. They are retained as
+> time-bound evidence, not as the current branch status.
 
 ## Review finding
 
@@ -56,4 +62,6 @@ uv lock --check: resolved 21 packages
 
 The replacement commit, package hashes, installed-boundary smoke result and
 repeated reference-trace hash are recorded after candidate freeze in the external
-archive receipt. No push, PR, merge, tag or release occurred.
+archive receipt. At the time of candidate verification, no push, PR, merge,
+tag or release had occurred. The integration update above supersedes that
+historical publication state.

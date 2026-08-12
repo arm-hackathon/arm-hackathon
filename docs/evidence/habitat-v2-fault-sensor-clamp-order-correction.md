@@ -5,7 +5,13 @@ Branch: `ben/habitat-v2-fault-sensors`
 Rejected candidate: `940608b93be0340c4b64c735db1640dd81ead58d`
 Corrected base: `6cbb8a400bdc2bd2f0628d7c540435c767bb67c0`
 Version impact: `patch` within the still-unpublished `0.6.0` minor candidate
-Publication status: local and unpushed
+Publication status at correction time: local and unpushed
+Integration update: merged through PR #27 into `alex/ai-2` at
+`8a9cddbe80f89cd0b0a4e1d610417795042d4a0f` on 2026-08-12
+
+> Historical evidence note: the RED/GREEN counts and publication statements
+> below describe the correction candidate before its merge. They are retained as
+> time-bound evidence, not as the current branch status.
 
 ## Independent review finding
 
@@ -51,4 +57,6 @@ compileall, uv lock --check and git diff --check: exit 0
 
 The replacement commit identity, full-suite result, package hashes, isolated
 installed-run evidence and correction rereview verdict are recorded only after
-the replacement bytes are frozen. No push, PR, merge, tag or release occurred.
+the replacement bytes were frozen. At the time of candidate verification, no
+push, PR, merge, tag or release had occurred. The integration update above
+supersedes that historical publication state.
