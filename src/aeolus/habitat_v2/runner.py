@@ -522,17 +522,14 @@ def _healthy_sensor_head(
     seed = int(model["random_seed"])
     return {
         zone_id: {
-            channel: _clamp_sensor_value(
-                channel,
-                float(truth_telemetry[zone_id][channel])
-                + float(amplitudes[channel])
-                * _sensor_sample(
-                    seed=seed,
-                    zone_id=zone_id,
-                    sensor_head=sensor_head,
-                    channel=channel,
-                    step=step,
-                ),
+            channel: float(truth_telemetry[zone_id][channel])
+            + float(amplitudes[channel])
+            * _sensor_sample(
+                seed=seed,
+                zone_id=zone_id,
+                sensor_head=sensor_head,
+                channel=channel,
+                step=step,
             )
             for channel in _SENSOR_CHANNELS
         }
@@ -580,10 +577,7 @@ def _apply_sensor_faults(
         target_id = f"{zone_id}/{sensor_head}/{channel}"
         if profile["type"] == "sensor_bias_drift":
             bias = _linear_sensor_bias(profile, emitted_step=emitted_step)
-            observations[sensor_head][zone_id][channel] = _clamp_sensor_value(
-                channel,
-                observations[sensor_head][zone_id][channel] + bias,
-            )
+            observations[sensor_head][zone_id][channel] += bias
             active.append(
                 {
                     "fault_id": str(profile["id"]),
@@ -637,6 +631,12 @@ def _v4_sensor_projection(
         previous_primary=previous_primary,
         previous_secondary=previous_secondary,
     )
+    for observations in (primary, secondary):
+        for zone_id in sorted(observations):
+            for channel in _SENSOR_CHANNELS:
+                observations[zone_id][channel] = _clamp_sensor_value(
+                    channel, observations[zone_id][channel]
+                )
     disagreement = {
         zone_id: {
             "secondary": dict(secondary[zone_id]),
