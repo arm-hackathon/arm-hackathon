@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import json
 import math
 
@@ -10,6 +11,7 @@ import aeolus.habitat_v2.runner as runner_module
 from aeolus.habitat_v2.physics import StepResult, advance_one_step, initial_state
 from aeolus.habitat_v2.runner import (
     AccountingInvariantError,
+    StateInvariantError,
     run_scenario,
     validate_accounting_receipt,
 )
@@ -339,4 +341,34 @@ def test_runner_rejects_bad_accounting_before_emitting_passed_row(monkeypatch) -
     monkeypatch.setattr(runner_module, "advance_one_step", advance_with_bad_receipt)
 
     with pytest.raises(AccountingInvariantError, match="electrical residual"):
+        run_scenario(scenario)
+
+
+def test_runner_rejects_forged_state_with_compensating_receipt(monkeypatch) -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    real_advance = advance_one_step
+
+    def advance_with_forged_transition(scenario_arg, state_arg) -> StepResult:
+        result = real_advance(scenario_arg, state_arg)
+        if state_arg.step != 0:
+            return result
+        zone_id = sorted(result.state.zones)[0]
+        forged_zone = replace(
+            result.state.zones[zone_id],
+            co2_mol=result.state.zones[zone_id].co2_mol + 1.0,
+        )
+        forged_state = replace(
+            result.state,
+            zones={**result.state.zones, zone_id: forged_zone},
+        )
+        forged_receipt = deepcopy(result.receipt)
+        forged_receipt["electrical"]["generation_wh"] += 1000.0
+        forged_receipt["electrical"]["curtailed_generation_wh"] += 1000.0
+        return StepResult(state=forged_state, receipt=forged_receipt)
+
+    monkeypatch.setattr(
+        runner_module, "advance_one_step", advance_with_forged_transition
+    )
+
+    with pytest.raises(StateInvariantError, match="causal recomputation"):
         run_scenario(scenario)
