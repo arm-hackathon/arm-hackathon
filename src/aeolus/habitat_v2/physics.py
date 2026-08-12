@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
-from typing import Any, Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
+from typing import Any
 
+from .actuators import achieve_actuator_state
 from .air_network import (
     AirNetworkResult,
     AirNetworkSpec,
@@ -14,7 +16,6 @@ from .air_network import (
     solve_air_network,
 )
 from .faults import physical_fault_effects
-from .actuators import achieve_actuator_state
 from .instrumentation import measure_operational_feedback
 from .scenario import (
     SCENARIO_SCHEMA_VERSION_V3,
@@ -22,6 +23,7 @@ from .scenario import (
     SCENARIO_SCHEMA_VERSION_V5,
     Scenario,
     ScenarioValidationError,
+    command_fields_for_schema,
 )
 from .state import (
     GAS_CONSTANT_J_PER_MOL_K,
@@ -36,6 +38,42 @@ from .state import (
 class StepResult:
     state: PlantState
     receipt: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalExternalCommand:
+    """A closed command validated without consulting scenario timeline data."""
+
+    scenario_schema_version: str
+    canonical_bytes: bytes
+    sha256: str
+
+    def to_mapping(self) -> dict[str, Any]:
+        return json.loads(self.canonical_bytes)
+
+
+@dataclass(frozen=True, slots=True)
+class AchievedStateCommandReference:
+    command_reference_kind: str
+    command: CanonicalExternalCommand
+
+
+@dataclass(frozen=True, slots=True)
+class PreflightResult:
+    classification: str
+    application_step: int
+    command_sha256: str
+    preflight_contract_sha256: str
+    preflight_result_sha256: str
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "classification": self.classification,
+            "application_step": self.application_step,
+            "command_sha256": self.command_sha256,
+            "preflight_contract_sha256": self.preflight_contract_sha256,
+            "preflight_result_sha256": self.preflight_result_sha256,
+        }
 
 
 class InfeasibleActionError(RuntimeError):
@@ -76,9 +114,7 @@ def _air_network_spec(
             rated_shutoff_pressure_pa=float(fan["rated_shutoff_pressure_pa"]),
             total_efficiency=float(fan["total_efficiency"]),
         ),
-        shared_resistance_pa_s2_m6=sum(
-            float(value) for value in shared.values()
-        ),
+        shared_resistance_pa_s2_m6=sum(float(value) for value in shared.values()),
         air_density_kg_m3=float(scenario.data["equipment"]["air_density_kg_m3"]),
         branches=tuple(
             BranchSpec(
@@ -87,12 +123,8 @@ def _air_network_spec(
                 open_supply_resistance_pa_s2_m6=float(
                     branch["open_supply_resistance_pa_s2_m6"]
                 )
-                * float(
-                    resistance_multiplier_by_zone.get(str(branch["zone_id"]), 1.0)
-                ),
-                return_resistance_pa_s2_m6=float(
-                    branch["return_resistance_pa_s2_m6"]
-                ),
+                * float(resistance_multiplier_by_zone.get(str(branch["zone_id"]), 1.0)),
+                return_resistance_pa_s2_m6=float(branch["return_resistance_pa_s2_m6"]),
                 damper_leak_fraction=float(branch["damper_leak_fraction"]),
             )
             for branch in sorted(
@@ -170,9 +202,7 @@ def _operational_feedback_truth(
             zone_id: float(network_result.branch_pressure_loss_pa[zone_id])
             for zone_id in sorted(network_result.branch_pressure_loss_pa)
         },
-        "scrubber_capture_rate_mol_s": float(
-            recirculation_receipt["co2_captured_mol"]
-        )
+        "scrubber_capture_rate_mol_s": float(recirculation_receipt["co2_captured_mol"])
         / dt_seconds,
         "condenser_removal_rate_mol_s": float(
             recirculation_receipt["water_condensed_mol"]
@@ -183,9 +213,7 @@ def _operational_feedback_truth(
             for zone_id in sorted(state.utility.effective_cooling_delivery_by_zone)
         },
         "oxygen_delivery_mol_s": {
-            zone_id: float(
-                state.utility.effective_oxygen_delivery_by_zone[zone_id]
-            )
+            zone_id: float(state.utility.effective_oxygen_delivery_by_zone[zone_id])
             for zone_id in sorted(state.utility.effective_oxygen_delivery_by_zone)
         },
         "battery_state_of_charge": float(state.utility.battery_energy_wh)
@@ -589,9 +617,7 @@ def initial_state(scenario: Scenario) -> PlantState:
         initial_fan_speed = float(utility["actual_fan_speed_fraction"])
         initial_dampers = {
             str(damper_id): float(position)
-            for damper_id, position in utility[
-                "actual_damper_position_by_id"
-            ].items()
+            for damper_id, position in utility["actual_damper_position_by_id"].items()
         }
         initial_network_result = solve_air_network(
             _air_network_spec(scenario),
@@ -685,7 +711,7 @@ def _advance_one_step_canonical(
     scenario: Scenario,
     state: PlantState,
     *,
-    command_override: Mapping[str, Any] | None = None,
+    command_override: CanonicalExternalCommand | None = None,
     external_command_digest: str | None = None,
 ) -> StepResult:
     if state.step >= scenario.data["steps"]:
@@ -717,7 +743,18 @@ def _advance_one_step_canonical(
         }
 
     equipment = scenario.data["equipment"]
-    command = segment["command"] if command_override is None else command_override
+    canonical_command = (
+        validate_external_command(scenario, segment["command"])
+        if command_override is None
+        else command_override
+    )
+    if canonical_command.scenario_schema_version != scenario.scenario_schema_version:
+        raise ScenarioValidationError(
+            "canonical external command schema does not match scenario"
+        )
+    if external_command_sha256(canonical_command) != canonical_command.sha256:
+        raise ScenarioValidationError("canonical external command digest mismatch")
+    command = canonical_command.to_mapping()
     network_result: AirNetworkResult | None = None
     if scenario.scenario_schema_version in {
         SCENARIO_SCHEMA_VERSION_V3,
@@ -727,7 +764,9 @@ def _advance_one_step_canonical(
         network = scenario.data["air_network"]
         current_fan_speed = state.utility.actual_fan_speed_fraction
         if current_fan_speed is None:
-            raise ScenarioValidationError("scenario-v3 state is missing fan actuator state")
+            raise ScenarioValidationError(
+                "scenario-v3 state is missing fan actuator state"
+            )
         actual_fan_speed = _slew(
             current_fan_speed,
             float(command["fan_speed_fraction"]),
@@ -739,9 +778,7 @@ def _advance_one_step_canonical(
         physical_faults = physical_fault_effects(
             scenario,
             emitted_step=state.step + 1,
-            previous_damper_position_by_id=(
-                state.utility.actual_damper_position_by_id
-            ),
+            previous_damper_position_by_id=(state.utility.actual_damper_position_by_id),
         )
         jammed_damper_ids = set(physical_faults.jammed_damper_ids)
         actual_dampers = {
@@ -751,17 +788,13 @@ def _advance_one_step_canonical(
                 else _slew(
                     float(state.utility.actual_damper_position_by_id[damper_id]),
                     float(command["damper_position_by_id"][damper_id]),
-                    float(
-                        branch_by_damper[damper_id]["damper_slew_fraction_per_s"]
-                    )
+                    float(branch_by_damper[damper_id]["damper_slew_fraction_per_s"])
                     * dt_seconds,
                 )
             )
             for damper_id in sorted(branch_by_damper)
         }
-        effective_fan_speed = (
-            actual_fan_speed * physical_faults.fan_speed_multiplier
-        )
+        effective_fan_speed = actual_fan_speed * physical_faults.fan_speed_multiplier
         network_result = solve_air_network(
             _air_network_spec(
                 scenario,
@@ -891,9 +924,7 @@ def _advance_one_step_canonical(
         command=command,
         actual_airflow_m3_s=actual_airflow_m3_s,
         fan_electrical_power_w=(
-            None
-            if network_result is None
-            else network_result.fan_electrical_power_w
+            None if network_result is None else network_result.fan_electrical_power_w
         ),
         actual_scrubber_duty=actual_scrubber_duty,
         actual_condenser_duty=actual_condenser_duty,
@@ -1180,7 +1211,26 @@ def _advance_one_step_canonical(
     )
 
 
-def _canonical_command_bytes(command: Mapping[str, Any]) -> bytes:
+def _external_command_number(value: Any, *, path: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ScenarioValidationError(
+            f"external command {path} must be finite numeric data"
+        )
+    number = float(value)
+    if not math.isfinite(number):
+        raise ScenarioValidationError(
+            f"external command {path} must be finite numeric data"
+        )
+    return number
+
+
+def _external_command_mapping(value: Any, *, path: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise ScenarioValidationError(f"external command {path} must be an object")
+    return value
+
+
+def _canonical_command_mapping_bytes(command: Mapping[str, Any]) -> bytes:
     return json.dumps(
         command,
         allow_nan=False,
@@ -1190,89 +1240,118 @@ def _canonical_command_bytes(command: Mapping[str, Any]) -> bytes:
     ).encode("utf-8")
 
 
-def _external_command_number(value: Any, *, path: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ScenarioValidationError(f"external command {path} must be finite numeric data")
-    number = float(value)
-    if not math.isfinite(number):
-        raise ScenarioValidationError(f"external command {path} must be finite numeric data")
-    return number
+def canonical_external_command_bytes(command: CanonicalExternalCommand) -> bytes:
+    if type(command) is not CanonicalExternalCommand:
+        raise TypeError("canonical command identity requires CanonicalExternalCommand")
+    return command.canonical_bytes
 
 
-def _validate_external_command(
+def external_command_sha256(command: CanonicalExternalCommand) -> str:
+    return hashlib.sha256(canonical_external_command_bytes(command)).hexdigest()
+
+
+_PREFLIGHT_CONTRACT = {
+    "schema_version": "aeolus_habitat_v2_hmc_preflight_v1",
+    "classifications": ["FEASIBLE", "INFEASIBLE"],
+    "fields": [
+        "classification",
+        "application_step",
+        "command_sha256",
+        "preflight_contract_sha256",
+        "preflight_result_sha256",
+    ],
+}
+_PREFLIGHT_CONTRACT_SHA256 = hashlib.sha256(
+    _canonical_command_mapping_bytes(_PREFLIGHT_CONTRACT)
+).hexdigest()
+
+
+def validate_external_command(
     scenario: Scenario, command: Mapping[str, Any]
-) -> dict[str, Any]:
+) -> CanonicalExternalCommand:
     if not isinstance(command, Mapping):
         raise ScenarioValidationError("external command must be an object")
-    segment = _segment_for_step(scenario, 0)
-    expected = segment["command"]
-    if scenario.scenario_schema_version in {
-        SCENARIO_SCHEMA_VERSION_V3,
-        SCENARIO_SCHEMA_VERSION_V4,
-        SCENARIO_SCHEMA_VERSION_V5,
-    }:
-        expected_fields = {
-            "fan_speed_fraction",
-            "damper_position_by_id",
-            "scrubber_duty",
-            "condenser_duty",
-            "cooling_removed_w",
-            "oxygen_injection_mol_s",
-        }
-    else:
-        expected_fields = set(expected)
+    expected_fields = set(command_fields_for_schema(scenario.scenario_schema_version))
     unknown = sorted(set(command) - expected_fields)
     missing = sorted(expected_fields - set(command))
     if unknown or missing:
         raise ScenarioValidationError(
             f"invalid external command fields; unknown={unknown}, missing={missing}"
         )
-    normalised = json.loads(_canonical_command_bytes(command).decode("utf-8"))
-    zone_ids = {str(zone["id"]) for zone in scenario.data["zones"]}
+    zone_ids = tuple(sorted(str(zone["id"]) for zone in scenario.data["zones"]))
+    zone_id_set = set(zone_ids)
+    normalised: dict[str, Any] = {
+        "scrubber_duty": _external_command_number(
+            command["scrubber_duty"], path="scrubber_duty"
+        ),
+        "condenser_duty": _external_command_number(
+            command["condenser_duty"], path="condenser_duty"
+        ),
+    }
     for field in ("cooling_removed_w", "oxygen_injection_mol_s"):
-        if set(normalised[field]) != zone_ids:
+        values = _external_command_mapping(command[field], path=field)
+        if set(values) != zone_id_set:
             raise ScenarioValidationError(f"external command {field} topology mismatch")
+        normalised[field] = {
+            zone_id: _external_command_number(
+                values[zone_id], path=f"{field}.{zone_id}"
+            )
+            for zone_id in zone_ids
+        }
     if scenario.scenario_schema_version in {
         SCENARIO_SCHEMA_VERSION_V3,
         SCENARIO_SCHEMA_VERSION_V4,
         SCENARIO_SCHEMA_VERSION_V5,
     }:
-        damper_ids = {
-            str(branch["damper_id"])
-            for branch in scenario.data["air_network"]["branches"]
-        }
-        if set(normalised["damper_position_by_id"]) != damper_ids:
-            raise ScenarioValidationError(
-                "external command damper topology mismatch"
+        damper_ids = tuple(
+            sorted(
+                str(branch["damper_id"])
+                for branch in scenario.data["air_network"]["branches"]
             )
+        )
+        damper_values = _external_command_mapping(
+            command["damper_position_by_id"], path="damper_position_by_id"
+        )
+        if set(damper_values) != set(damper_ids):
+            raise ScenarioValidationError("external command damper topology mismatch")
+        normalised["fan_speed_fraction"] = _external_command_number(
+            command["fan_speed_fraction"], path="fan_speed_fraction"
+        )
+        normalised["damper_position_by_id"] = {
+            damper_id: _external_command_number(
+                damper_values[damper_id], path=f"damper_position_by_id.{damper_id}"
+            )
+            for damper_id in damper_ids
+        }
+    else:
+        airflow_values = _external_command_mapping(
+            command["airflow_m3_s"], path="airflow_m3_s"
+        )
+        if set(airflow_values) != zone_id_set:
+            raise ScenarioValidationError("external command airflow topology mismatch")
+        normalised["airflow_m3_s"] = {
+            zone_id: _external_command_number(
+                airflow_values[zone_id], path=f"airflow_m3_s.{zone_id}"
+            )
+            for zone_id in zone_ids
+        }
     equipment = scenario.data["equipment"]
     for field in ("scrubber_duty", "condenser_duty"):
-        value = _external_command_number(normalised[field], path=field)
+        value = normalised[field]
         if not 0.0 <= value <= 1.0:
             raise ScenarioValidationError(f"external command {field} is out of bounds")
     for field in ("cooling_removed_w", "oxygen_injection_mol_s"):
         for zone_id, value in normalised[field].items():
-            value_float = _external_command_number(
-                value, path=f"{field}.{zone_id}"
-            )
-            if value_float < 0.0:
+            if value < 0.0:
                 raise ScenarioValidationError(
                     f"external command {field}.{zone_id} is out of bounds"
                 )
     if any(
-        _external_command_number(
-            value, path=f"cooling_removed_w.{zone_id}"
-        )
-        > float(equipment["cooling_max_thermal_w_per_zone"])
-        for zone_id, value in normalised["cooling_removed_w"].items()
+        value > float(equipment["cooling_max_thermal_w_per_zone"])
+        for value in normalised["cooling_removed_w"].values()
     ):
         raise ScenarioValidationError("external command cooling exceeds capacity")
-    if sum(
-        _external_command_number(
-            value, path=f"oxygen_injection_mol_s.{zone_id}"
-        )
-        for zone_id, value in normalised["oxygen_injection_mol_s"].items()
-    ) > float(
+    if sum(normalised["oxygen_injection_mol_s"].values()) > float(
         equipment["oxygen_injection_max_total_mol_s"]
     ):
         raise ScenarioValidationError("external command oxygen exceeds capacity")
@@ -1281,30 +1360,135 @@ def _validate_external_command(
         SCENARIO_SCHEMA_VERSION_V4,
         SCENARIO_SCHEMA_VERSION_V5,
     }:
-        for damper_id, value in normalised["damper_position_by_id"].items():
-            value_float = _external_command_number(
-                value, path=f"damper_position_by_id.{damper_id}"
-            )
-            if not 0.0 <= value_float <= 1.0:
+        for value in normalised["damper_position_by_id"].values():
+            if not 0.0 <= value <= 1.0:
                 raise ScenarioValidationError(
                     "external command damper position is out of bounds"
                 )
-        fan_speed = _external_command_number(
-            normalised["fan_speed_fraction"], path="fan_speed_fraction"
-        )
+        fan_speed = normalised["fan_speed_fraction"]
         if not 0.0 <= fan_speed <= 1.0:
-            raise ScenarioValidationError(
-                "external command fan speed is out of bounds"
-            )
+            raise ScenarioValidationError("external command fan speed is out of bounds")
     else:
-        for zone_id, value in normalised["airflow_m3_s"].items():
-            if _external_command_number(
-                value, path=f"airflow_m3_s.{zone_id}"
-            ) < 0.0:
+        airflow = normalised["airflow_m3_s"]
+        for value in airflow.values():
+            if value < 0.0:
                 raise ScenarioValidationError(
                     "external command airflow is out of bounds"
                 )
-    return normalised
+            if value > float(equipment["max_zone_airflow_m3_s"]):
+                raise ScenarioValidationError(
+                    "external command zone airflow exceeds capacity"
+                )
+        if sum(airflow.values()) > float(equipment["max_total_airflow_m3_s"]):
+            raise ScenarioValidationError(
+                "external command total airflow exceeds capacity"
+            )
+    canonical_bytes = _canonical_command_mapping_bytes(normalised)
+    canonical = CanonicalExternalCommand(
+        scenario_schema_version=scenario.scenario_schema_version,
+        canonical_bytes=canonical_bytes,
+        sha256=hashlib.sha256(canonical_bytes).hexdigest(),
+    )
+    if canonical.sha256 != external_command_sha256(canonical):
+        raise AssertionError("canonical external command digest mismatch")
+    return canonical
+
+
+def command_from_achieved_state(
+    scenario: Scenario, state: PlantState
+) -> AchievedStateCommandReference:
+    if scenario.scenario_schema_version != SCENARIO_SCHEMA_VERSION_V5:
+        raise ScenarioValidationError("achieved-state HMC hold requires V5")
+    if set(state.zones) != {str(zone["id"]) for zone in scenario.data["zones"]}:
+        raise ScenarioValidationError("achieved-state hold topology mismatch")
+    fan_speed = state.utility.actual_fan_speed_fraction
+    if fan_speed is None:
+        raise ScenarioValidationError("achieved-state hold requires fan state")
+    command = validate_external_command(
+        scenario,
+        {
+            "fan_speed_fraction": fan_speed,
+            "damper_position_by_id": dict(state.utility.actual_damper_position_by_id),
+            "scrubber_duty": state.utility.actual_scrubber_duty,
+            "condenser_duty": state.utility.actual_condenser_duty,
+            "cooling_removed_w": dict(state.utility.actual_cooling_removed_w),
+            "oxygen_injection_mol_s": dict(state.utility.actual_oxygen_injection_mol_s),
+        },
+    )
+    return AchievedStateCommandReference(
+        command_reference_kind="INITIAL_ACHIEVED_STATE_HOLD",
+        command=command,
+    )
+
+
+def _preflight_result(
+    *,
+    classification: str,
+    application_step: int,
+    command_sha256: str,
+) -> PreflightResult:
+    content = {
+        "classification": classification,
+        "application_step": application_step,
+        "command_sha256": command_sha256,
+        "preflight_contract_sha256": _PREFLIGHT_CONTRACT_SHA256,
+    }
+    digest = hashlib.sha256(_canonical_command_mapping_bytes(content)).hexdigest()
+    return PreflightResult(
+        **content,
+        preflight_result_sha256=digest,
+    )
+
+
+def preflight_external_command(
+    scenario: Scenario,
+    state: PlantState,
+    command: Mapping[str, Any],
+    application_step: int,
+) -> PreflightResult:
+    if (
+        isinstance(application_step, bool)
+        or not isinstance(application_step, int)
+        or application_step < 0
+        or application_step != state.step
+    ):
+        raise ScenarioValidationError(
+            "preflight application step must equal current state step"
+        )
+    canonical = validate_external_command(scenario, command)
+    try:
+        _advance_one_step_canonical(
+            scenario,
+            state,
+            command_override=canonical,
+            external_command_digest=canonical.sha256,
+        )
+    except (InfeasibleActionError, ScenarioValidationError):
+        classification = "INFEASIBLE"
+    else:
+        classification = "FEASIBLE"
+    return _preflight_result(
+        classification=classification,
+        application_step=application_step,
+        command_sha256=canonical.sha256,
+    )
+
+
+def operating_mode_for_application_step(
+    scenario: Scenario,
+    application_step: int,
+) -> str:
+    if (
+        isinstance(application_step, bool)
+        or not isinstance(application_step, int)
+        or application_step < 0
+    ):
+        raise ScenarioValidationError("application step must be a non-negative integer")
+    segment = _segment_for_step(scenario, application_step)
+    mode = segment.get("operating_mode")
+    if type(mode) is not str:
+        raise ScenarioValidationError("application step is missing an operating mode")
+    return mode
 
 
 def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
@@ -1318,11 +1502,35 @@ def advance_one_step_with_command(
 ) -> StepResult:
     if state.step >= scenario.data["steps"]:
         raise ScenarioValidationError("cannot advance beyond configured steps")
-    validated_command = _validate_external_command(scenario, command)
-    digest = hashlib.sha256(_canonical_command_bytes(validated_command)).hexdigest()
+    validated_command = validate_external_command(scenario, command)
     return _advance_one_step_canonical(
         scenario,
         state,
         command_override=validated_command,
-        external_command_digest=digest,
+        external_command_digest=validated_command.sha256,
     )
+
+
+def validate_external_step_result(
+    scenario: Scenario,
+    pre_step_state: PlantState,
+    command: Mapping[str, Any],
+    candidate: StepResult,
+) -> None:
+    if type(scenario) is not Scenario or type(pre_step_state) is not PlantState:
+        raise ScenarioValidationError("external step validation requires exact inputs")
+    if type(candidate) is not StepResult or not isinstance(candidate.receipt, Mapping):
+        raise ScenarioValidationError("external step candidate is malformed")
+    try:
+        candidate_receipt_bytes = _canonical_command_mapping_bytes(candidate.receipt)
+    except (TypeError, ValueError) as error:
+        raise ScenarioValidationError(
+            "external step receipt is not finite canonical JSON"
+        ) from error
+    replay = advance_one_step_with_command(scenario, pre_step_state, command)
+    replay_receipt_bytes = _canonical_command_mapping_bytes(replay.receipt)
+    if (
+        candidate.state != replay.state
+        or candidate_receipt_bytes != replay_receipt_bytes
+    ):
+        raise ScenarioValidationError("external step result fails causal replay")
