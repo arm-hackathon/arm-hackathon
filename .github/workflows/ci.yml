@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Locked suite and installed-wheel smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.29"
+
+      - name: Synchronize locked development environment
+        run: uv sync --locked --python 3.11 --extra dev
+
+      - name: Run full locked test suite
+        run: uv run --locked --python 3.11 --extra dev python -m pytest -q
+
+      - name: Lint with Ruff
+        run: uv run --locked --python 3.11 --with ruff==0.14.10 ruff check .
+
+      - name: Compile Python sources and tests
+        run: uv run --locked --python 3.11 --extra dev python -m compileall -q src tests scripts
+
+      - name: Check lockfile and diff whitespace
+        run: |
+          uv lock --check
+          git diff --check
+
+      - name: Build wheel and source distribution
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIST_DIR="$(mktemp -d "${RUNNER_TEMP}/aeolus-dist.XXXXXX")"
+          uv build --wheel --sdist --out-dir "$DIST_DIR"
+          printf 'dist_dir=%s\n' "$DIST_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Install built wheel and smoke Habitat V2 compound faults
+        shell: bash
+        env:
+          DIST_DIR: ${{ steps.build.outputs.dist_dir }}
+        run: |
+          set -euo pipefail
+          mapfile -t WHEELS < <(find "$DIST_DIR" -maxdepth 1 -type f -name '*.whl' -print)
+          if [ "${#WHEELS[@]}" -ne 1 ]; then
+            printf 'expected exactly one wheel in %s; found %s\n' "$DIST_DIR" "${#WHEELS[@]}" >&2
+            printf '%s\n' "${WHEELS[@]}" >&2
+            exit 1
+          fi
+          WHEEL_PATH="${WHEELS[0]}"
+          SMOKE_DIR="$(mktemp -d "${RUNNER_TEMP}/aeolus-wheel-smoke.XXXXXX")"
+          SMOKE_VENV="$SMOKE_DIR/venv"
+          SMOKE_PYTHON="$SMOKE_VENV/bin/python"
+          TRACE_PATH="$SMOKE_DIR/compound-faults.jsonl"
+          uv venv --python 3.11 "$SMOKE_VENV"
+          uv pip install --python "$SMOKE_PYTHON" "$WHEEL_PATH"
+          (
+            cd "$SMOKE_DIR"
+            "$SMOKE_PYTHON" "$GITHUB_WORKSPACE/scripts/verify_installed_habitat_v2.py" \
+              --source-root "$GITHUB_WORKSPACE" \
+              --wheel "$WHEEL_PATH" \
+              --scenario "$GITHUB_WORKSPACE/scenarios/habitat_v2_compound_faults.json" \
+              --trace "$TRACE_PATH"
+          )
