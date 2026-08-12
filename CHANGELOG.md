@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-09 — Habitat Plant V2 deterministic foundation / 0.3.0
+
+- Added a separate two-zone grey-box habitat plant with explicit species,
+  water, thermal, airflow, processing-resource and electrical accounting.
+- Added canonical scenario hashing, deterministic run identity, exact trace
+  schemas, parsed-scenario lineage validation and byte-identical replay.
+- Hardened trace loading with exact row/time contracts, finite typed scalars,
+  scenario-timeline action/load binding and full deterministic replay equality.
+  Truncated or causally forged traces now fail closed.
+- Added a checked-in reference scenario and a non-overwriting V2 CLI at
+  `python -m aeolus.habitat_v2`.
+- Added causal intervention, conservation, iteration-order, lineage-tamper and
+  operational-telemetry boundary tests.
+- Retained the existing deterministic recovery governor as the safety reference.
+  V2 does not qualify a learned model, flight system or physical controller.
+
 ## 2026-08-09 — unavailable-settings binding correction / 0.2.3
 
 - Bound `settings_status: unavailable` across every custom governor factory
