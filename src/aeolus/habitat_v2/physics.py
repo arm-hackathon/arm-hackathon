@@ -11,8 +11,10 @@ from .air_network import (
     FanSpec,
     solve_air_network,
 )
+from .faults import physical_fault_effects
 from .scenario import (
     SCENARIO_SCHEMA_VERSION_V3,
+    SCENARIO_SCHEMA_VERSION_V4,
     Scenario,
     ScenarioValidationError,
 )
@@ -49,10 +51,19 @@ def _slew(current: float, target: float, maximum_delta: float) -> float:
     return current + math.copysign(maximum_delta, difference)
 
 
-def _air_network_spec(scenario: Scenario) -> AirNetworkSpec:
+def _air_network_spec(
+    scenario: Scenario,
+    *,
+    open_supply_resistance_multiplier_by_zone: Mapping[str, float] | None = None,
+) -> AirNetworkSpec:
     network = scenario.data["air_network"]
     fan = network["fan"]
     shared = network["shared_resistance"]
+    resistance_multiplier_by_zone = (
+        {}
+        if open_supply_resistance_multiplier_by_zone is None
+        else open_supply_resistance_multiplier_by_zone
+    )
     return AirNetworkSpec(
         fan=FanSpec(
             component_id=str(fan["id"]),
@@ -70,6 +81,9 @@ def _air_network_spec(scenario: Scenario) -> AirNetworkSpec:
                 damper_id=str(branch["damper_id"]),
                 open_supply_resistance_pa_s2_m6=float(
                     branch["open_supply_resistance_pa_s2_m6"]
+                )
+                * float(
+                    resistance_multiplier_by_zone.get(str(branch["zone_id"]), 1.0)
                 ),
                 return_resistance_pa_s2_m6=float(
                     branch["return_resistance_pa_s2_m6"]
@@ -88,10 +102,11 @@ def _air_network_receipt(
     *,
     requested_fan_speed_fraction: float,
     actual_fan_speed_fraction: float,
+    effective_fan_speed_fraction: float | None,
     requested_damper_position_by_id: Mapping[str, float],
     actual_damper_position_by_id: Mapping[str, float],
 ) -> dict[str, Any]:
-    return {
+    receipt = {
         "requested_fan_speed_fraction": requested_fan_speed_fraction,
         "actual_fan_speed_fraction": actual_fan_speed_fraction,
         "requested_damper_position_by_id": {
@@ -115,6 +130,9 @@ def _air_network_receipt(
         "operating_point_residual_pa": result.operating_point_residual_pa,
         "mass_balance_residual_kg_s": dict(result.mass_balance_residual_kg_s),
     }
+    if effective_fan_speed_fraction is not None:
+        receipt["effective_fan_speed_fraction"] = effective_fan_speed_fraction
+    return receipt
 
 
 def _recirculate(
@@ -472,7 +490,10 @@ def initial_state(scenario: Scenario) -> PlantState:
         )
 
     utility = scenario.data["initial_utility"]
-    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V3:
+    if scenario.scenario_schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+    }:
         initial_fan_speed = float(utility["actual_fan_speed_fraction"])
         initial_dampers = {
             str(damper_id): float(position)
@@ -546,7 +567,10 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
     equipment = scenario.data["equipment"]
     command = segment["command"]
     network_result: AirNetworkResult | None = None
-    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V3:
+    if scenario.scenario_schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+    }:
         network = scenario.data["air_network"]
         current_fan_speed = state.utility.actual_fan_speed_fraction
         if current_fan_speed is None:
@@ -568,9 +592,20 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
             )
             for damper_id in sorted(branch_by_damper)
         }
+        physical_faults = physical_fault_effects(
+            scenario, emitted_step=state.step + 1
+        )
+        effective_fan_speed = (
+            actual_fan_speed * physical_faults.fan_speed_multiplier
+        )
         network_result = solve_air_network(
-            _air_network_spec(scenario),
-            fan_speed_fraction=actual_fan_speed,
+            _air_network_spec(
+                scenario,
+                open_supply_resistance_multiplier_by_zone=(
+                    physical_faults.open_supply_resistance_multiplier_by_zone
+                ),
+            ),
+            fan_speed_fraction=effective_fan_speed,
             damper_position_by_id=actual_dampers,
         )
         actual_airflow_m3_s = dict(network_result.zone_flow_m3_s)
@@ -766,9 +801,16 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
             network_result,
             requested_fan_speed_fraction=float(command["fan_speed_fraction"]),
             actual_fan_speed_fraction=actual_fan_speed,
+            effective_fan_speed_fraction=(
+                effective_fan_speed
+                if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V4
+                else None
+            ),
             requested_damper_position_by_id=command["damper_position_by_id"],
             actual_damper_position_by_id=actual_dampers,
         )
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V4:
+        step_receipt["active_faults"] = list(physical_faults.active_faults)
 
     return StepResult(
         state=PlantState(
