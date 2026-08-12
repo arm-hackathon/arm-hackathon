@@ -10,7 +10,8 @@ Current pre-model objective: complete the Habitat V2 deterministic world, data a
 - Habitat V2 conservation kernel: `8712ea0`
 - versioned operating modes: `087b1e9`
 - rejected air-network candidate: `5df56c0`
-- corrected air-network receipt authority: `6cbb8a4`
+- independently approved air-network receipt authority: `6cbb8a4`
+- rejected fault/sensor candidate: `940608b`
 - active stack: `ben/habitat-v2-fault-sensors`
 
 ## Verified foundations
@@ -44,7 +45,7 @@ Current pre-model objective: complete the Habitat V2 deterministic world, data a
 
 ### 1. Explicit multizone air network
 
-Status: corrected local candidate
+Status: corrected and independently approved local candidate
 Branch: `ben/habitat-v2-receipt-authority-fix`
 Target version: `0.5.0`
 
@@ -62,7 +63,9 @@ Deliverables:
 The first candidate at `5df56c0` was rejected because standalone accounting
 validation accepted a causally false but internally coherent zero-flow receipt.
 The correction at `6cbb8a4` requires exact pre-step state, recomputes the
-canonical transition and rejects omitted or forged network evidence.
+canonical transition and rejects omitted or forged network evidence. Its
+bounded independent rereview returned `APPROVE` with no release-blocking
+regression.
 
 Verification on the corrected candidate bytes:
 
@@ -91,7 +94,8 @@ Verification on the corrected candidate bytes:
 
 ### 2. Fault and observation layer
 
-Status: implementation complete, final package evidence and bounded review pending
+Status: finding-specific local correction complete; replacement freeze and
+bounded correction rereview gate publication
 Branch: `ben/habitat-v2-fault-sensors`
 Target version: `0.6.0`
 
@@ -107,7 +111,25 @@ Deliverables:
 - deterministic fault manifests, receipts and compound replay
 - checked-in eight-zone compound-fault scenario
 
-Current source verification:
+The immutable candidate at `940608b` was rejected because it clamped
+truth-plus-noise before applying sensor bias. This violated the frozen order of
+truth plus noise, then active sensor fault, then one final channel clamp. The
+replacement defers clamping until after fault application while retaining stuck
+sensor memory as the previous completed final observation.
+
+Correction evidence before replacement freeze:
+
+- RED lower-bound case: observed `1000.0`, required `0.0`
+- RED upper-bound case: observed `999000.0`, required `1000000.0`
+- focused bias-boundary, ordinary bias, stuck-memory and compound replay family:
+  `5 passed`
+- complete fault/sensor plus CLI boundary: `34 passed`
+- version contract: `1 passed`
+- full repository suite: `630 passed in 117.72s`
+- Ruff 0.14.10, Python compilation, `uv lock --check` and
+  `git diff --check`: passed
+
+Rejected-candidate source verification retained for historical identity:
 
 - focused fault/sensor, CLI and version tests: `33 passed`
 - complete Habitat V2 suite: `157 passed`
@@ -117,8 +139,8 @@ Current source verification:
 - active-fault counts by row: `0,5,5,4,0`
 - compound trace SHA-256:
   `7151a62b5db6c001d4131d1711c53a63f2fc3d57444b46c823f1c1bda70e0ded`
-- package artifacts and full-repository verification remain to be frozen on the
-  final candidate commit
+- replacement package artifacts, full-repository verification and rereview are
+  required before the corrected candidate can be approved
 
 ### 3. Scenario families and corpus-v3
 
