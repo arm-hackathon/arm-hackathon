@@ -36,10 +36,21 @@ jobs:
       - name: Compile Python sources and tests
         run: uv run --locked --python 3.11 --extra dev python -m compileall -q src tests scripts
 
-      - name: Check lockfile and diff whitespace
+      - name: Check lockfile and committed diff whitespace
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
           uv lock --check
-          git diff --check
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            test -n "$PR_BASE_SHA"
+            test -n "$PR_HEAD_SHA"
+            git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+          else
+            git diff --check "HEAD^...HEAD"
+          fi
 
       - name: Build wheel and source distribution
         id: build
