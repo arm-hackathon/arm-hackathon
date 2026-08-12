@@ -1,13 +1,20 @@
 # Project AEOLUS telemetry contract
 
-This contract separates observable replay data from simulator truth. It is
-binding for trace writers, model-facing projections and visualisation changes.
+This contract separates observable replay data from simulator truth. It binds
+trace writers, model-facing projections, recovery traces, and visualisation
+changes.
+
+Schema-v9 describes the standard plant. Schema-v10 adds a separately validated
+reserve topology and recovery trace envelope; it does not widen
+`model_input_v1`. C4 recovery development is a reproducible negative result:
+the reserve and authority fields are trace/audit data, not evidence of an
+accepted controller or qualified model.
 
 ## Fault target semantics
 
-Schema-v9 keeps PR #9's `connection_id` for connection faults (the gradual
-primary-fan and blocked-path profiles). The value is an **outbound loop
-metering identifier**, not a claim that the JSON edge is a physical fan or
+Schema-v9 and schema-v10 retain PR #9's `connection_id` for connection faults
+(the gradual-primary-fan and blocked-path profiles). The value is an **outbound
+loop metering identifier**, not a claim that the JSON edge is a physical fan or
 duct. Each non-processing zone has one stable outbound meter into the
 processing bay and one paired return path. Applying the fault multiplier once
 to that loop preserves the accepted PR #9 identifier while correctly reducing
@@ -56,6 +63,32 @@ total measured delivered airflow and the physical capacity scale. Zone records
 contain replay/presentation values such as CO₂ mass, sensor concentration,
 generated source mass and occupancy multiplier. Actuator records contain
 setpoint, measured position, tracking residual, movement and power.
+
+## Schema-v10 recovery trace envelope
+
+A recovery row is a distinct `aeolus_recovery_trace_v1` document with exactly
+these top-level fields:
+
+```text
+plant
+reserve
+authority
+schema_version
+```
+
+`plant` is the unchanged validated legacy projection. `reserve` holds reserve
+connection, actuator, and aggregate-system telemetry. `authority` binds run and
+epoch identity, causal observation/decision ticks, state, owner, target, reason,
+dwell, and matching command digests. The writer rejects topology mismatches,
+unknown fields, non-finite values, reserve delivery above capacity, inconsistent
+request/delivery residuals, invalid state/owner combinations, and a command
+that has not been acknowledged as applied.
+
+A recovery trace makes the reserve mechanism observable for auditing. It does
+not alter `model_feature_row()`: that function projects only the validated
+`plant` fields, so reserve telemetry, authority state, target, reason, epoch,
+and digests are not current model features. Any attempt to introduce them would
+require a new versioned selector contract and a separate leakage review.
 
 ## Gate 1: topology-bound model input
 
@@ -169,11 +202,28 @@ exclude transition windows from training and from scored accuracy, confusion,
 class support, and latency totals. They reject mixed, missing, or stale
 model-input contract metadata.
 
-## Sweep v3 and frozen policy artifacts
+## C4 schema-v10 recovery development
 
-`scenarios/sweep-v2.json` is historical experimental context. It is not the
-current final-evidence specification. The current specifications are
-`scenarios/sweep-v3-development.json` and `scenarios/sweep-v3-final.json`.
+`scenarios/sweep-recovery-development.json` is an
+`aeolus_sweep_v4` **development** specification. Every generated family has a
+validated primary/reserve topology and declares the fixed four counterfactual
+arms. `aeolus.recovery_evidence` requires a clean source checkout, refuses an
+existing output directory, hashes the source/sweep/settings/scenarios/traces,
+and writes an evidence receipt with separate safety and benefit predicates.
+
+C4 at `74154956d64309f067ada7593e2ef8786d140b4e` produced a deterministic,
+reproducible negative result. The transient physical-zero acknowledgement safety
+predicate and physical-reserve-delivery benefit predicate are false. The runner
+therefore does not authorise adviser training, model integration, export,
+threshold tuning, or final-suite work. `docs/recovery-protocol-acceptance.md`
+is the binding record of that outcome.
+
+## Historical sweep v3 and frozen policy artifacts
+
+`scenarios/sweep-v2.json` is historical experimental context. The v3 development
+and final specifications remain archived with their historical protocol record;
+they are not C4 inputs and must not be run, inspected, or used to revise the C4
+recovery decision.
 
 The development specification assigns disjoint scenario families to train and
 validation only. `aeolus.protocol.select_development` trains both learned
@@ -217,7 +267,9 @@ independence boundary and reproduction commands.
 
 ## Forbidden hidden truth
 
-The following must not enter model features or replay telemetry:
+The following must not enter model features. Standard plant telemetry excludes
+these values entirely; a recovery trace may contain separately allowlisted
+reserve/authority audit fields, but `model_feature_row()` still excludes them.
 
 - injected fault type or label;
 - fault start/end schedule;
@@ -229,6 +281,8 @@ The following must not enter model features or replay telemetry:
 - which zone or connection a declared fault targets;
 - a zone's frozen-sensor state or stored freeze value (the held sensor reading
   itself is telemetry; the fact that it is held is not);
+- recovery authority state, reason, target, epoch, owner, or command digests;
+- reserve-path telemetry, reserve command state, or reserve capacity values;
 - future values or labels derived from them.
 
 A trace writer validates the observable allowlist before serialising a row.

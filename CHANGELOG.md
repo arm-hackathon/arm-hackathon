@@ -1,5 +1,74 @@
 # Changelog
 
+## 2026-08-09 — unavailable-settings binding correction / 0.2.3
+
+- Bound `settings_status: unavailable` across every custom governor factory
+  invocation, preventing a probe without settings from later evaluating a
+  configured governor under an unavailable receipt.
+- Added a regression test for that unavailable-to-configured factory transition.
+- Superseded the local, unpublished `0.2.2` integration artifact before branch
+  review. This correction does not rerun C4/C11 or alter Outcome B.
+
+## 2026-08-09 — factory-provenance correction / 0.2.2
+
+- Made response-evidence provenance fail closed when a custom governor factory
+  returns settings that differ from the settings bound in the receipt.
+- Added a regression test using a factory whose settings change after the
+  provenance probe. The runner now rejects that evidence instead of recording a
+  misleading fixed settings value.
+- Superseded the local, unpublished `0.2.1` integration artifact before branch
+  publication. This correction does not rerun C4/C11 or alter Outcome B.
+
+## 2026-08-09 — integration-only package / 0.2.1
+
+- Rebased the closed recovery-development work onto the reviewed bounded-response
+  fixes already integrated through the dependent pull-request stack.
+- Preserved the negative Outcome B decision. This package does not rerun C4/C11,
+  accept a recovery controller, or make a final-suite, hardware, cloud,
+  deployment, or AI-performance claim.
+- Removed an unused internal provenance parameter and added coverage that both
+  receipt surfaces bind the evaluated custom governor factory and settings.
+- Bumped package metadata and `aeolus.__version__` to `0.2.1` so this integrated
+  source tree cannot be confused with the source-pinned `0.2.0` C4/C11 artifacts.
+
+## 2026-08-09 — recovery-development Outcome B / 0.2.0
+
+- Added the schema-v10 independent-reserve recovery boundary: disjoint primary
+  and reserve topology, a deterministic reserve authority, versioned recovery
+  traces, and a write-once four-arm development evidence runner.
+- Ran C4 from source commit
+  `74154956d64309f067ada7593e2ef8786d140b4e`: 756 development families and
+  3,024 traces, bound by evidence self-hash
+  `1cbb9d428824f57c500b4a1ac3859b4ea6ef0a0dd4e70012b2e6c35d230a1730`.
+- Preserved the negative result. The safety gate failed on transient physical-zero
+  handback acknowledgement; the benefit gate failed on the required
+  physical-reserve-delivery criterion. Passing submetrics do not override either
+  required failure.
+- Verified deterministic duplicate and clean-checkout reproduction: 3,801 files
+  and all 3,024 traces were byte-identical. Eleven targeted stress/falsification
+  tests passed.
+- Closed C5. No new recovery adviser corpus, training, tuning, ONNX export,
+  integration, or final-suite operation occurred.
+- Reconciled README, plan, problem assessment, telemetry/simulation contracts,
+  bounded-response notes, and the dedicated recovery acceptance record to the
+  negative development outcome.
+- Bumped package metadata and `aeolus.__version__` to `0.2.0`. This is a local
+  closeout version; it is not a published release or an Arm/hardware claim.
+- Hardened post-review evidence integrity: relocated reproduction now compares
+  the complete generated output tree, provenance binds `uv.lock` and runtime
+  package versions, and a source change during generation fails closed.
+- Source-pinned the historical C4 reproduction procedure and linked its local
+  full-tree comparison receipts without changing the frozen negative outcome.
+- Removed stale ONNX producer provenance by deriving both exporter versions from
+  `aeolus.__version__`; frozen-sensor rationale now records the rate-bounded
+  command actually issued.
+
+## Historical entries
+
+The entries below preserve their contemporaneous records. They are not C4/C6
+inputs, do not qualify a recovery adviser, and must not be read as a current
+final-suite, hardware, deployment, or AI-advantage claim.
+
 ## 2026-08-03 — bounded recovery response (development evidence)
 
 - Added a pure override hook to `step_habitat` (`override_commands`) that lets

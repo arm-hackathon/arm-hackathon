@@ -25,7 +25,11 @@ from typing import Any
 from aeolus.actuator import ActuatorSettings
 from aeolus.control import CO2ControlSettings
 
-SUPPORTED_SCENARIO_VERSION = 9
+LEGACY_SCENARIO_VERSION = 9
+RECOVERY_SCENARIO_VERSION = 10
+SUPPORTED_SCENARIO_VERSIONS = frozenset(
+    {LEGACY_SCENARIO_VERSION, RECOVERY_SCENARIO_VERSION}
+)
 
 ALLOWED_PRESETS = frozenset({"crew_cabin", "lab", "air_processing", "storage"})
 
@@ -57,7 +61,12 @@ _TELEMETRY_FIELDS = (
     "co2_sensor_bias_fraction",
     "co2_sensor_drift_fraction",
 )
-_AIR_SYSTEM_FIELDS = ("shared_airflow_capacity", "scrubber_removal_fraction")
+_V9_AIR_SYSTEM_FIELDS = ("shared_airflow_capacity", "scrubber_removal_fraction")
+_V10_AIR_SYSTEM_FIELDS = (
+    "shared_airflow_capacity",
+    "reserve_airflow_capacity",
+    "scrubber_removal_fraction",
+)
 _OCCUPANCY_FIELDS = ("start_tick", "end_tick", "multiplier")
 _GRADUAL_FAULT_FIELDS = (
     "type",
@@ -72,6 +81,21 @@ _BLOCKED_PATH_FIELDS = (
     "start_tick",
     "blocked_effectiveness",
 )
+_TRANSIENT_BLOCKED_PATH_FIELDS = (
+    "type",
+    "connection_id",
+    "start_tick",
+    "end_tick",
+    "blocked_effectiveness",
+)
+_TRANSIENT_GRADUAL_FAULT_FIELDS = (
+    "type",
+    "connection_id",
+    "start_tick",
+    "end_tick",
+    "start_effectiveness",
+    "end_effectiveness",
+)
 _FROZEN_SENSOR_FIELDS = (
     "type",
     "zone_id",
@@ -80,7 +104,11 @@ _FROZEN_SENSOR_FIELDS = (
 _GRADUAL_PRIMARY_FAN_DEGRADATION = "gradual_primary_fan_degradation"
 _BLOCKED_PATH = "blocked_path"
 _FROZEN_SENSOR = "frozen_sensor"
-_TOP_LEVEL_FIELDS = (
+_TRANSIENT_BLOCKED_PATH = "transient_blocked_path"
+_TRANSIENT_GRADUAL_PRIMARY_FAN_DEGRADATION = (
+    "transient_gradual_primary_fan_degradation"
+)
+_V9_TOP_LEVEL_FIELDS = (
     "version",
     "zones",
     "connections",
@@ -91,6 +119,7 @@ _TOP_LEVEL_FIELDS = (
     "air_system",
     "fault_profiles",
 )
+_V10_TOP_LEVEL_FIELDS = (*_V9_TOP_LEVEL_FIELDS, "reserve_connections")
 
 
 @dataclass(frozen=True)
@@ -141,6 +170,7 @@ class AirSystemSettings:
     """Capacity and cleaning performance shared by all zone loops."""
 
     shared_airflow_capacity: float
+    reserve_airflow_capacity: float
     scrubber_removal_fraction: float
 
 
@@ -190,6 +220,42 @@ class BlockedPath:
 
 
 @dataclass(frozen=True)
+class TransientBlockedPath:
+    """A sudden delivery loss active on one exact half-open tick interval."""
+
+    connection_id: str
+    start_tick: int
+    end_tick: int
+    blocked_effectiveness: float
+
+    def effectiveness_at(self, tick: int) -> float:
+        """Return the blocked multiplier on ``[start_tick, end_tick)``."""
+        if self.start_tick <= tick < self.end_tick:
+            return self.blocked_effectiveness
+        return 1.0
+
+
+@dataclass(frozen=True)
+class TransientGradualPrimaryFanDegradation:
+    """A finite linear degradation that clears exactly at its end tick."""
+
+    connection_id: str
+    start_tick: int
+    end_tick: int
+    start_effectiveness: float
+    end_effectiveness: float
+
+    def effectiveness_at(self, tick: int) -> float:
+        """Interpolate both active endpoints, then clear to full effectiveness."""
+        if tick < self.start_tick or tick >= self.end_tick:
+            return 1.0
+        progress = (tick - self.start_tick) / (self.end_tick - self.start_tick - 1)
+        return self.start_effectiveness + progress * (
+            self.end_effectiveness - self.start_effectiveness
+        )
+
+
+@dataclass(frozen=True)
 class FrozenSensor:
     """A zone sensor that holds its reading from one measured tick onward."""
 
@@ -201,7 +267,13 @@ class FrozenSensor:
         return tick >= self.start_tick
 
 
-FaultProfile = GradualPrimaryFanDegradation | BlockedPath | FrozenSensor
+ConnectionFault = (
+    GradualPrimaryFanDegradation
+    | BlockedPath
+    | TransientBlockedPath
+    | TransientGradualPrimaryFanDegradation
+)
+FaultProfile = ConnectionFault | FrozenSensor
 
 
 @dataclass(frozen=True)
@@ -211,6 +283,7 @@ class HabitatConfig:
     version: int
     zones: tuple[ZoneSpec, ...]
     connections: tuple[ConnectionSpec, ...]
+    reserve_connections: tuple[ConnectionSpec, ...]
     control: CO2ControlSettings
     actuator: ActuatorSettings
     simulation: SimulationSettings
@@ -225,12 +298,20 @@ class HabitatConfig:
                 return zone
         raise LookupError("no air_processing zone")  # unreachable post-validation
 
-    def connection_faults(self) -> tuple[GradualPrimaryFanDegradation | BlockedPath, ...]:
+    def connection_faults(self) -> tuple[ConnectionFault, ...]:
         """Fault profiles that reduce a connection's delivery effectiveness."""
         return tuple(
             profile
             for profile in self.fault_profiles
-            if isinstance(profile, (GradualPrimaryFanDegradation, BlockedPath))
+            if isinstance(
+                profile,
+                (
+                    GradualPrimaryFanDegradation,
+                    BlockedPath,
+                    TransientBlockedPath,
+                    TransientGradualPrimaryFanDegradation,
+                ),
+            )
         )
 
     def sensor_faults(self) -> tuple[FrozenSensor, ...]:
@@ -258,6 +339,22 @@ class HabitatConfig:
             if connection.from_zone == processing_id and connection.to_zone == zone_id:
                 return connection
         raise LookupError(f"no return path from processing to {zone_id!r}")
+
+    def reserve_path_to_processing(self, zone_id: str) -> ConnectionSpec:
+        """The zone's outbound reserve path to the processing bay."""
+        processing_id = self.processing_zone().id
+        for connection in self.reserve_connections:
+            if connection.from_zone == zone_id and connection.to_zone == processing_id:
+                return connection
+        raise LookupError(f"no reserve path to processing from {zone_id!r}")
+
+    def reserve_path_from_processing(self, zone_id: str) -> ConnectionSpec:
+        """The zone's reserve return path from the processing bay."""
+        processing_id = self.processing_zone().id
+        for connection in self.reserve_connections:
+            if connection.from_zone == processing_id and connection.to_zone == zone_id:
+                return connection
+        raise LookupError(f"no reserve return path from processing to {zone_id!r}")
 
 
 def load_scenario(path) -> HabitatConfig:
@@ -287,9 +384,14 @@ def parse_scenario(data: Any) -> HabitatConfig:
     """
     if not isinstance(data, dict):
         raise ValueError("scenario document must be a JSON object")
-    _reject_unknown_fields(data, _TOP_LEVEL_FIELDS, "scenario")
-
     version = _parse_version(data)
+    _reject_unknown_fields(
+        data,
+        _V10_TOP_LEVEL_FIELDS
+        if version == RECOVERY_SCENARIO_VERSION
+        else _V9_TOP_LEVEL_FIELDS,
+        "scenario",
+    )
     zones = _parse_zones(data)
 
     processing_count = sum(1 for z in zones if z.preset == "air_processing")
@@ -298,26 +400,38 @@ def parse_scenario(data: Any) -> HabitatConfig:
     if processing_count > 1:
         raise ValueError("scenario has more than one air_processing zone")
 
-    connections = _parse_connections(data, {z.id for z in zones})
+    zone_ids = {z.id for z in zones}
+    connections = _parse_connections(data, zone_ids)
     _enforce_hub_pairing(zones, connections)
+    reserve_connections = _parse_reserve_connections(
+        data, zone_ids, version=version
+    )
+    if version == RECOVERY_SCENARIO_VERSION:
+        _enforce_hub_pairing(zones, reserve_connections)
+        primary_ids = {connection.id for connection in connections}
+        reserve_ids = {connection.id for connection in reserve_connections}
+        if not primary_ids.isdisjoint(reserve_ids):
+            raise ValueError("primary and reserve connection ids must be globally unique")
     control = _parse_control(data)
     actuator = _parse_actuator(data)
     simulation = _parse_simulation(data)
     telemetry = _parse_telemetry(data)
-    air_system = _parse_air_system(data)
+    air_system = _parse_air_system(data, version=version)
     fault_profiles = _parse_fault_profiles(
         data,
         connections,
         processing_id=next(zone.id for zone in zones if zone.preset == "air_processing"),
-        zone_ids={zone.id for zone in zones},
+        zone_ids=zone_ids,
         non_processing_zone_ids={
             zone.id for zone in zones if zone.preset != "air_processing"
         },
+        scenario_version=version,
     )
     return HabitatConfig(
         version=version,
         zones=zones,
         connections=connections,
+        reserve_connections=reserve_connections,
         control=control,
         actuator=actuator,
         simulation=simulation,
@@ -333,10 +447,8 @@ def _parse_version(data: dict) -> int:
     version = data["version"]
     if isinstance(version, bool) or not isinstance(version, int):
         raise ValueError(f"scenario version must be an integer, got {version!r}")
-    if version != SUPPORTED_SCENARIO_VERSION:
-        raise ValueError(
-            f"unsupported version {version}; expected {SUPPORTED_SCENARIO_VERSION}"
-        )
+    if version not in SUPPORTED_SCENARIO_VERSIONS:
+        raise ValueError(f"unsupported version {version}; expected one of 9, 10")
     return version
 
 
@@ -430,18 +542,31 @@ def _parse_telemetry(data: dict) -> TelemetrySettings:
     return TelemetrySettings(**values)
 
 
-def _parse_air_system(data: dict) -> AirSystemSettings:
+def _parse_air_system(data: dict, *, version: int) -> AirSystemSettings:
     if "air_system" not in data:
         raise ValueError("scenario must define 'air_system'")
     raw = data["air_system"]
     if not isinstance(raw, dict):
         raise ValueError("'air_system' must be an object")
-    _reject_unknown_fields(raw, _AIR_SYSTEM_FIELDS, "air_system")
-    for field_name in _AIR_SYSTEM_FIELDS:
+    fields = (
+        _V10_AIR_SYSTEM_FIELDS
+        if version == RECOVERY_SCENARIO_VERSION
+        else _V9_AIR_SYSTEM_FIELDS
+    )
+    _reject_unknown_fields(raw, fields, "air_system")
+    for field_name in fields:
         if field_name not in raw:
             raise ValueError(f"air_system is missing required field {field_name!r}")
     capacity = _require_number(
         raw["shared_airflow_capacity"], "air_system shared_airflow_capacity"
+    )
+    reserve_capacity = (
+        _require_number(
+            raw["reserve_airflow_capacity"],
+            "air_system reserve_airflow_capacity",
+        )
+        if version == RECOVERY_SCENARIO_VERSION
+        else 0.0
     )
     removal = _require_number(
         raw["scrubber_removal_fraction"],
@@ -449,10 +574,13 @@ def _parse_air_system(data: dict) -> AirSystemSettings:
     )
     if capacity <= 0.0:
         raise ValueError("air_system shared_airflow_capacity must be positive")
+    if version == RECOVERY_SCENARIO_VERSION and reserve_capacity <= 0.0:
+        raise ValueError("air_system reserve_airflow_capacity must be positive")
     if not 0.0 <= removal <= 1.0:
         raise ValueError("air_system scrubber_removal_fraction must be in 0.0..1.0")
     return AirSystemSettings(
         shared_airflow_capacity=capacity,
+        reserve_airflow_capacity=reserve_capacity,
         scrubber_removal_fraction=removal,
     )
 
@@ -614,6 +742,19 @@ def _parse_occupancy_profile(
     return tuple(periods)
 
 
+def _parse_reserve_connections(
+    data: dict, zone_ids: set[str], *, version: int
+) -> tuple[ConnectionSpec, ...]:
+    if version == LEGACY_SCENARIO_VERSION:
+        return ()
+    if "reserve_connections" not in data:
+        raise ValueError("scenario must define 'reserve_connections'")
+    raw = data["reserve_connections"]
+    if not isinstance(raw, list):
+        raise ValueError("'reserve_connections' must be a list")
+    return _parse_connections({"connections": raw}, zone_ids)
+
+
 def _parse_connections(data: dict, zone_ids: set[str]) -> tuple[ConnectionSpec, ...]:
     if "connections" not in data:
         raise ValueError("scenario must define 'connections'")
@@ -688,6 +829,7 @@ def _parse_fault_profiles(
     processing_id: str,
     zone_ids: set[str],
     non_processing_zone_ids: set[str],
+    scenario_version: int,
 ) -> tuple[FaultProfile, ...]:
     if "fault_profiles" not in data:
         raise ValueError("scenario must define 'fault_profiles'")
@@ -709,6 +851,16 @@ def _parse_fault_profiles(
             required_fields = _GRADUAL_FAULT_FIELDS
         elif fault_type == _BLOCKED_PATH:
             required_fields = _BLOCKED_PATH_FIELDS
+        elif (
+            scenario_version == RECOVERY_SCENARIO_VERSION
+            and fault_type == _TRANSIENT_BLOCKED_PATH
+        ):
+            required_fields = _TRANSIENT_BLOCKED_PATH_FIELDS
+        elif (
+            scenario_version == RECOVERY_SCENARIO_VERSION
+            and fault_type == _TRANSIENT_GRADUAL_PRIMARY_FAN_DEGRADATION
+        ):
+            required_fields = _TRANSIENT_GRADUAL_FAULT_FIELDS
         elif fault_type == _FROZEN_SENSOR:
             required_fields = _FROZEN_SENSOR_FIELDS
         else:
@@ -731,8 +883,12 @@ def _parse_fault_profiles(
             )
             if fault_type == _GRADUAL_PRIMARY_FAN_DEGRADATION:
                 profiles.append(_parse_gradual_degradation(raw, connection.id))
-            else:
+            elif fault_type == _BLOCKED_PATH:
                 profiles.append(_parse_blocked_path(raw, connection.id))
+            elif fault_type == _TRANSIENT_BLOCKED_PATH:
+                profiles.append(_parse_transient_blocked_path(raw, connection.id))
+            else:
+                profiles.append(_parse_transient_gradual_degradation(raw, connection.id))
     return tuple(profiles)
 
 
@@ -811,6 +967,85 @@ def _parse_blocked_path(raw: dict, connection_id: str) -> BlockedPath:
         connection_id=connection_id,
         start_tick=start_tick,
         blocked_effectiveness=blocked_effectiveness,
+    )
+
+
+def _require_non_negative_tick(value: Any, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{what} must be an integer, got {value!r}")
+    if value < 0:
+        raise ValueError(f"{what} must be non-negative")
+    return value
+
+
+def _parse_transient_blocked_path(
+    raw: dict, connection_id: str
+) -> TransientBlockedPath:
+    start_tick = _require_non_negative_tick(
+        raw["start_tick"], f"fault profile {connection_id!r}: start_tick"
+    )
+    end_tick = _require_non_negative_tick(
+        raw["end_tick"], f"fault profile {connection_id!r}: end_tick"
+    )
+    if end_tick <= start_tick:
+        raise ValueError(
+            f"fault profile {connection_id!r}: end_tick must be after start_tick"
+        )
+    effectiveness = _require_number(
+        raw["blocked_effectiveness"],
+        f"fault profile {connection_id!r}: blocked_effectiveness",
+    )
+    if not 0.0 <= effectiveness < 1.0:
+        raise ValueError(
+            f"fault profile {connection_id!r}: blocked_effectiveness must be below 1.0"
+        )
+    return TransientBlockedPath(
+        connection_id=connection_id,
+        start_tick=start_tick,
+        end_tick=end_tick,
+        blocked_effectiveness=effectiveness,
+    )
+
+
+def _parse_transient_gradual_degradation(
+    raw: dict, connection_id: str
+) -> TransientGradualPrimaryFanDegradation:
+    start_tick = _require_non_negative_tick(
+        raw["start_tick"], f"fault profile {connection_id!r}: start_tick"
+    )
+    end_tick = _require_non_negative_tick(
+        raw["end_tick"], f"fault profile {connection_id!r}: end_tick"
+    )
+    if end_tick - start_tick < 2:
+        raise ValueError(
+            f"fault profile {connection_id!r}: active interval must be at least two ticks"
+        )
+    start_effectiveness = _require_number(
+        raw["start_effectiveness"],
+        f"fault profile {connection_id!r}: start_effectiveness",
+    )
+    end_effectiveness = _require_number(
+        raw["end_effectiveness"],
+        f"fault profile {connection_id!r}: end_effectiveness",
+    )
+    if not 0.0 <= start_effectiveness <= 1.0:
+        raise ValueError(
+            f"fault profile {connection_id!r}: start_effectiveness must be in [0.0, 1.0]"
+        )
+    if not 0.0 <= end_effectiveness <= 1.0:
+        raise ValueError(
+            f"fault profile {connection_id!r}: end_effectiveness must be in [0.0, 1.0]"
+        )
+    if end_effectiveness >= start_effectiveness:
+        raise ValueError(
+            f"fault profile {connection_id!r}: effectiveness must degrade over the active interval"
+        )
+    return TransientGradualPrimaryFanDegradation(
+        connection_id=connection_id,
+        start_tick=start_tick,
+        end_tick=end_tick,
+        start_effectiveness=start_effectiveness,
+        end_effectiveness=end_effectiveness,
     )
 
 
