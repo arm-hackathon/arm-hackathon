@@ -1,8 +1,8 @@
 # Deterministic recovery blind-final verification result
 
-Status: **PASS**  
-Blind run completed: 2026-08-09  
-Frozen evaluated source commit: `d1d39d04d5c2bb2c8a7d7c32eb2a77faa518df26`  
+Status: **PASS**
+Blind run completed: 2026-08-09
+Frozen evaluated source commit: `d1d39d04d5c2bb2c8a7d7c32eb2a77faa518df26`
 Branch: `ben/recovery-policy-candidate`
 
 ## Decision

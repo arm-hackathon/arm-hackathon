@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import json
+import math
 
 import pytest
 
@@ -9,6 +11,7 @@ import aeolus.habitat_v2.runner as runner_module
 from aeolus.habitat_v2.physics import StepResult, advance_one_step, initial_state
 from aeolus.habitat_v2.runner import (
     AccountingInvariantError,
+    StateInvariantError,
     run_scenario,
     validate_accounting_receipt,
 )
@@ -261,6 +264,70 @@ def test_receipt_validator_rejects_electrical_residual_beyond_tolerance() -> Non
         validate_accounting_receipt(receipt)
 
 
+@pytest.mark.parametrize("non_finite", [math.nan, math.inf, -math.inf])
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("species_accounting", "tolerance_mol"),
+        ("species_accounting", "co2_residual_mol"),
+        ("species_accounting", "o2_residual_mol"),
+        ("species_accounting", "water_residual_mol"),
+        ("species_accounting", "inert_residual_mol"),
+        ("thermal", "system_residual_j"),
+        ("electrical", "generation_wh"),
+        ("electrical", "battery_withdrawn_wh"),
+        ("electrical", "served_load_wh"),
+        ("electrical", "battery_charge_stored_wh"),
+        ("electrical", "curtailed_generation_wh"),
+        ("electrical", "charge_conversion_loss_wh"),
+        ("electrical", "discharge_conversion_loss_wh"),
+        ("electrical", "residual_wh"),
+    ],
+)
+def test_receipt_validator_rejects_non_finite_accounting_values(
+    path, non_finite
+) -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    receipt = deepcopy(advance_one_step(scenario, initial_state(scenario)).receipt)
+    receipt[path[0]][path[1]] = non_finite
+
+    with pytest.raises(AccountingInvariantError, match="finite numeric data"):
+        validate_accounting_receipt(receipt)
+
+
+@pytest.mark.parametrize("non_finite", [math.nan, math.inf, -math.inf])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "metabolic_heat_added_j",
+        "recirculation_heat_added_j",
+        "cooling_heat_removed_j",
+        "passive_heat_rejected_j",
+        "passive_heat_received_j",
+        "zone_thermal_energy_delta_j",
+        "zone_thermal_residual_j",
+    ],
+)
+def test_receipt_validator_rejects_non_finite_zone_thermal_values(
+    field, non_finite
+) -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    receipt = deepcopy(advance_one_step(scenario, initial_state(scenario)).receipt)
+    receipt["thermal"]["zones"]["crew_cabin"][field] = non_finite
+
+    with pytest.raises(AccountingInvariantError, match="finite numeric data"):
+        validate_accounting_receipt(receipt)
+
+
+def test_receipt_validator_rejects_negative_species_tolerance() -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    receipt = deepcopy(advance_one_step(scenario, initial_state(scenario)).receipt)
+    receipt["species_accounting"]["tolerance_mol"] = -1.0
+
+    with pytest.raises(AccountingInvariantError, match="must be non-negative"):
+        validate_accounting_receipt(receipt)
+
+
 def test_runner_rejects_bad_accounting_before_emitting_passed_row(monkeypatch) -> None:
     scenario = Scenario.from_mapping(reference_scenario_mapping())
     real_advance = advance_one_step
@@ -274,4 +341,34 @@ def test_runner_rejects_bad_accounting_before_emitting_passed_row(monkeypatch) -
     monkeypatch.setattr(runner_module, "advance_one_step", advance_with_bad_receipt)
 
     with pytest.raises(AccountingInvariantError, match="electrical residual"):
+        run_scenario(scenario)
+
+
+def test_runner_rejects_forged_state_with_compensating_receipt(monkeypatch) -> None:
+    scenario = Scenario.from_mapping(reference_scenario_mapping())
+    real_advance = advance_one_step
+
+    def advance_with_forged_transition(scenario_arg, state_arg) -> StepResult:
+        result = real_advance(scenario_arg, state_arg)
+        if state_arg.step != 0:
+            return result
+        zone_id = sorted(result.state.zones)[0]
+        forged_zone = replace(
+            result.state.zones[zone_id],
+            co2_mol=result.state.zones[zone_id].co2_mol + 1.0,
+        )
+        forged_state = replace(
+            result.state,
+            zones={**result.state.zones, zone_id: forged_zone},
+        )
+        forged_receipt = deepcopy(result.receipt)
+        forged_receipt["electrical"]["generation_wh"] += 1000.0
+        forged_receipt["electrical"]["curtailed_generation_wh"] += 1000.0
+        return StepResult(state=forged_state, receipt=forged_receipt)
+
+    monkeypatch.setattr(
+        runner_module, "advance_one_step", advance_with_forged_transition
+    )
+
+    with pytest.raises(StateInvariantError, match="causal recomputation"):
         run_scenario(scenario)
