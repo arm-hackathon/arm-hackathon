@@ -3,12 +3,14 @@
 **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
 **U**ser-defined **S**cenarios
 
-Version `0.5.0` adds a scenario-v3 reduced-order multizone air network with an
-explicit fan curve, pressure-loss branches, motorised dampers, SI-labelled flow
-and power receipts, and a checked-in eight-zone notional habitat. It preserves
-the scenario-v1 and scenario-v2 contracts and their frozen replay bytes. It is
-not a published or hardware-qualified release. The `0.2.0` C4/C11 artifacts
-remain source-pinned historical evidence.
+Version `0.6.0` adds a scenario-v4 deterministic fault and observation layer on
+the corrected scenario-v3 multizone air network. It provides fan degradation,
+branch-resistance increase, damper jam, sensor bias/drift and stuck-sensor
+profiles, plus redundant primary/secondary observations and evaluator-only
+truth receipts. A checked-in eight-zone compound-fault scenario demonstrates
+all five mechanisms. Scenario-v1 through scenario-v3 remain separate frozen
+contracts. This is not a published or hardware-qualified release. The `0.2.0`
+C4/C11 artifacts remain source-pinned historical evidence.
 
 AEOLUS contains a legacy deterministic simulator in abstract units and a
 separate Habitat Plant V2 grey-box research analogue with explicit SI
@@ -114,15 +116,32 @@ Scenario-v3 replaces direct per-zone airflow commands with a fan-speed command
 and one damper command per declared zone. The deterministic solver derives a
 single fan/system operating point, per-zone volumetric flow in `m³/s`, fixed-
 reference-density mass flow in `kg/s`, pressure losses in Pa, and fan power in
-W. Trace-v3 records commanded and achieved actuator positions plus an explicit
-network receipt. The validator binds the receipt to the parsed scenario,
-cross-checks fan electrical power against the electrical bus receipt, and then
-replays the full scenario byte-for-byte.
+Trace-v3 records commanded and achieved actuator positions plus an explicit
+network receipt. The validator recomputes the canonical transition from the
+parsed scenario and exact pre-step plant state, cross-checks fan electrical
+power against the electrical bus receipt, and then replays the full scenario
+byte-for-byte.
 
 The checked-in eight-zone habitat and its dimensions, resistances, schedules,
 and loads are declared research assumptions for deterministic software testing.
 They are not a NASA floor plan, calibrated CFD, a certified digital twin, or
 evidence about flight hardware.
+
+Run the checked-in scenario-v4 compound-fault example:
+
+```bash
+uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
+  scenarios/habitat_v2_compound_faults.json \
+  out/habitat-v2-compound-faults.jsonl
+```
+
+Scenario-v4 keeps physical truth separate from operational observations.
+`telemetry` is the primary observed feed. `sensor_disagreement` contains the
+secondary feed and signed primary-minus-secondary residuals. The evaluator-only
+`fault_receipt` contains physical truth, sensor residuals and deterministically
+ordered active-fault effects. These truth fields are not a future model-input
+contract. Sensor faults never alter plant state, and no learned component owns
+actuator or recovery authority.
 
 The V2 command validates the strict scenario schema, executes the deterministic
 plant, validates every trace row against the parsed scenario and refuses to

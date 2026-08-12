@@ -24,6 +24,11 @@ AIR_NETWORK_SCENARIO_PATH = (
     / "scenarios"
     / "habitat_v2_air_network.json"
 )
+COMPOUND_FAULT_SCENARIO_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "scenarios"
+    / "habitat_v2_compound_faults.json"
+)
 
 
 def test_checked_in_reference_scenario_loads_and_runs() -> None:
@@ -80,6 +85,26 @@ def test_checked_in_air_network_scenario_runs_eight_zone_world() -> None:
     assert set(network["zone_flow_m3_s"]) == expected_zone_ids
     assert network["total_flow_m3_s"] > 0.0
     assert network["fan_electrical_power_w"] > 0.0
+
+
+def test_checked_in_compound_fault_scenario_replays_deterministically() -> None:
+    scenario = load_scenario_file(COMPOUND_FAULT_SCENARIO_PATH)
+    first = run_scenario(scenario)
+    second = run_scenario(scenario)
+
+    assert scenario.data["name"] == "aeolus-habitat-v2-eight-zone-compound-faults"
+    assert first.trace_bytes == second.trace_bytes
+    assert validate_trace_bytes(first.trace_bytes, scenario=scenario) == first.rows
+    assert [
+        fault["fault_id"] for fault in first.rows[1]["fault_receipt"]["active_faults"]
+    ] == [
+        "airlock-supply-damper-jam",
+        "fan-drive-degradation",
+        "galley-primary-co2-drift",
+        "laboratory-supply-blockage",
+        "power-bay-secondary-temperature-stuck",
+    ]
+    assert first.rows[4]["fault_receipt"]["active_faults"] == []
 
 
 def test_cli_writes_and_validates_operating_mode_trace(tmp_path, capsys) -> None:

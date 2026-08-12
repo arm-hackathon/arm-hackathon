@@ -184,6 +184,33 @@ _BRANCH_RESISTANCE_FIELDS = {
     "start_multiplier",
     "end_multiplier",
 }
+_DAMPER_JAM_FIELDS = {
+    "id",
+    "type",
+    "damper_id",
+    "start_step",
+    "end_step",
+}
+_SENSOR_BIAS_DRIFT_FIELDS = {
+    "id",
+    "type",
+    "zone_id",
+    "sensor_head",
+    "channel",
+    "start_step",
+    "end_step",
+    "start_bias",
+    "end_bias",
+}
+_SENSOR_STUCK_FIELDS = {
+    "id",
+    "type",
+    "zone_id",
+    "sensor_head",
+    "channel",
+    "start_step",
+    "end_step",
+}
 
 
 class ScenarioValidationError(ValueError):
@@ -377,6 +404,15 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
             elif profile_type == "branch_resistance_increase":
                 profile_fields = _BRANCH_RESISTANCE_FIELDS
                 profile_label = "branch resistance increase profile"
+            elif profile_type == "damper_jam":
+                profile_fields = _DAMPER_JAM_FIELDS
+                profile_label = "damper jam profile"
+            elif profile_type == "sensor_bias_drift":
+                profile_fields = _SENSOR_BIAS_DRIFT_FIELDS
+                profile_label = "sensor bias drift profile"
+            elif profile_type == "sensor_stuck":
+                profile_fields = _SENSOR_STUCK_FIELDS
+                profile_label = "sensor stuck profile"
             else:
                 raise ScenarioValidationError(
                     f"unsupported fault profile type {profile_type!r}"
@@ -534,7 +570,13 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
         seen_profile_ids: set[str] = set()
         fan_intervals: list[tuple[int, int]] = []
         branch_intervals_by_zone: dict[str, list[tuple[int, int]]] = {}
+        damper_intervals_by_id: dict[str, list[tuple[int, int]]] = {}
+        sensor_intervals_by_target: dict[str, list[tuple[int, int]]] = {}
         declared_zone_ids = {str(zone["id"]) for zone in scenario["zones"]}
+        declared_damper_ids = {
+            str(branch["damper_id"])
+            for branch in scenario["air_network"]["branches"]
+        }
         for index, profile in enumerate(scenario["fault_profiles"]):
             prefix = f"fault_profiles[{index}]"
             profile_id = profile["id"]
@@ -552,19 +594,69 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             if not 1 <= start_step < end_step <= steps + 1:
                 _invalid(prefix, "interval must satisfy 1 <= start < end <= steps + 1")
             profile_type = profile["type"]
-            for field in ("start_multiplier", "end_multiplier"):
-                multiplier = _number(profile[field], path=f"{prefix}.{field}")
-                if profile_type == "fan_speed_degradation":
-                    if not 0.0 < multiplier <= 1.0:
-                        _invalid(f"{prefix}.{field}", "must be in (0, 1]")
-                elif multiplier < 1.0:
-                    _invalid(f"{prefix}.{field}", "must be at least 1")
 
             if profile_type == "fan_speed_degradation":
+                for field in ("start_multiplier", "end_multiplier"):
+                    multiplier = _number(profile[field], path=f"{prefix}.{field}")
+                    if not 0.0 < multiplier <= 1.0:
+                        _invalid(f"{prefix}.{field}", "must be in (0, 1]")
                 for prior_start, prior_end in fan_intervals:
                     if max(start_step, prior_start) < min(end_step, prior_end):
                         _invalid(prefix, "fan degradation profiles may not overlap")
                 fan_intervals.append((start_step, end_step))
+                continue
+
+            if profile_type == "damper_jam":
+                damper_id = profile["damper_id"]
+                if (
+                    not isinstance(damper_id, str)
+                    or not damper_id.strip()
+                    or damper_id not in declared_damper_ids
+                ):
+                    _invalid(
+                        f"{prefix}.damper_id", "must identify a declared damper"
+                    )
+                damper_intervals = damper_intervals_by_id.setdefault(damper_id, [])
+                for prior_start, prior_end in damper_intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(
+                            prefix,
+                            f"damper jam profiles for {damper_id} may not overlap",
+                        )
+                damper_intervals.append((start_step, end_step))
+                continue
+
+            if profile_type in {"sensor_bias_drift", "sensor_stuck"}:
+                zone_id = profile["zone_id"]
+                sensor_head = profile["sensor_head"]
+                channel = profile["channel"]
+                if (
+                    not isinstance(zone_id, str)
+                    or not zone_id.strip()
+                    or zone_id not in declared_zone_ids
+                ):
+                    _invalid(f"{prefix}.zone_id", "must identify a declared zone")
+                if sensor_head not in {"primary", "secondary"}:
+                    _invalid(
+                        f"{prefix}.sensor_head", "must be primary or secondary"
+                    )
+                if channel not in _SENSOR_CHANNELS:
+                    _invalid(
+                        f"{prefix}.channel",
+                        "must identify a declared sensor channel",
+                    )
+                if profile_type == "sensor_bias_drift":
+                    _number(profile["start_bias"], path=f"{prefix}.start_bias")
+                    _number(profile["end_bias"], path=f"{prefix}.end_bias")
+                target_id = f"{zone_id}/{sensor_head}/{channel}"
+                sensor_intervals = sensor_intervals_by_target.setdefault(target_id, [])
+                for prior_start, prior_end in sensor_intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(
+                            prefix,
+                            f"sensor fault profiles for {target_id} may not overlap",
+                        )
+                sensor_intervals.append((start_step, end_step))
                 continue
 
             zone_id = profile["zone_id"]
@@ -574,6 +666,10 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 or zone_id not in declared_zone_ids
             ):
                 _invalid(f"{prefix}.zone_id", "must identify a declared zone")
+            for field in ("start_multiplier", "end_multiplier"):
+                multiplier = _number(profile[field], path=f"{prefix}.{field}")
+                if multiplier < 1.0:
+                    _invalid(f"{prefix}.{field}", "must be at least 1")
             branch_intervals = branch_intervals_by_zone.setdefault(zone_id, [])
             for prior_start, prior_end in branch_intervals:
                 if max(start_step, prior_start) < min(end_step, prior_end):

@@ -10,6 +10,7 @@ from .scenario import SCENARIO_SCHEMA_VERSION_V4, Scenario
 class PhysicalFaultEffects:
     fan_speed_multiplier: float
     open_supply_resistance_multiplier_by_zone: Mapping[str, float]
+    jammed_damper_ids: tuple[str, ...]
     active_faults: tuple[Mapping[str, Any], ...]
 
 
@@ -26,17 +27,22 @@ def _linear_profile_value(profile: Mapping[str, Any], *, emitted_step: int) -> f
 
 
 def physical_fault_effects(
-    scenario: Scenario, *, emitted_step: int
+    scenario: Scenario,
+    *,
+    emitted_step: int,
+    previous_damper_position_by_id: Mapping[str, float],
 ) -> PhysicalFaultEffects:
     if scenario.scenario_schema_version != SCENARIO_SCHEMA_VERSION_V4:
         return PhysicalFaultEffects(
             fan_speed_multiplier=1.0,
             open_supply_resistance_multiplier_by_zone={},
+            jammed_damper_ids=(),
             active_faults=(),
         )
 
     multiplier = 1.0
     branch_multiplier_by_zone: dict[str, float] = {}
+    jammed_damper_ids: list[str] = []
     active: list[Mapping[str, Any]] = []
     fan_id = str(scenario.data["air_network"]["fan"]["id"])
     for profile in scenario.data["fault_profiles"]:
@@ -72,11 +78,25 @@ def physical_fault_effects(
                     "effect_value": branch_multiplier,
                 }
             )
+        elif profile["type"] == "damper_jam":
+            damper_id = str(profile["damper_id"])
+            held_position = float(previous_damper_position_by_id[damper_id])
+            jammed_damper_ids.append(damper_id)
+            active.append(
+                {
+                    "fault_id": str(profile["id"]),
+                    "fault_type": "damper_jam",
+                    "target_id": damper_id,
+                    "effect_name": "held_damper_position",
+                    "effect_value": held_position,
+                }
+            )
     return PhysicalFaultEffects(
         fan_speed_multiplier=multiplier,
         open_supply_resistance_multiplier_by_zone={
             zone_id: branch_multiplier_by_zone[zone_id]
             for zone_id in sorted(branch_multiplier_by_zone)
         },
+        jammed_damper_ids=tuple(sorted(jammed_damper_ids)),
         active_faults=tuple(sorted(active, key=lambda item: str(item["fault_id"]))),
     )

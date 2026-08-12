@@ -146,12 +146,12 @@ def validate_accounting_receipt(
 
     network = receipt.get("air_network")
     if network is None:
-        if (
-            scenario is not None
-            and scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3
-        ):
+        if scenario is not None and scenario.trace_schema_version in {
+            TRACE_SCHEMA_VERSION_V3,
+            TRACE_SCHEMA_VERSION_V4,
+        }:
             raise AccountingInvariantError(
-                "scenario-v3 accounting requires an air-network receipt"
+                "scenario-v3/v4 accounting requires an air-network receipt"
             )
         return
     if scenario is None:
@@ -499,11 +499,87 @@ def _healthy_sensor_head(
     }
 
 
+def _linear_sensor_bias(profile: Mapping[str, Any], *, emitted_step: int) -> float:
+    start_step = int(profile["start_step"])
+    end_step = int(profile["end_step"])
+    start_bias = float(profile["start_bias"])
+    end_bias = float(profile["end_bias"])
+    count = end_step - start_step
+    if count == 1:
+        return end_bias
+    progress = (emitted_step - start_step) / float(count - 1)
+    return start_bias + (end_bias - start_bias) * progress
+
+
+def _apply_sensor_faults(
+    scenario: Scenario,
+    *,
+    emitted_step: int,
+    primary: dict[str, dict[str, float]],
+    secondary: dict[str, dict[str, float]],
+    previous_primary: Mapping[str, Mapping[str, float]] | None,
+    previous_secondary: Mapping[str, Mapping[str, float]] | None,
+) -> list[Mapping[str, Any]]:
+    observations = {"primary": primary, "secondary": secondary}
+    previous_observations = {
+        "primary": previous_primary,
+        "secondary": previous_secondary,
+    }
+    active: list[Mapping[str, Any]] = []
+    for profile in scenario.data["fault_profiles"]:
+        if profile["type"] not in {"sensor_bias_drift", "sensor_stuck"} or not (
+            int(profile["start_step"])
+            <= emitted_step
+            < int(profile["end_step"])
+        ):
+            continue
+        zone_id = str(profile["zone_id"])
+        sensor_head = str(profile["sensor_head"])
+        channel = str(profile["channel"])
+        target_id = f"{zone_id}/{sensor_head}/{channel}"
+        if profile["type"] == "sensor_bias_drift":
+            bias = _linear_sensor_bias(profile, emitted_step=emitted_step)
+            observations[sensor_head][zone_id][channel] = _clamp_sensor_value(
+                channel,
+                observations[sensor_head][zone_id][channel] + bias,
+            )
+            active.append(
+                {
+                    "fault_id": str(profile["id"]),
+                    "fault_type": "sensor_bias_drift",
+                    "target_id": target_id,
+                    "effect_name": "additive_sensor_bias",
+                    "effect_value": bias,
+                }
+            )
+            continue
+
+        previous_head = previous_observations[sensor_head]
+        if previous_head is None:
+            raise StateInvariantError(
+                "sensor stuck fault requires a previous completed observation"
+            )
+        held_value = float(previous_head[zone_id][channel])
+        observations[sensor_head][zone_id][channel] = held_value
+        active.append(
+            {
+                "fault_id": str(profile["id"]),
+                "fault_type": "sensor_stuck",
+                "target_id": target_id,
+                "effect_name": "held_sensor_observation",
+                "effect_value": held_value,
+            }
+        )
+    return active
+
+
 def _v4_sensor_projection(
     scenario: Scenario,
     state: PlantState,
     *,
     active_faults: list[Mapping[str, Any]],
+    previous_primary: Mapping[str, Mapping[str, float]] | None,
+    previous_secondary: Mapping[str, Mapping[str, float]] | None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
     truth = _trace_telemetry(scenario, state)
     primary = _healthy_sensor_head(
@@ -511,6 +587,14 @@ def _v4_sensor_projection(
     )
     secondary = _healthy_sensor_head(
         scenario, truth, sensor_head="secondary", step=state.step
+    )
+    sensor_faults = _apply_sensor_faults(
+        scenario,
+        emitted_step=state.step,
+        primary=primary,
+        secondary=secondary,
+        previous_primary=previous_primary,
+        previous_secondary=previous_secondary,
     )
     disagreement = {
         zone_id: {
@@ -540,7 +624,11 @@ def _v4_sensor_projection(
             }
             for zone_id in sorted(truth)
         },
-        "active_faults": [dict(value) for value in active_faults],
+        "active_faults": sorted(
+            [dict(value) for value in active_faults]
+            + [dict(value) for value in sensor_faults],
+            key=lambda value: str(value["fault_id"]),
+        ),
     }
     return primary, disagreement, receipt
 
@@ -643,6 +731,7 @@ def _row(
     *,
     segment: Mapping[str, Any] | None,
     receipt: Mapping[str, Any] | None,
+    previous_row: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     accounting_receipt = receipt
     if receipt is not None and scenario.trace_schema_version in {
@@ -658,10 +747,20 @@ def _row(
     sensor_disagreement = None
     fault_receipt = None
     if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+        previous_primary = None
+        previous_secondary = None
+        if previous_row is not None:
+            previous_primary = previous_row["telemetry"]
+            previous_secondary = {
+                zone_id: previous_row["sensor_disagreement"][zone_id]["secondary"]
+                for zone_id in sorted(previous_row["sensor_disagreement"])
+            }
         telemetry, sensor_disagreement, fault_receipt = _v4_sensor_projection(
             scenario,
             state,
             active_faults=([] if receipt is None else list(receipt["active_faults"])),
+            previous_primary=previous_primary,
+            previous_secondary=previous_secondary,
         )
     row = {
         "schema_version": scenario.trace_schema_version,
@@ -723,7 +822,15 @@ def run_scenario(scenario: Scenario) -> SimulationRun:
     scenario.validate_contract_identities()
     state = initial_state(scenario)
     _assert_state_invariants(scenario, state)
-    rows: list[Mapping[str, Any]] = [_row(scenario, state, segment=None, receipt=None)]
+    rows: list[Mapping[str, Any]] = [
+        _row(
+            scenario,
+            state,
+            segment=None,
+            receipt=None,
+            previous_row=None,
+        )
+    ]
     while state.step < int(scenario.data["steps"]):
         segment = next(
             segment
@@ -738,7 +845,15 @@ def run_scenario(scenario: Scenario) -> SimulationRun:
         )
         state = result.state
         _assert_state_invariants(scenario, state)
-        rows.append(_row(scenario, state, segment=segment, receipt=result.receipt))
+        rows.append(
+            _row(
+                scenario,
+                state,
+                segment=segment,
+                receipt=result.receipt,
+                previous_row=rows[-1],
+            )
+        )
     return SimulationRun(
         final_state=state,
         rows=tuple(rows),
