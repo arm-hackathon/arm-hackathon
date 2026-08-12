@@ -25,6 +25,27 @@ class StateInvariantError(RuntimeError):
     """Raised when a completed step violates a physical or resource invariant."""
 
 
+def _finite_accounting_value(
+    value: Any,
+    *,
+    path: str,
+    non_negative: bool = False,
+) -> float:
+    if isinstance(value, bool):
+        raise AccountingInvariantError(f"{path} must be finite numeric data")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise AccountingInvariantError(
+            f"{path} must be finite numeric data"
+        ) from error
+    if not math.isfinite(number):
+        raise AccountingInvariantError(f"{path} must be finite numeric data")
+    if non_negative and number < 0.0:
+        raise AccountingInvariantError(f"{path} must be non-negative")
+    return number
+
+
 @dataclass(frozen=True)
 class SimulationRun:
     final_state: PlantState
@@ -34,14 +55,21 @@ class SimulationRun:
 
 def validate_accounting_receipt(receipt: Mapping[str, Any]) -> None:
     species = receipt["species_accounting"]
-    tolerance_mol = float(species["tolerance_mol"])
+    tolerance_mol = _finite_accounting_value(
+        species["tolerance_mol"],
+        path="species_accounting.tolerance_mol",
+        non_negative=True,
+    )
     for field in (
         "co2_residual_mol",
         "o2_residual_mol",
         "water_residual_mol",
         "inert_residual_mol",
     ):
-        if abs(float(species[field])) > tolerance_mol:
+        residual = _finite_accounting_value(
+            species[field], path=f"species_accounting.{field}"
+        )
+        if abs(residual) > tolerance_mol:
             raise AccountingInvariantError(
                 f"{field} exceeds declared species tolerance"
             )
@@ -51,7 +79,11 @@ def validate_accounting_receipt(receipt: Mapping[str, Any]) -> None:
     for zone_id in sorted(thermal["zones"]):
         zone = thermal["zones"][zone_id]
         zone_receipt_scale_j = sum(
-            abs(float(zone[field]))
+            abs(
+                _finite_accounting_value(
+                    zone[field], path=f"thermal.zones.{zone_id}.{field}"
+                )
+            )
             for field in (
                 "metabolic_heat_added_j",
                 "recirculation_heat_added_j",
@@ -64,12 +96,19 @@ def validate_accounting_receipt(receipt: Mapping[str, Any]) -> None:
         system_receipt_scale_j += zone_receipt_scale_j
         receipt_scale_j = max(1.0, zone_receipt_scale_j)
         tolerance_j = max(1e-6, 1e-10 * receipt_scale_j)
-        if abs(float(zone["zone_thermal_residual_j"])) > tolerance_j:
+        zone_residual_j = _finite_accounting_value(
+            zone["zone_thermal_residual_j"],
+            path=f"thermal.zones.{zone_id}.zone_thermal_residual_j",
+        )
+        if abs(zone_residual_j) > tolerance_j:
             raise AccountingInvariantError(
                 f"{zone_id} thermal residual exceeds declared tolerance"
             )
     system_tolerance_j = max(1e-6, 1e-10 * max(1.0, system_receipt_scale_j))
-    if abs(float(thermal["system_residual_j"])) > system_tolerance_j:
+    system_residual_j = _finite_accounting_value(
+        thermal["system_residual_j"], path="thermal.system_residual_j"
+    )
+    if abs(system_residual_j) > system_tolerance_j:
         raise AccountingInvariantError(
             "system thermal residual exceeds declared tolerance"
         )
@@ -78,7 +117,11 @@ def validate_accounting_receipt(receipt: Mapping[str, Any]) -> None:
     electrical_scale_wh = max(
         1.0,
         sum(
-            abs(float(electrical[field]))
+            abs(
+                _finite_accounting_value(
+                    electrical[field], path=f"electrical.{field}"
+                )
+            )
             for field in (
                 "generation_wh",
                 "battery_withdrawn_wh",
@@ -91,7 +134,10 @@ def validate_accounting_receipt(receipt: Mapping[str, Any]) -> None:
         ),
     )
     electrical_tolerance_wh = max(1e-12, 1e-10 * electrical_scale_wh)
-    if abs(float(electrical["residual_wh"])) > electrical_tolerance_wh:
+    electrical_residual_wh = _finite_accounting_value(
+        electrical["residual_wh"], path="electrical.residual_wh"
+    )
+    if abs(electrical_residual_wh) > electrical_tolerance_wh:
         raise AccountingInvariantError("electrical residual exceeds declared tolerance")
 
 
