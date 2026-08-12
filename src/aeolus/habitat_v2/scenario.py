@@ -8,12 +8,15 @@ from typing import Any, Mapping
 
 SCENARIO_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_scenario_v1"
 SCENARIO_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_scenario_v2"
+SCENARIO_SCHEMA_VERSION_V3 = "aeolus_habitat_v2_scenario_v3"
 TRACE_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_trace_v1"
 TRACE_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_trace_v2"
+TRACE_SCHEMA_VERSION_V3 = "aeolus_habitat_v2_trace_v3"
 # V1 aliases are retained for callers that import the original contract names.
 SCENARIO_SCHEMA_VERSION = SCENARIO_SCHEMA_VERSION_V1
 TRACE_SCHEMA_VERSION = TRACE_SCHEMA_VERSION_V1
 EQUATION_CONTRACT_REVISION = "aeolus_habitat_v2_equations_v1"
+EQUATION_CONTRACT_REVISION_V2 = "aeolus_habitat_v2_equations_v2"
 
 _TOP_LEVEL_FIELDS = {
     "schema_version",
@@ -100,6 +103,55 @@ _COMMAND_FIELDS = {
     "oxygen_injection_mol_s",
 }
 
+_TOP_LEVEL_FIELDS_V3 = _TOP_LEVEL_FIELDS | {"air_network"}
+_ZONE_FIELDS_V3 = _ZONE_FIELDS | {"geometry"}
+_ZONE_GEOMETRY_FIELDS = {"center_m", "size_m"}
+_EQUIPMENT_FIELDS_V3 = _EQUIPMENT_FIELDS - {
+    "max_total_airflow_m3_s",
+    "max_zone_airflow_m3_s",
+    "airflow_slew_m3_s2",
+    "fan_power_w_per_m3_s",
+}
+_INITIAL_UTILITY_FIELDS_V3 = (
+    _INITIAL_UTILITY_FIELDS - {"actual_airflow_m3_s"}
+) | {"actual_fan_speed_fraction", "actual_damper_position_by_id"}
+_COMMAND_FIELDS_V3 = (_COMMAND_FIELDS - {"airflow_m3_s"}) | {
+    "fan_speed_fraction",
+    "damper_position_by_id",
+}
+_AIR_NETWORK_FIELDS = {
+    "supply_plenum_position_m",
+    "return_plenum_position_m",
+    "fan",
+    "shared_resistance",
+    "branches",
+}
+_FAN_FIELDS = {
+    "id",
+    "rated_free_delivery_m3_s",
+    "rated_shutoff_pressure_pa",
+    "total_efficiency",
+    "speed_slew_fraction_per_s",
+    "position_m",
+}
+_SHARED_RESISTANCE_FIELDS = {
+    "supply_trunk_pa_s2_m6",
+    "return_trunk_pa_s2_m6",
+    "filter_pa_s2_m6",
+}
+_BRANCH_FIELDS = {
+    "zone_id",
+    "damper_id",
+    "open_supply_resistance_pa_s2_m6",
+    "return_resistance_pa_s2_m6",
+    "damper_leak_fraction",
+    "damper_slew_fraction_per_s",
+    "supply_diffuser_position_m",
+    "return_grille_position_m",
+    "damper_position_m",
+    "duct_polyline_m",
+}
+
 
 class ScenarioValidationError(ValueError):
     """Raised when Habitat V2 scenario input violates its contract."""
@@ -150,14 +202,55 @@ def _reject_unknown_fields(
         raise ScenarioValidationError(f"missing {label} fields: {', '.join(missing)}")
 
 
+def _top_level_fields_for_schema(schema_version: str) -> set[str]:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        return _TOP_LEVEL_FIELDS
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        return _TOP_LEVEL_FIELDS_V3
+    raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
+
+
+def _zone_fields_for_schema(schema_version: str) -> set[str]:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        return _ZONE_FIELDS
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        return _ZONE_FIELDS_V3
+    raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
+
+
+def _equipment_fields_for_schema(schema_version: str) -> set[str]:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        return _EQUIPMENT_FIELDS
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        return _EQUIPMENT_FIELDS_V3
+    raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
+
+
+def _initial_utility_fields_for_schema(schema_version: str) -> set[str]:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        return _INITIAL_UTILITY_FIELDS
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        return _INITIAL_UTILITY_FIELDS_V3
+    raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
+
+
+def _command_fields_for_schema(schema_version: str) -> set[str]:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        return _COMMAND_FIELDS
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        return _COMMAND_FIELDS_V3
+    raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
+
+
 def _timeline_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version == SCENARIO_SCHEMA_VERSION_V1:
         return _TIMELINE_FIELDS_V1
-    if schema_version == SCENARIO_SCHEMA_VERSION_V2:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V2, SCENARIO_SCHEMA_VERSION_V3}:
         return _TIMELINE_FIELDS_V2
     raise ScenarioValidationError(
         "schema_version must be "
-        f"{SCENARIO_SCHEMA_VERSION_V1!r} or {SCENARIO_SCHEMA_VERSION_V2!r}"
+        f"{SCENARIO_SCHEMA_VERSION_V1!r}, {SCENARIO_SCHEMA_VERSION_V2!r}, "
+        f"or {SCENARIO_SCHEMA_VERSION_V3!r}"
     )
 
 
@@ -166,33 +259,70 @@ def _trace_schema_for_scenario(schema_version: str) -> str:
         return TRACE_SCHEMA_VERSION_V1
     if schema_version == SCENARIO_SCHEMA_VERSION_V2:
         return TRACE_SCHEMA_VERSION_V2
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        return TRACE_SCHEMA_VERSION_V3
+    raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
+
+
+def _equation_contract_for_scenario(schema_version: str) -> str:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        return EQUATION_CONTRACT_REVISION
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        return EQUATION_CONTRACT_REVISION_V2
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
 def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
+    schema_version = str(scenario["schema_version"])
     for zone in scenario["zones"]:
-        _reject_unknown_fields(zone, _ZONE_FIELDS, label="zone")
+        _reject_unknown_fields(
+            zone, _zone_fields_for_schema(schema_version), label="zone"
+        )
         _reject_unknown_fields(
             zone["initial"], _ZONE_INITIAL_FIELDS, label="zone initial state"
         )
+        if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+            _reject_unknown_fields(
+                zone["geometry"], _ZONE_GEOMETRY_FIELDS, label="zone geometry"
+            )
 
-    _reject_unknown_fields(scenario["equipment"], _EQUIPMENT_FIELDS, label="equipment")
+    _reject_unknown_fields(
+        scenario["equipment"],
+        _equipment_fields_for_schema(schema_version),
+        label="equipment",
+    )
     _reject_unknown_fields(
         scenario["initial_utility"],
-        _INITIAL_UTILITY_FIELDS,
+        _initial_utility_fields_for_schema(schema_version),
         label="initial utility",
     )
+
+    if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+        network = scenario["air_network"]
+        _reject_unknown_fields(network, _AIR_NETWORK_FIELDS, label="air network")
+        _reject_unknown_fields(network["fan"], _FAN_FIELDS, label="air network fan")
+        _reject_unknown_fields(
+            network["shared_resistance"],
+            _SHARED_RESISTANCE_FIELDS,
+            label="air network shared resistance",
+        )
+        for branch in network["branches"]:
+            _reject_unknown_fields(
+                branch, _BRANCH_FIELDS, label="air network branch"
+            )
 
     for segment in scenario["timeline"]:
         _reject_unknown_fields(
             segment,
-            _timeline_fields_for_schema(str(scenario["schema_version"])),
+            _timeline_fields_for_schema(schema_version),
             label="timeline segment",
         )
         for load in segment["loads"].values():
             _reject_unknown_fields(load, _ZONE_LOAD_FIELDS, label="zone load")
         _reject_unknown_fields(
-            segment["command"], _COMMAND_FIELDS, label="plant command"
+            segment["command"],
+            _command_fields_for_schema(schema_version),
+            label="plant command",
         )
 
 
@@ -207,30 +337,68 @@ def _require_zone_keys(
 
 
 def _validate_topology(scenario: Mapping[str, Any]) -> None:
-    expected_zone_ids = {"crew_cabin", "work_airlock"}
+    schema_version = str(scenario["schema_version"])
     zones = scenario["zones"]
     zone_ids = {zone["id"] for zone in zones}
-    if len(zones) != 2 or zone_ids != expected_zone_ids:
-        raise ScenarioValidationError(
-            "zone topology must contain exactly crew_cabin and work_airlock"
-        )
 
-    _require_zone_keys(
-        scenario["initial_utility"]["actual_airflow_m3_s"],
-        zone_ids,
-        path="initial_utility.actual_airflow_m3_s",
-    )
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        expected_zone_ids = {"crew_cabin", "work_airlock"}
+        if len(zones) != 2 or zone_ids != expected_zone_ids:
+            raise ScenarioValidationError(
+                "zone topology must contain exactly crew_cabin and work_airlock"
+            )
+        _require_zone_keys(
+            scenario["initial_utility"]["actual_airflow_m3_s"],
+            zone_ids,
+            path="initial_utility.actual_airflow_m3_s",
+        )
+    else:
+        if not 2 <= len(zones) <= 16 or len(zone_ids) != len(zones):
+            raise ScenarioValidationError(
+                "scenario-v3 zone topology must contain 2..16 unique zone ids"
+            )
+        if any(not isinstance(zone_id, str) or not zone_id.strip() for zone_id in zone_ids):
+            raise ScenarioValidationError("scenario-v3 zone ids must be non-empty strings")
+        branches = scenario["air_network"]["branches"]
+        branch_zone_ids = [branch["zone_id"] for branch in branches]
+        damper_ids = [branch["damper_id"] for branch in branches]
+        if len(branches) != len(zones) or set(branch_zone_ids) != zone_ids:
+            raise ScenarioValidationError(
+                "scenario-v3 requires exactly one air-network branch per zone"
+            )
+        if len(set(damper_ids)) != len(damper_ids):
+            raise ScenarioValidationError(
+                "scenario-v3 air-network damper ids must be unique"
+            )
+        initial_dampers = scenario["initial_utility"][
+            "actual_damper_position_by_id"
+        ]
+        if set(initial_dampers) != set(damper_ids):
+            raise ScenarioValidationError(
+                "initial damper state must match air-network damper ids"
+            )
+
     for index, segment in enumerate(scenario["timeline"]):
         _require_zone_keys(segment["loads"], zone_ids, path=f"timeline[{index}].loads")
         command = segment["command"]
-        for field in (
-            "airflow_m3_s",
-            "cooling_removed_w",
-            "oxygen_injection_mol_s",
-        ):
+        for field in ("cooling_removed_w", "oxygen_injection_mol_s"):
             _require_zone_keys(
                 command[field], zone_ids, path=f"timeline[{index}].command.{field}"
             )
+        if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+            _require_zone_keys(
+                command["airflow_m3_s"],
+                zone_ids,
+                path=f"timeline[{index}].command.airflow_m3_s",
+            )
+        else:
+            expected_damper_ids = {
+                branch["damper_id"] for branch in scenario["air_network"]["branches"]
+            }
+            if set(command["damper_position_by_id"]) != expected_damper_ids:
+                raise ScenarioValidationError(
+                    f"damper topology mismatch at timeline[{index}].command"
+                )
 
 
 def _invalid(path: str, message: str) -> None:
@@ -270,7 +438,17 @@ def _positive_int(value: Any, *, path: str) -> int:
     return value
 
 
+def _vector3(value: Any, *, path: str, positive: bool = False) -> tuple[float, ...]:
+    if not isinstance(value, list) or len(value) != 3:
+        _invalid(path, "must be an array of exactly three numbers")
+    numbers = tuple(_number(item, path=f"{path}[{index}]") for index, item in enumerate(value))
+    if positive and any(number <= 0.0 for number in numbers):
+        _invalid(path, "all dimensions must be greater than zero")
+    return numbers
+
+
 def _validate_values(scenario: Mapping[str, Any]) -> None:
+    schema_version = str(scenario["schema_version"])
     if not isinstance(scenario["name"], str) or not scenario["name"].strip():
         _invalid("name", "must be a non-empty string")
     _positive(scenario["dt_seconds"], path="dt_seconds")
@@ -321,50 +499,61 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             initial["relative_humidity"],
             path=f"{prefix}.initial.relative_humidity",
         )
+        if schema_version == SCENARIO_SCHEMA_VERSION_V3:
+            _vector3(zone["geometry"]["center_m"], path=f"{prefix}.geometry.center_m")
+            _vector3(
+                zone["geometry"]["size_m"],
+                path=f"{prefix}.geometry.size_m",
+                positive=True,
+            )
 
     equipment = scenario["equipment"]
-    for field in (
-        "max_total_airflow_m3_s",
-        "max_zone_airflow_m3_s",
-        "airflow_slew_m3_s2",
+    positive_equipment_fields = {
         "scrubber_duty_slew_per_s",
         "condenser_duty_slew_per_s",
         "cooling_coefficient_of_performance",
         "battery_capacity_wh",
         "air_density_kg_m3",
         "air_specific_heat_j_kg_k",
-    ):
+    }
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        positive_equipment_fields |= {
+            "max_total_airflow_m3_s",
+            "max_zone_airflow_m3_s",
+            "airflow_slew_m3_s2",
+        }
+    for field in sorted(positive_equipment_fields):
         _positive(equipment[field], path=f"equipment.{field}")
-    for field in _EQUIPMENT_FIELDS - {
-        "max_total_airflow_m3_s",
-        "max_zone_airflow_m3_s",
-        "airflow_slew_m3_s2",
-        "scrubber_duty_slew_per_s",
-        "condenser_duty_slew_per_s",
-        "cooling_coefficient_of_performance",
-        "battery_capacity_wh",
-        "battery_charge_efficiency",
-        "battery_discharge_efficiency",
-        "air_density_kg_m3",
-        "air_specific_heat_j_kg_k",
-    }:
+
+    efficiency_fields = {"battery_charge_efficiency", "battery_discharge_efficiency"}
+    for field in sorted(
+        _equipment_fields_for_schema(schema_version)
+        - positive_equipment_fields
+        - efficiency_fields
+    ):
         _nonnegative(equipment[field], path=f"equipment.{field}")
-    for field in ("battery_charge_efficiency", "battery_discharge_efficiency"):
+    for field in sorted(efficiency_fields):
         efficiency = _number(equipment[field], path=f"equipment.{field}")
         if not 0.0 < efficiency <= 1.0:
             _invalid(f"equipment.{field}", "must be in (0, 1]")
-    if equipment["max_zone_airflow_m3_s"] > equipment["max_total_airflow_m3_s"]:
-        _invalid(
-            "equipment.max_zone_airflow_m3_s",
-            "cannot exceed max_total_airflow_m3_s",
-        )
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        if equipment["max_zone_airflow_m3_s"] > equipment["max_total_airflow_m3_s"]:
+            _invalid(
+                "equipment.max_zone_airflow_m3_s",
+                "cannot exceed max_total_airflow_m3_s",
+            )
 
     utility = scenario["initial_utility"]
-    for field in _INITIAL_UTILITY_FIELDS - {
-        "actual_airflow_m3_s",
-        "actual_scrubber_duty",
-        "actual_condenser_duty",
-    }:
+    utility_inventory_fields = {
+        "co2_sorbent_remaining_mol",
+        "captured_co2_mol",
+        "condensed_water_mol",
+        "oxygen_store_mol",
+        "battery_energy_wh",
+        "external_heat_rejected_j",
+        "external_heat_received_j",
+    }
+    for field in sorted(utility_inventory_fields):
         _nonnegative(utility[field], path=f"initial_utility.{field}")
     for field in ("actual_scrubber_duty", "actual_condenser_duty"):
         _fraction(utility[field], path=f"initial_utility.{field}")
@@ -375,21 +564,111 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             "initial_utility.co2_sorbent_remaining_mol",
             "exceeds scrubber capacity",
         )
-    initial_flows = utility["actual_airflow_m3_s"]
-    for zone_id, flow in initial_flows.items():
-        flow_value = _nonnegative(
-            flow, path=f"initial_utility.actual_airflow_m3_s.{zone_id}"
-        )
-        if flow_value > equipment["max_zone_airflow_m3_s"]:
-            _invalid(
-                f"initial_utility.actual_airflow_m3_s.{zone_id}",
-                "exceeds per-zone airflow capacity",
+
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+        initial_flows = utility["actual_airflow_m3_s"]
+        for zone_id, flow in initial_flows.items():
+            flow_value = _nonnegative(
+                flow, path=f"initial_utility.actual_airflow_m3_s.{zone_id}"
             )
-    if sum(initial_flows.values()) > equipment["max_total_airflow_m3_s"]:
-        _invalid(
-            "initial_utility.actual_airflow_m3_s",
-            "exceeds total airflow capacity",
+            if flow_value > equipment["max_zone_airflow_m3_s"]:
+                _invalid(
+                    f"initial_utility.actual_airflow_m3_s.{zone_id}",
+                    "exceeds per-zone airflow capacity",
+                )
+        if sum(initial_flows.values()) > equipment["max_total_airflow_m3_s"]:
+            _invalid(
+                "initial_utility.actual_airflow_m3_s",
+                "exceeds total airflow capacity",
+            )
+    else:
+        _fraction(
+            utility["actual_fan_speed_fraction"],
+            path="initial_utility.actual_fan_speed_fraction",
         )
+        for damper_id, position in utility["actual_damper_position_by_id"].items():
+            _fraction(
+                position,
+                path=f"initial_utility.actual_damper_position_by_id.{damper_id}",
+            )
+
+        network = scenario["air_network"]
+        _vector3(
+            network["supply_plenum_position_m"],
+            path="air_network.supply_plenum_position_m",
+        )
+        _vector3(
+            network["return_plenum_position_m"],
+            path="air_network.return_plenum_position_m",
+        )
+        fan = network["fan"]
+        if not isinstance(fan["id"], str) or not fan["id"].strip():
+            _invalid("air_network.fan.id", "must be a non-empty string")
+        for field in (
+            "rated_free_delivery_m3_s",
+            "rated_shutoff_pressure_pa",
+            "speed_slew_fraction_per_s",
+        ):
+            _positive(fan[field], path=f"air_network.fan.{field}")
+        fan_efficiency = _number(
+            fan["total_efficiency"], path="air_network.fan.total_efficiency"
+        )
+        if not 0.0 < fan_efficiency <= 1.0:
+            _invalid("air_network.fan.total_efficiency", "must be in (0, 1]")
+        _vector3(fan["position_m"], path="air_network.fan.position_m")
+
+        shared_resistance = network["shared_resistance"]
+        for field in sorted(_SHARED_RESISTANCE_FIELDS):
+            _nonnegative(
+                shared_resistance[field],
+                path=f"air_network.shared_resistance.{field}",
+            )
+        if sum(float(shared_resistance[field]) for field in _SHARED_RESISTANCE_FIELDS) <= 0.0:
+            _invalid(
+                "air_network.shared_resistance",
+                "at least one shared resistance must be greater than zero",
+            )
+
+        component_ids = {str(fan["id"])}
+        for branch_index, branch in enumerate(network["branches"]):
+            branch_prefix = f"air_network.branches[{branch_index}]"
+            for field in ("zone_id", "damper_id"):
+                if not isinstance(branch[field], str) or not branch[field].strip():
+                    _invalid(f"{branch_prefix}.{field}", "must be a non-empty string")
+            if branch["damper_id"] in component_ids:
+                _invalid(f"{branch_prefix}.damper_id", "component ids must be unique")
+            component_ids.add(branch["damper_id"])
+            for field in (
+                "open_supply_resistance_pa_s2_m6",
+                "return_resistance_pa_s2_m6",
+                "damper_slew_fraction_per_s",
+            ):
+                _positive(branch[field], path=f"{branch_prefix}.{field}")
+            leak_fraction = _number(
+                branch["damper_leak_fraction"],
+                path=f"{branch_prefix}.damper_leak_fraction",
+            )
+            if not 0.0 < leak_fraction <= 1.0:
+                _invalid(
+                    f"{branch_prefix}.damper_leak_fraction", "must be in (0, 1]"
+                )
+            for field in (
+                "supply_diffuser_position_m",
+                "return_grille_position_m",
+                "damper_position_m",
+            ):
+                _vector3(branch[field], path=f"{branch_prefix}.{field}")
+            polyline = branch["duct_polyline_m"]
+            if not isinstance(polyline, list) or len(polyline) < 2:
+                _invalid(
+                    f"{branch_prefix}.duct_polyline_m",
+                    "must contain at least two 3D points",
+                )
+            for point_index, point in enumerate(polyline):
+                _vector3(
+                    point,
+                    path=f"{branch_prefix}.duct_polyline_m[{point_index}]",
+                )
 
     timeline = scenario["timeline"]
     if not timeline:
@@ -407,7 +686,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             _invalid(prefix, "segments must cover steps contiguously from 0 to steps")
         expected_start = end
         _nonnegative(segment["generation_w"], path=f"{prefix}.generation_w")
-        if scenario["schema_version"] == SCENARIO_SCHEMA_VERSION_V2:
+        if schema_version in {SCENARIO_SCHEMA_VERSION_V2, SCENARIO_SCHEMA_VERSION_V3}:
             mode = segment["operating_mode"]
             if not isinstance(mode, str) or mode not in _OPERATING_MODES:
                 _invalid(
@@ -422,21 +701,32 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
         command = segment["command"]
         for field in ("scrubber_duty", "condenser_duty"):
             _fraction(command[field], path=f"{prefix}.command.{field}")
-        flows = command["airflow_m3_s"]
-        for zone_id, flow in flows.items():
-            flow_value = _nonnegative(
-                flow, path=f"{prefix}.command.airflow_m3_s.{zone_id}"
-            )
-            if flow_value > equipment["max_zone_airflow_m3_s"]:
-                _invalid(
-                    f"{prefix}.command.airflow_m3_s.{zone_id}",
-                    "exceeds per-zone airflow capacity",
+        if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
+            flows = command["airflow_m3_s"]
+            for zone_id, flow in flows.items():
+                flow_value = _nonnegative(
+                    flow, path=f"{prefix}.command.airflow_m3_s.{zone_id}"
                 )
-        if sum(flows.values()) > equipment["max_total_airflow_m3_s"]:
-            _invalid(
-                f"{prefix}.command.airflow_m3_s",
-                "exceeds total airflow capacity",
+                if flow_value > equipment["max_zone_airflow_m3_s"]:
+                    _invalid(
+                        f"{prefix}.command.airflow_m3_s.{zone_id}",
+                        "exceeds per-zone airflow capacity",
+                    )
+            if sum(flows.values()) > equipment["max_total_airflow_m3_s"]:
+                _invalid(
+                    f"{prefix}.command.airflow_m3_s",
+                    "exceeds total airflow capacity",
+                )
+        else:
+            _fraction(
+                command["fan_speed_fraction"],
+                path=f"{prefix}.command.fan_speed_fraction",
             )
+            for damper_id, position in command["damper_position_by_id"].items():
+                _fraction(
+                    position,
+                    path=f"{prefix}.command.damper_position_by_id.{damper_id}",
+                )
         cooling = command["cooling_removed_w"]
         for zone_id, value in cooling.items():
             cooling_value = _nonnegative(
@@ -512,7 +802,10 @@ class Scenario:
             raise ScenarioValidationError(
                 "trace schema does not match scenario schema identity"
             )
-        if self.equation_contract_revision != EQUATION_CONTRACT_REVISION:
+        expected_equation_contract = _equation_contract_for_scenario(
+            self.scenario_schema_version
+        )
+        if self.equation_contract_revision != expected_equation_contract:
             raise ScenarioValidationError("unsupported equation contract identity")
         expected_run_id = derive_run_id(
             scenario_sha256=self.scenario_sha256,
@@ -529,21 +822,22 @@ class Scenario:
             raise ScenarioValidationError("scenario must be a JSON object")
 
         normalised = _normalise_json(mapping)
-        unknown_fields = sorted(set(normalised) - _TOP_LEVEL_FIELDS)
+        schema_version = normalised.get("schema_version")
+        if not isinstance(schema_version, str):
+            raise ScenarioValidationError("schema_version must be a string")
+        _timeline_fields_for_schema(schema_version)
+        top_level_fields = _top_level_fields_for_schema(schema_version)
+        unknown_fields = sorted(set(normalised) - top_level_fields)
         if unknown_fields:
             raise ScenarioValidationError(
                 f"unknown top-level fields: {', '.join(unknown_fields)}"
             )
-        missing_fields = sorted(_TOP_LEVEL_FIELDS - set(normalised))
+        missing_fields = sorted(top_level_fields - set(normalised))
         if missing_fields:
             raise ScenarioValidationError(
                 f"missing top-level fields: {', '.join(missing_fields)}"
             )
 
-        schema_version = normalised.get("schema_version")
-        if not isinstance(schema_version, str):
-            raise ScenarioValidationError("schema_version must be a string")
-        _timeline_fields_for_schema(schema_version)
         _validate_nested_schema(normalised)
         _validate_topology(normalised)
         _validate_values(normalised)
@@ -551,11 +845,12 @@ class Scenario:
         canonical = _canonical_bytes(normalised)
         scenario_sha256 = hashlib.sha256(canonical).hexdigest()
         trace_schema_version = _trace_schema_for_scenario(schema_version)
+        equation_contract_revision = _equation_contract_for_scenario(schema_version)
         run_id = derive_run_id(
             scenario_sha256=scenario_sha256,
             scenario_schema_version=schema_version,
             trace_schema_version=trace_schema_version,
-            equation_contract_revision=EQUATION_CONTRACT_REVISION,
+            equation_contract_revision=equation_contract_revision,
         )
         return cls(
             data=normalised,
@@ -563,6 +858,6 @@ class Scenario:
             scenario_sha256=scenario_sha256,
             scenario_schema_version=schema_version,
             trace_schema_version=trace_schema_version,
-            equation_contract_revision=EQUATION_CONTRACT_REVISION,
+            equation_contract_revision=equation_contract_revision,
             run_id=run_id,
         )

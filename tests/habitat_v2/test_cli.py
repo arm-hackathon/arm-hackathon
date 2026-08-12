@@ -19,6 +19,11 @@ OPERATING_MODE_SCENARIO_PATH = (
     / "scenarios"
     / "habitat_v2_operating_modes.json"
 )
+AIR_NETWORK_SCENARIO_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "scenarios"
+    / "habitat_v2_air_network.json"
+)
 
 
 def test_checked_in_reference_scenario_loads_and_runs() -> None:
@@ -43,6 +48,38 @@ def test_checked_in_operating_mode_scenario_replays_deterministically() -> None:
     ]
     assert first.trace_bytes == second.trace_bytes
     assert validate_trace_bytes(first.trace_bytes, scenario=scenario) == first.rows
+
+
+def test_checked_in_air_network_scenario_runs_eight_zone_world() -> None:
+    scenario = load_scenario_file(AIR_NETWORK_SCENARIO_PATH)
+    first = run_scenario(scenario)
+    second = run_scenario(scenario)
+    expected_zone_ids = {
+        "air_processing_bay",
+        "airlock_suitport",
+        "common_galley",
+        "crew_quarters_a",
+        "crew_quarters_b",
+        "equipment_power_bay",
+        "hygiene_medical",
+        "laboratory",
+    }
+
+    assert scenario.data["name"] == "aeolus-habitat-v2-eight-zone-air-network"
+    assert {zone["id"] for zone in scenario.data["zones"]} == expected_zone_ids
+    assert [segment["operating_mode"] for segment in scenario.data["timeline"]] == [
+        "occupied",
+        "eva_transition",
+        "contingency",
+        "dormant",
+    ]
+    assert first.trace_bytes == second.trace_bytes
+    assert validate_trace_bytes(first.trace_bytes, scenario=scenario) == first.rows
+    assert set(first.rows[-1]["telemetry"]) == expected_zone_ids
+    network = first.rows[1]["air_network_receipt"]
+    assert set(network["zone_flow_m3_s"]) == expected_zone_ids
+    assert network["total_flow_m3_s"] > 0.0
+    assert network["fan_electrical_power_w"] > 0.0
 
 
 def test_cli_writes_and_validates_operating_mode_trace(tmp_path, capsys) -> None:
