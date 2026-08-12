@@ -27,6 +27,18 @@ from aeolus.measurement import (
 
 
 @dataclass(frozen=True)
+class ReserveAirflowState:
+    """Independent reserve actuator, flow, capacity, and power state."""
+
+    actuators: dict[str, ActuatorState] = field(default_factory=dict)
+    requested_airflows: dict[str, float] = field(default_factory=dict)
+    delivered_airflows: dict[str, float] = field(default_factory=dict)
+    airflow_residuals: dict[str, float] = field(default_factory=dict)
+    capacity_scale: float = 1.0
+    total_power: float = 0.0
+
+
+@dataclass(frozen=True)
 class HabitatState:
     """Complete habitat state at the end of one fixed-duration tick."""
 
@@ -43,11 +55,15 @@ class HabitatState:
     airflow_residuals: dict[str, float] = field(default_factory=dict)
     capacity_scale: float = 1.0
     frozen_sensor_readings: dict[str, float] = field(default_factory=dict)
+    reserve: ReserveAirflowState = field(default_factory=ReserveAirflowState)
 
 
 def initial_state(config: HabitatConfig) -> HabitatState:
     """Create a fresh, empty and fully deterministic plant state."""
     zero_airflow = {connection.id: 0.0 for connection in config.connections}
+    zero_reserve_airflow = {
+        connection.id: 0.0 for connection in config.reserve_connections
+    }
     return HabitatState(
         tick=0,
         zone_co2_mass={zone.id: 0.0 for zone in config.zones},
@@ -63,6 +79,16 @@ def initial_state(config: HabitatConfig) -> HabitatState:
         delivered_airflows=dict(zero_airflow),
         airflow_residuals=dict(zero_airflow),
         capacity_scale=1.0,
+        reserve=ReserveAirflowState(
+            actuators={
+                zone.id: ActuatorState()
+                for zone in config.non_processing_zones()
+                if config.reserve_connections
+            },
+            requested_airflows=zero_reserve_airflow,
+            delivered_airflows=dict(zero_reserve_airflow),
+            airflow_residuals=dict(zero_reserve_airflow),
+        ),
     )
 
 
@@ -137,6 +163,39 @@ def _validated_override_commands(
     return commands
 
 
+def _validated_reserve_commands(
+    config: HabitatConfig, reserve_commands: Mapping[str, float] | None
+) -> dict[str, float]:
+    """Validate exact reserve-zone commands, defaulting installed hardware off."""
+    if not config.reserve_connections:
+        if reserve_commands is not None:
+            raise ValueError("reserve commands require a recovery reserve topology")
+        return {}
+    expected = {zone.id for zone in config.non_processing_zones()}
+    if reserve_commands is None:
+        return {zone_id: 0.0 for zone_id in expected}
+    commands = dict(reserve_commands)
+    missing = sorted(expected - set(commands))
+    unexpected = sorted(set(commands) - expected, key=repr)
+    if missing or unexpected:
+        raise ValueError(
+            "reserve commands must target exactly the non-processing zones: "
+            f"missing={missing!r} unexpected={unexpected!r}"
+        )
+    for zone_id, value in commands.items():
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 0.0 <= value <= 1.0
+        ):
+            raise ValueError(
+                f"reserve commands for zone {zone_id!r} must be a finite number "
+                "in 0.0..1.0"
+            )
+    return commands
+
+
 def _occupancy_multiplier(zone, tick: int) -> float:
     for period in zone.occupancy_profile:
         if period.start_tick <= tick <= period.end_tick:
@@ -175,6 +234,7 @@ def step_habitat(
     connection_effectiveness: Mapping[str, float] | None = None,
     frozen_zones: Collection[str] | None = None,
     override_commands: Mapping[str, float] | None = None,
+    reserve_commands: Mapping[str, float] | None = None,
     source_tick: int | None = None,
     occupancy_tick: int | None = None,
 ) -> tuple[HabitatState, dict[str, float]]:
@@ -207,6 +267,7 @@ def step_habitat(
             f"frozen sensor targets unknown or processing zone {unknown_frozen[0]!r}"
         )
     override_commands = _validated_override_commands(config, override_commands)
+    reserve_commands = _validated_reserve_commands(config, reserve_commands)
 
     # 1. Occupancy-scaled, replayable CO₂ sources.
     source_co2_mass: dict[str, float] = {}
@@ -328,11 +389,72 @@ def step_habitat(
             delivered_airflows[connection.id] = delivered
             airflow_residuals[connection.id] = residual
 
+    # Reserve hardware has its own actuator state, health, and shared-capacity plane.
+    reserve_actuators: dict[str, ActuatorState] = {}
+    reserve_requested_by_zone: dict[str, float] = {}
+    reserve_provisional_by_zone: dict[str, float] = {}
+    for zone in config.non_processing_zones():
+        if not config.reserve_connections:
+            break
+        outbound = config.reserve_path_to_processing(zone.id)
+        inbound = config.reserve_path_from_processing(zone.id)
+        actuator = actuator_model.step(
+            state.reserve.actuators[zone.id], reserve_commands[zone.id]
+        )
+        reserve_actuators[zone.id] = actuator
+        requested = requested_loop_airflow(outbound, inbound, actuator.actual_position)
+        reserve_requested_by_zone[zone.id] = requested
+        reserve_provisional_by_zone[zone.id] = requested * _loop_static_health(
+            outbound, inbound
+        )
+
+    total_reserve_provisional = sum(reserve_provisional_by_zone.values())
+    reserve_capacity = config.air_system.reserve_airflow_capacity
+    reserve_capacity_scale = (
+        math.nextafter(reserve_capacity / total_reserve_provisional, 0.0)
+        if total_reserve_provisional > reserve_capacity
+        else 1.0
+    )
+    reserve_delivered_by_zone = {
+        zone_id: provisional * reserve_capacity_scale
+        for zone_id, provisional in reserve_provisional_by_zone.items()
+    }
+    reserve_requested_airflows: dict[str, float] = {}
+    reserve_delivered_airflows: dict[str, float] = {}
+    reserve_airflow_residuals: dict[str, float] = {}
+    for zone in config.non_processing_zones():
+        if not config.reserve_connections:
+            break
+        outbound = config.reserve_path_to_processing(zone.id)
+        inbound = config.reserve_path_from_processing(zone.id)
+        requested = reserve_requested_by_zone[zone.id]
+        delivered = reserve_delivered_by_zone[zone.id]
+        residual = requested - delivered
+        for connection in (outbound, inbound):
+            reserve_requested_airflows[connection.id] = requested
+            reserve_delivered_airflows[connection.id] = delivered
+            reserve_airflow_residuals[connection.id] = residual
+    reserve_state = ReserveAirflowState(
+        actuators=reserve_actuators,
+        requested_airflows=reserve_requested_airflows,
+        delivered_airflows=reserve_delivered_airflows,
+        airflow_residuals=reserve_airflow_residuals,
+        capacity_scale=reserve_capacity_scale,
+        total_power=sum(actuator.power for actuator in reserve_actuators.values()),
+    )
+    combined_delivered_by_zone = {
+        zone.id: delivered_by_zone[zone.id]
+        + reserve_delivered_by_zone.get(zone.id, 0.0)
+        for zone in config.non_processing_zones()
+    }
+
     # 4. Calculate every extraction from the same pre-transfer state.
     retained_mass = dict(zone_co2_mass)
     extracted_mass: dict[str, float] = {}
     for zone in config.non_processing_zones():
-        moved_fraction = min(delivered_by_zone[zone.id] / zone.air_volume, 1.0)
+        moved_fraction = min(
+            combined_delivered_by_zone[zone.id] / zone.air_volume, 1.0
+        )
         extracted = zone_co2_mass[zone.id] * moved_fraction
         extracted_mass[zone.id] = extracted
         retained_mass[zone.id] -= extracted
@@ -343,10 +465,12 @@ def step_habitat(
         total_extracted_mass * config.air_system.scrubber_removal_fraction
     )
     returned_mass = total_extracted_mass - captured_this_tick
-    total_delivered_airflow = sum(delivered_by_zone.values())
+    total_delivered_airflow = sum(combined_delivered_by_zone.values())
     if total_delivered_airflow > 0.0:
         for zone in config.non_processing_zones():
-            return_share = delivered_by_zone[zone.id] / total_delivered_airflow
+            return_share = (
+                combined_delivered_by_zone[zone.id] / total_delivered_airflow
+            )
             retained_mass[zone.id] += returned_mass * return_share
 
     new_state = HabitatState(
@@ -363,5 +487,6 @@ def step_habitat(
         airflow_residuals=airflow_residuals,
         capacity_scale=capacity_scale,
         frozen_sensor_readings=frozen_sensor_readings,
+        reserve=reserve_state,
     )
     return new_state, delivered_airflows

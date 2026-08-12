@@ -16,6 +16,8 @@ from aeolus.config import (
     FrozenSensor,
     GradualPrimaryFanDegradation,
     HabitatConfig,
+    TransientBlockedPath,
+    TransientGradualPrimaryFanDegradation,
     load_scenario,
 )
 from aeolus.model_input import (
@@ -28,6 +30,16 @@ from aeolus.scenario import run_scenario
 
 
 FAMILY_MANIFEST_VERSION = "aeolus_family_manifest_v1"
+RECOVERY_FAMILY_MANIFEST_VERSION = "aeolus_family_manifest_v2"
+_SUPPORTED_MANIFEST_VERSIONS = frozenset(
+    {FAMILY_MANIFEST_VERSION, RECOVERY_FAMILY_MANIFEST_VERSION}
+)
+RECOVERY_COUNTERFACTUAL_ARMS = (
+    "reference_reserve_off",
+    "reference_governed",
+    "fault_reserve_off",
+    "fault_governed",
+)
 _SPLITS = frozenset({"train", "validation", "test", "stress", "final"})
 _TOP_LEVEL_FIELDS = frozenset(
     {
@@ -47,10 +59,19 @@ _FAMILY_FIELDS = frozenset(
         "split",
     }
 )
+_RECOVERY_FAMILY_FIELDS = _FAMILY_FIELDS | {
+    "counterfactual_group_id",
+    "base_condition_id",
+    "counterfactual_arms",
+}
 _FAULT_CLASSES = {
     GradualPrimaryFanDegradation: "gradual_primary_fan_degradation",
     BlockedPath: "blocked_path",
     FrozenSensor: "frozen_sensor",
+    TransientBlockedPath: "transient_blocked_path",
+    TransientGradualPrimaryFanDegradation: (
+        "transient_gradual_primary_fan_degradation"
+    ),
 }
 
 
@@ -63,22 +84,35 @@ class ScenarioFamily:
     fault_class: str
     reference_path: Path
     fault_path: Path
+    counterfactual_group_id: str | None = None
+    base_condition_id: str | None = None
+    counterfactual_arms: tuple[str, ...] = ()
 
-    def canonical_representation(self) -> dict[str, str]:
+    def canonical_representation(self) -> dict[str, Any]:
         """Return the canonical, path-independent manifest representation."""
-        return {
+        representation: dict[str, Any] = {
             "family_id": self.family_id,
             "fault_class": self.fault_class,
             "fault_scenario": self.fault_path.name,
             "reference_scenario": self.reference_path.name,
             "split": self.split,
         }
+        if self.counterfactual_group_id is not None:
+            representation.update(
+                {
+                    "counterfactual_group_id": self.counterfactual_group_id,
+                    "base_condition_id": self.base_condition_id,
+                    "counterfactual_arms": list(self.counterfactual_arms),
+                }
+            )
+        return representation
 
 
 @dataclass(frozen=True)
 class FamilyManifest:
     """Validated family split and Gate-1 contract binding."""
 
+    schema_version: str
     families: tuple[ScenarioFamily, ...]
     contract_metadata: dict[str, str]
     canonical_json: str
@@ -129,7 +163,11 @@ def parse_family_manifest(document: object, *, base_dir: Path) -> FamilyManifest
     if not isinstance(document, dict):
         raise ValueError("family manifest must be a JSON object")
     _reject_unknown_fields(document, _TOP_LEVEL_FIELDS, "family manifest")
-    if document.get("schema_version") != FAMILY_MANIFEST_VERSION:
+    schema_version = document.get("schema_version")
+    if (
+        not isinstance(schema_version, str)
+        or schema_version not in _SUPPORTED_MANIFEST_VERSIONS
+    ):
         raise ValueError("family manifest schema_version is unsupported")
 
     model_input_version = document.get("model_input_version")
@@ -155,13 +193,28 @@ def parse_family_manifest(document: object, *, base_dir: Path) -> FamilyManifest
 
     families: list[ScenarioFamily] = []
     seen_ids: set[str] = set()
+    seen_counterfactual_groups: set[str] = set()
+    base_condition_splits: dict[str, str] = {}
     scenario_splits: dict[str, str] = {}
     pair_owners: dict[tuple[str, str], str] = {}
     for raw_family in raw_families:
-        family = _parse_family(raw_family, base_dir=base_dir)
+        family = _parse_family(
+            raw_family, base_dir=base_dir, schema_version=schema_version
+        )
         if family.family_id in seen_ids:
             raise ValueError(f"duplicate family_id {family.family_id!r}")
         seen_ids.add(family.family_id)
+        if schema_version == RECOVERY_FAMILY_MANIFEST_VERSION:
+            assert family.counterfactual_group_id is not None
+            assert family.base_condition_id is not None
+            if family.counterfactual_group_id in seen_counterfactual_groups:
+                raise ValueError("duplicate counterfactual_group_id")
+            seen_counterfactual_groups.add(family.counterfactual_group_id)
+            existing_split = base_condition_splits.setdefault(
+                family.base_condition_id, family.split
+            )
+            if existing_split != family.split:
+                raise ValueError("base_condition_id is assigned to more than one split")
         _validate_family_pair(family, declared_metadata)
         reference_identity = _canonical_scenario_sha256(family.reference_path)
         fault_identity = _canonical_scenario_sha256(family.fault_path)
@@ -179,12 +232,13 @@ def parse_family_manifest(document: object, *, base_dir: Path) -> FamilyManifest
     canonical_document = {
         "families": [family.canonical_representation() for family in ordered_families],
         "model_input_version": declared_metadata["model_input_version"],
-        "schema_version": FAMILY_MANIFEST_VERSION,
+        "schema_version": schema_version,
         "selector_sha256": declared_metadata["selector_sha256"],
         "topology_sha256": declared_metadata["topology_sha256"],
     }
     canonical_json = _canonical_json(canonical_document)
     return FamilyManifest(
+        schema_version=schema_version,
         families=ordered_families,
         contract_metadata=dict(declared_metadata),
         canonical_json=canonical_json,
@@ -320,11 +374,18 @@ def _canonical_scenario_sha256(path: Path) -> str:
     return _sha256(_canonical_json(document))
 
 
-def _parse_family(raw_family: object, *, base_dir: Path) -> ScenarioFamily:
+def _parse_family(
+    raw_family: object, *, base_dir: Path, schema_version: str
+) -> ScenarioFamily:
     if not isinstance(raw_family, dict):
         raise ValueError("family entry must be a JSON object")
-    _reject_unknown_fields(raw_family, _FAMILY_FIELDS, "family entry")
-    required = _FAMILY_FIELDS - set(raw_family)
+    family_fields = (
+        _RECOVERY_FAMILY_FIELDS
+        if schema_version == RECOVERY_FAMILY_MANIFEST_VERSION
+        else _FAMILY_FIELDS
+    )
+    _reject_unknown_fields(raw_family, family_fields, "family entry")
+    required = family_fields - set(raw_family)
     if required:
         raise ValueError(f"family entry is missing required fields {sorted(required)!r}")
 
@@ -338,12 +399,33 @@ def _parse_family(raw_family: object, *, base_dir: Path) -> ScenarioFamily:
     if fault_class not in set(_FAULT_CLASSES.values()):
         raise ValueError(f"unsupported family fault_class {fault_class!r}")
 
+    counterfactual_group_id: str | None = None
+    base_condition_id: str | None = None
+    counterfactual_arms: tuple[str, ...] = ()
+    if schema_version == RECOVERY_FAMILY_MANIFEST_VERSION:
+        counterfactual_group_id = raw_family["counterfactual_group_id"]
+        base_condition_id = raw_family["base_condition_id"]
+        raw_arms = raw_family["counterfactual_arms"]
+        if (
+            not isinstance(counterfactual_group_id, str)
+            or counterfactual_group_id != family_id
+        ):
+            raise ValueError("counterfactual_group_id must equal family_id")
+        if not isinstance(base_condition_id, str) or not base_condition_id:
+            raise ValueError("base_condition_id must be a non-empty string")
+        if not isinstance(raw_arms, list) or tuple(raw_arms) != RECOVERY_COUNTERFACTUAL_ARMS:
+            raise ValueError("recovery family counterfactual arms are incomplete")
+        counterfactual_arms = tuple(raw_arms)
+
     return ScenarioFamily(
         family_id=family_id,
         split=split,
         fault_class=fault_class,
         reference_path=_scenario_path(base_dir, raw_family["reference_scenario"]),
         fault_path=_scenario_path(base_dir, raw_family["fault_scenario"]),
+        counterfactual_group_id=counterfactual_group_id,
+        base_condition_id=base_condition_id,
+        counterfactual_arms=counterfactual_arms,
     )
 
 
@@ -386,6 +468,7 @@ def _same_non_fault_configuration(
         reference.version == fault.version
         and reference.zones == fault.zones
         and reference.connections == fault.connections
+        and reference.reserve_connections == fault.reserve_connections
         and reference.control == fault.control
         and reference.actuator == fault.actuator
         and reference.simulation == fault.simulation

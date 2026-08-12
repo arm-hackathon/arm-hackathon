@@ -17,14 +17,22 @@ records the same bounded, deterministic metrics for both:
 Reference (healthy) runs are evaluated under both controllers to verify the
 bounded response never degrades healthy operation.
 
-The emitted JSON receipt binds the result to the exact sweep spec, the exact
-family manifest, and the exact response settings via SHA-256 hashes.
+The emitted JSON receipt records the experiment environment using the same
+source/provenance fields as the experiment receipt. It binds exact source,
+project-configuration, base-scenario and sweep bytes with SHA-256, while also
+recording canonical hashes for the sweep and generated scenario manifest. All
+keys are repository-relative logical names; output paths are never hashed.
+The `source_worktree_dirty` flag is the repository's actual Git status and is
+never inferred as clean from a generated receipt.
 """
 
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
+import platform
+import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -36,6 +44,7 @@ from aeolus.scenario import RunSpec, STANDARD_RUN, run_governed_scenario, run_sc
 from aeolus.sweep import generate_sweep, load_sweep_spec
 
 EVIDENCE_VERSION = "aeolus_response_evidence_v1"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 USAGE = (
     "Usage: PYTHONPATH=src python -m aeolus.response_evidence "
     "<sweep.json> <output-dir>"
@@ -59,8 +68,16 @@ def _evaluated_response_settings(
     from aeolus.config import load_scenario
 
     governor = governor_factory(load_scenario(sweep_spec.base_scenario_path))
+    return _governor_response_settings(
+        governor, factory_name=_factory_name(governor_factory)
+    )
+
+
+def _governor_response_settings(
+    governor: Any, *, factory_name: str
+) -> dict[str, Any]:
+    """Return the declared settings of one governor instance."""
     settings = getattr(governor, "settings", None)
-    factory_name = _factory_name(governor_factory)
     if settings is None:
         return {"governor_factory": factory_name, "settings_status": "unavailable"}
     if not isinstance(settings, ResponseSettings):
@@ -68,6 +85,164 @@ def _evaluated_response_settings(
             "response evidence governor settings must be ResponseSettings or unavailable"
         )
     return {"governor_factory": factory_name, **asdict(settings)}
+
+
+def _receipt_bound_governor_factory(
+    governor_factory: GovernorFactory, response_settings: dict[str, Any]
+) -> GovernorFactory:
+    """Reject factory instances whose declared settings differ from the receipt."""
+    factory_name = _factory_name(governor_factory)
+
+    def bound_factory(config: Any) -> BoundedRecoveryGovernor:
+        governor = governor_factory(config)
+        actual_settings = _governor_response_settings(
+            governor, factory_name=factory_name
+        )
+        if actual_settings != response_settings:
+            raise ValueError(
+                "response evidence governor factory settings differ from "
+                "receipt-bound settings"
+            )
+        return governor
+
+    return bound_factory
+
+
+def _provenance_response_settings(response_settings: dict[str, Any]) -> dict[str, Any]:
+    """Preserve the provenance schema while binding evaluated factory settings."""
+    if response_settings.get("settings_status") == "unavailable":
+        return dict(response_settings)
+    return {
+        "governor_factory": response_settings["governor_factory"],
+        "settings": {
+            key: value
+            for key, value in response_settings.items()
+            if key != "governor_factory"
+        },
+    }
+
+
+def _git_output(*args: str) -> str:
+    """Return a repository-local Git command result for an evidence receipt."""
+    result = subprocess.run(
+        ["git", *args],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _sha256_file(path: Path) -> str:
+    """Hash one exact file byte stream."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _canonical_sha256(document: object) -> str:
+    """Hash a path-independent canonical JSON representation."""
+    canonical = json.dumps(
+        document,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _source_file_hashes() -> dict[str, str]:
+    """Hash every repository source module that can affect a replay."""
+    source_root = REPOSITORY_ROOT / "src" / "aeolus"
+    paths = sorted(
+        path for path in source_root.rglob("*.py") if path.is_file()
+    )
+    if not paths:
+        raise OSError(f"canonical response evidence requires source files: {source_root}")
+    return {
+        path.relative_to(REPOSITORY_ROOT).as_posix(): _sha256_file(path)
+        for path in paths
+    }
+
+
+def _required_project_file_hashes() -> dict[str, str]:
+    """Hash the locked project configuration using stable logical names."""
+    paths = {
+        "pyproject.toml": REPOSITORY_ROOT / "pyproject.toml",
+        "uv.lock": REPOSITORY_ROOT / "uv.lock",
+    }
+    missing = [name for name, path in paths.items() if not path.is_file()]
+    if missing:
+        raise OSError(
+            "canonical response evidence requires project files: "
+            + ", ".join(missing)
+        )
+    return {name: _sha256_file(path) for name, path in paths.items()}
+
+
+def _generated_scenario_hashes(corpus_dir: Path) -> dict[str, str]:
+    """Hash generated scenario bytes without including the corpus path."""
+    paths = sorted(
+        path
+        for path in corpus_dir.rglob("*.json")
+        if path.is_file() and path.name != "families.json"
+    )
+    return {
+        path.relative_to(corpus_dir).as_posix(): _sha256_file(path)
+        for path in paths
+    }
+
+
+def _receipt_provenance(
+    *,
+    sweep_spec: Any,
+    corpus_dir: Path,
+    manifest: Any,
+    response_settings: dict[str, Any],
+) -> dict[str, Any]:
+    """Return reproducibility provenance with no output-path-dependent values."""
+    source_files = _source_file_hashes()
+    project_files = _required_project_file_hashes()
+    run_spec = asdict(STANDARD_RUN)
+    provenance_response_settings = _provenance_response_settings(response_settings)
+    generated_scenarios = _generated_scenario_hashes(corpus_dir)
+    lock_hash = project_files["uv.lock"]
+    return {
+        "environment": {
+            "python_implementation": sys.implementation.name,
+            "python_version": platform.python_version(),
+            "platform": platform.platform(),
+            "numpy_version": importlib.metadata.version("numpy"),
+            "uv_lock_sha256": lock_hash,
+            "source_commit": _git_output("rev-parse", "HEAD"),
+            "source_worktree_dirty": bool(_git_output("status", "--porcelain")),
+        },
+        "source": {
+            "files_sha256": source_files,
+            "manifest_sha256": _canonical_sha256(source_files),
+        },
+        "config": {
+            "project_files_sha256": project_files,
+            "base_scenario_bytes_sha256": _sha256_file(
+                sweep_spec.base_scenario_path
+            ),
+            "run_spec": run_spec,
+            "run_spec_sha256": _canonical_sha256(run_spec),
+            "response_settings": provenance_response_settings,
+            "response_settings_sha256": _canonical_sha256(
+                provenance_response_settings
+            ),
+        },
+        "sweep": {
+            "bytes_sha256": _sha256_file(sweep_spec.source_path),
+            "canonical_sha256": sweep_spec.sha256,
+            "generated_scenarios_sha256": generated_scenarios,
+            "generated_scenarios_manifest_sha256": _canonical_sha256(
+                generated_scenarios
+            ),
+            "family_manifest_sha256": manifest.manifest_sha256,
+        },
+    }
 
 
 def metrics_for_records(
@@ -241,17 +416,29 @@ def run_response_evidence(
     response_settings = _evaluated_response_settings(
         sweep_spec=sweep_spec, governor_factory=governor_factory
     )
+    bound_governor_factory = _receipt_bound_governor_factory(
+        governor_factory, response_settings
+    )
     corpus_dir = destination / "corpus"
     corpus_dir.mkdir()
     generate_sweep(sweep_path, corpus_dir)
     manifest = load_family_manifest(corpus_dir / "families.json")
 
     rows = [
-        evaluate_family(family, corpus_dir=corpus_dir, governor_factory=governor_factory)
+        evaluate_family(
+            family, corpus_dir=corpus_dir, governor_factory=bound_governor_factory
+        )
         for family in manifest.families
     ]
+    provenance = _receipt_provenance(
+        sweep_spec=sweep_spec,
+        corpus_dir=corpus_dir,
+        manifest=manifest,
+        response_settings=response_settings,
+    )
     receipt = {
         "evidence_version": EVIDENCE_VERSION,
+        **provenance,
         "sweep_spec_sha256": sweep_spec.sha256,
         "family_manifest_sha256": manifest.manifest_sha256,
         "response_settings": response_settings,
