@@ -9,6 +9,7 @@ from .scenario import (
     TRACE_SCHEMA_VERSION_V1,
     TRACE_SCHEMA_VERSION_V2,
     TRACE_SCHEMA_VERSION_V3,
+    TRACE_SCHEMA_VERSION_V4,
     derive_run_id,
 )
 
@@ -75,6 +76,14 @@ _TRACE_FIELDS_V1 = {
 }
 _TRACE_FIELDS_V2 = _TRACE_FIELDS_V1 | {"applied_operating_mode"}
 _TRACE_FIELDS_V3 = _TRACE_FIELDS_V2 | {"air_network_receipt"}
+_TRACE_FIELDS_V4 = _TRACE_FIELDS_V3 | {"sensor_disagreement", "fault_receipt"}
+_SENSOR_DISAGREEMENT_FIELDS = {"secondary", "primary_minus_secondary"}
+_FAULT_RECEIPT_FIELDS = {
+    "truth_telemetry",
+    "primary_residual",
+    "secondary_residual",
+    "active_faults",
+}
 _AIR_NETWORK_RECEIPT_FIELDS = {
     "requested_fan_speed_fraction",
     "actual_fan_speed_fraction",
@@ -92,6 +101,16 @@ _AIR_NETWORK_RECEIPT_FIELDS = {
     "air_density_kg_m3",
     "operating_point_residual_pa",
     "mass_balance_residual_kg_s",
+}
+_AIR_NETWORK_RECEIPT_FIELDS_V4 = _AIR_NETWORK_RECEIPT_FIELDS | {
+    "effective_fan_speed_fraction"
+}
+_ACTIVE_FAULT_FIELDS = {
+    "fault_id",
+    "fault_type",
+    "target_id",
+    "effect_name",
+    "effect_value",
 }
 _LINEAGE_FIELDS = {
     "run_id",
@@ -113,6 +132,8 @@ def _trace_fields_for_scenario(scenario: Scenario) -> set[str]:
         return _TRACE_FIELDS_V2
     if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
         return _TRACE_FIELDS_V3
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+        return _TRACE_FIELDS_V4
     raise TraceValidationError("unsupported trace schema in parsed scenario")
 
 
@@ -126,7 +147,10 @@ def _zone_ids(scenario: Scenario) -> set[str]:
 
 
 def _damper_ids(scenario: Scenario) -> set[str]:
-    if scenario.trace_schema_version != TRACE_SCHEMA_VERSION_V3:
+    if scenario.trace_schema_version not in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+    }:
         return set()
     return {
         str(branch["damper_id"])
@@ -179,7 +203,10 @@ def _validate_action(
 ) -> None:
     action = _as_mapping(value, label=label)
     zone_ids = _zone_ids(scenario)
-    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+    }:
         expected_fields = (
             _COMMAND_ACTION_FIELDS_V3 if commanded else _ACTUAL_ACTION_FIELDS_V3
         )
@@ -189,13 +216,19 @@ def _validate_action(
     for field in ("scrubber_duty", "condenser_duty"):
         _finite_number(action[field], label=f"{label} {field}")
     zone_fields = ["cooling_removed_w", "oxygen_injection_mol_s"]
-    if not commanded or scenario.trace_schema_version != TRACE_SCHEMA_VERSION_V3:
+    if not commanded or scenario.trace_schema_version not in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+    }:
         zone_fields.append("airflow_m3_s")
     for field in zone_fields:
         zone_values = _as_mapping(action[field], label=f"{label} {field}")
         _exact_fields(zone_values, zone_ids, label=f"{label} {field}")
         _validate_numeric_tree(zone_values, label=f"{label} {field}")
-    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+    }:
         _finite_number(
             action["fan_speed_fraction"], label=f"{label} fan_speed_fraction"
         )
@@ -221,7 +254,12 @@ def _validate_air_network_receipt(
     value: Any, *, label: str, scenario: Scenario
 ) -> None:
     receipt = _as_mapping(value, label=label)
-    _exact_fields(receipt, _AIR_NETWORK_RECEIPT_FIELDS, label=label)
+    expected_fields = (
+        _AIR_NETWORK_RECEIPT_FIELDS_V4
+        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4
+        else _AIR_NETWORK_RECEIPT_FIELDS
+    )
+    _exact_fields(receipt, expected_fields, label=label)
     zone_ids = _zone_ids(scenario)
     damper_ids = _damper_ids(scenario)
     for field in (
@@ -237,6 +275,11 @@ def _validate_air_network_receipt(
         "operating_point_residual_pa",
     ):
         _finite_number(receipt[field], label=f"{label} {field}")
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+        _finite_number(
+            receipt["effective_fan_speed_fraction"],
+            label=f"{label} effective_fan_speed_fraction",
+        )
     for field in (
         "requested_damper_position_by_id",
         "actual_damper_position_by_id",
@@ -253,6 +296,133 @@ def _validate_air_network_receipt(
         values = _as_mapping(receipt[field], label=f"{label} {field}")
         _exact_fields(values, zone_ids, label=f"{label} {field}")
         _validate_numeric_tree(values, label=f"{label} {field}")
+
+
+def _validate_fault_sensor_receipt(
+    row: Mapping[str, Any], *, row_index: int, scenario: Scenario
+) -> None:
+    zone_ids = _zone_ids(scenario)
+    disagreement = _as_mapping(
+        row["sensor_disagreement"], label=f"sensor disagreement row {row_index}"
+    )
+    _exact_fields(disagreement, zone_ids, label=f"sensor disagreement row {row_index}")
+    for zone_id in sorted(zone_ids):
+        zone_value = _as_mapping(
+            disagreement[zone_id],
+            label=f"sensor disagreement row {row_index} {zone_id}",
+        )
+        _exact_fields(
+            zone_value,
+            _SENSOR_DISAGREEMENT_FIELDS,
+            label=f"sensor disagreement row {row_index} {zone_id}",
+        )
+        for field in _SENSOR_DISAGREEMENT_FIELDS:
+            channels = _as_mapping(
+                zone_value[field],
+                label=f"sensor disagreement row {row_index} {zone_id} {field}",
+            )
+            _exact_fields(
+                channels,
+                _TELEMETRY_FIELDS,
+                label=f"sensor disagreement row {row_index} {zone_id} {field}",
+            )
+            _validate_numeric_tree(
+                channels,
+                label=f"sensor disagreement row {row_index} {zone_id} {field}",
+            )
+        for channel in sorted(_TELEMETRY_FIELDS):
+            expected = (
+                float(row["telemetry"][zone_id][channel])
+                - float(zone_value["secondary"][channel])
+            )
+            if float(zone_value["primary_minus_secondary"][channel]) != expected:
+                raise TraceValidationError(
+                    f"sensor disagreement arithmetic mismatch at row {row_index}"
+                )
+
+    if row_index == 0:
+        if row["fault_receipt"] is not None:
+            raise TraceValidationError("fault receipt row 0 must be null")
+        return
+
+    receipt = _as_mapping(row["fault_receipt"], label=f"fault receipt row {row_index}")
+    _exact_fields(receipt, _FAULT_RECEIPT_FIELDS, label=f"fault receipt row {row_index}")
+    active_faults = receipt["active_faults"]
+    if not isinstance(active_faults, list):
+        raise TraceValidationError(f"active faults row {row_index} must be an array")
+    previous_fault_id: str | None = None
+    for fault_index, raw_fault in enumerate(active_faults):
+        fault = _as_mapping(
+            raw_fault,
+            label=f"active fault row {row_index} index {fault_index}",
+        )
+        _exact_fields(
+            fault,
+            _ACTIVE_FAULT_FIELDS,
+            label=f"active fault row {row_index} index {fault_index}",
+        )
+        for field in ("fault_id", "fault_type", "target_id", "effect_name"):
+            if not isinstance(fault[field], str) or not fault[field]:
+                raise TraceValidationError(
+                    f"active fault {field} row {row_index} must be a non-empty string"
+                )
+        _finite_number(
+            fault["effect_value"],
+            label=f"active fault effect row {row_index} index {fault_index}",
+        )
+        fault_id = str(fault["fault_id"])
+        if previous_fault_id is not None and fault_id <= previous_fault_id:
+            raise TraceValidationError(
+                f"active faults row {row_index} must be ordered by unique fault_id"
+            )
+        previous_fault_id = fault_id
+    truth = _as_mapping(
+        receipt["truth_telemetry"], label=f"truth telemetry row {row_index}"
+    )
+    primary_residual = _as_mapping(
+        receipt["primary_residual"], label=f"primary residual row {row_index}"
+    )
+    secondary_residual = _as_mapping(
+        receipt["secondary_residual"], label=f"secondary residual row {row_index}"
+    )
+    for field_name, field_value in (
+        ("truth telemetry", truth),
+        ("primary residual", primary_residual),
+        ("secondary residual", secondary_residual),
+    ):
+        _exact_fields(field_value, zone_ids, label=f"{field_name} row {row_index}")
+    for zone_id in sorted(zone_ids):
+        for field_name, field_value in (
+            ("truth telemetry", truth),
+            ("primary residual", primary_residual),
+            ("secondary residual", secondary_residual),
+        ):
+            channels = _as_mapping(
+                field_value[zone_id],
+                label=f"{field_name} row {row_index} {zone_id}",
+            )
+            _exact_fields(
+                channels,
+                _TELEMETRY_FIELDS,
+                label=f"{field_name} row {row_index} {zone_id}",
+            )
+            _validate_numeric_tree(
+                channels, label=f"{field_name} row {row_index} {zone_id}"
+            )
+        for channel in sorted(_TELEMETRY_FIELDS):
+            truth_value = float(truth[zone_id][channel])
+            if float(primary_residual[zone_id][channel]) != (
+                float(row["telemetry"][zone_id][channel]) - truth_value
+            ):
+                raise TraceValidationError(
+                    f"primary sensor residual mismatch at row {row_index}"
+                )
+            if float(secondary_residual[zone_id][channel]) != (
+                float(disagreement[zone_id]["secondary"][channel]) - truth_value
+            ):
+                raise TraceValidationError(
+                    f"secondary sensor residual mismatch at row {row_index}"
+                )
 
 
 def _timeline_segment_for_step(scenario: Scenario, *, step: int) -> Mapping[str, Any]:
@@ -305,6 +475,7 @@ def validate_trace_bytes(
         if scenario.trace_schema_version in {
             TRACE_SCHEMA_VERSION_V2,
             TRACE_SCHEMA_VERSION_V3,
+            TRACE_SCHEMA_VERSION_V4,
         }:
             applied_mode = row["applied_operating_mode"]
             if index == 0 and applied_mode is not None:
@@ -341,7 +512,8 @@ def validate_trace_bytes(
             if row["accounting_receipt"] is not None:
                 raise TraceValidationError("accounting receipt row 0 must be null")
             if (
-                scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3
+                scenario.trace_schema_version
+                in {TRACE_SCHEMA_VERSION_V3, TRACE_SCHEMA_VERSION_V4}
                 and row["air_network_receipt"] is not None
             ):
                 raise TraceValidationError("air network receipt row 0 must be null")
@@ -361,6 +533,7 @@ def validate_trace_bytes(
             if scenario.trace_schema_version in {
                 TRACE_SCHEMA_VERSION_V2,
                 TRACE_SCHEMA_VERSION_V3,
+                TRACE_SCHEMA_VERSION_V4,
             } and (
                 row["applied_operating_mode"] != segment["operating_mode"]
             ):
@@ -387,12 +560,18 @@ def validate_trace_bytes(
             _validate_numeric_tree(
                 accounting_receipt, label=f"accounting receipt row {index}"
             )
-            if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+            if scenario.trace_schema_version in {
+                TRACE_SCHEMA_VERSION_V3,
+                TRACE_SCHEMA_VERSION_V4,
+            }:
                 _validate_air_network_receipt(
                     row["air_network_receipt"],
                     label=f"air network receipt row {index}",
                     scenario=scenario,
                 )
+
+        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V4:
+            _validate_fault_sensor_receipt(row, row_index=index, scenario=scenario)
 
         _validate_action(
             row["actual_action"],
