@@ -336,6 +336,21 @@ def test_network_accounting_rejects_coherent_alternative_operating_point(
         )
 
 
+def test_network_accounting_rejects_forged_non_network_receipt() -> None:
+    scenario = Scenario.from_mapping(scenario_v3_mapping())
+    pre_step_state = initial_state(scenario)
+    receipt = deepcopy(advance_one_step(scenario, pre_step_state).receipt)
+    receipt["electrical"]["generation_wh"] += 1000.0
+    receipt["electrical"]["curtailed_generation_wh"] += 1000.0
+
+    with pytest.raises(AccountingInvariantError, match="causal recomputation"):
+        validate_accounting_receipt(
+            receipt,
+            scenario=scenario,
+            pre_step_state=pre_step_state,
+        )
+
+
 def test_network_accounting_requires_v3_network_receipt() -> None:
     scenario = Scenario.from_mapping(scenario_v3_mapping())
     pre_step_state = initial_state(scenario)
