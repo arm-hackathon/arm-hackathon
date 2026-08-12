@@ -8,6 +8,7 @@ from .scenario import (
     Scenario,
     TRACE_SCHEMA_VERSION_V1,
     TRACE_SCHEMA_VERSION_V2,
+    TRACE_SCHEMA_VERSION_V3,
     derive_run_id,
 )
 
@@ -25,6 +26,14 @@ _ACTION_FIELDS = {
     "condenser_duty",
     "cooling_removed_w",
     "oxygen_injection_mol_s",
+}
+_COMMAND_ACTION_FIELDS_V3 = (_ACTION_FIELDS - {"airflow_m3_s"}) | {
+    "fan_speed_fraction",
+    "damper_position_by_id",
+}
+_ACTUAL_ACTION_FIELDS_V3 = _ACTION_FIELDS | {
+    "fan_speed_fraction",
+    "damper_position_by_id",
 }
 _RESOURCE_FIELDS = {
     "co2_sorbent_remaining_mol",
@@ -65,6 +74,25 @@ _TRACE_FIELDS_V1 = {
     "invariant_status",
 }
 _TRACE_FIELDS_V2 = _TRACE_FIELDS_V1 | {"applied_operating_mode"}
+_TRACE_FIELDS_V3 = _TRACE_FIELDS_V2 | {"air_network_receipt"}
+_AIR_NETWORK_RECEIPT_FIELDS = {
+    "requested_fan_speed_fraction",
+    "actual_fan_speed_fraction",
+    "requested_damper_position_by_id",
+    "actual_damper_position_by_id",
+    "fan_pressure_rise_pa",
+    "shared_pressure_loss_pa",
+    "branch_pressure_loss_pa",
+    "total_flow_m3_s",
+    "zone_flow_m3_s",
+    "zone_mass_flow_kg_s",
+    "fan_air_power_w",
+    "fan_electrical_power_w",
+    "total_efficiency",
+    "air_density_kg_m3",
+    "operating_point_residual_pa",
+    "mass_balance_residual_kg_s",
+}
 _LINEAGE_FIELDS = {
     "run_id",
     "scenario_sha256",
@@ -83,7 +111,27 @@ def _trace_fields_for_scenario(scenario: Scenario) -> set[str]:
         return _TRACE_FIELDS_V1
     if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2:
         return _TRACE_FIELDS_V2
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+        return _TRACE_FIELDS_V3
     raise TraceValidationError("unsupported trace schema in parsed scenario")
+
+
+def _zone_ids(scenario: Scenario) -> set[str]:
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V1,
+        TRACE_SCHEMA_VERSION_V2,
+    }:
+        return _ZONE_IDS
+    return {str(zone["id"]) for zone in scenario.data["zones"]}
+
+
+def _damper_ids(scenario: Scenario) -> set[str]:
+    if scenario.trace_schema_version != TRACE_SCHEMA_VERSION_V3:
+        return set()
+    return {
+        str(branch["damper_id"])
+        for branch in scenario.data["air_network"]["branches"]
+    }
 
 
 def _reject_json_constant(value: str) -> None:
@@ -122,28 +170,89 @@ def _as_mapping(value: Any, *, label: str) -> Mapping[str, Any]:
     return value
 
 
-def _validate_action(value: Any, *, label: str) -> None:
+def _validate_action(
+    value: Any,
+    *,
+    label: str,
+    scenario: Scenario,
+    commanded: bool,
+) -> None:
     action = _as_mapping(value, label=label)
-    _exact_fields(action, _ACTION_FIELDS, label=label)
+    zone_ids = _zone_ids(scenario)
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+        expected_fields = (
+            _COMMAND_ACTION_FIELDS_V3 if commanded else _ACTUAL_ACTION_FIELDS_V3
+        )
+    else:
+        expected_fields = _ACTION_FIELDS
+    _exact_fields(action, expected_fields, label=label)
     for field in ("scrubber_duty", "condenser_duty"):
         _finite_number(action[field], label=f"{label} {field}")
-    for field in (
-        "airflow_m3_s",
-        "cooling_removed_w",
-        "oxygen_injection_mol_s",
-    ):
+    zone_fields = ["cooling_removed_w", "oxygen_injection_mol_s"]
+    if not commanded or scenario.trace_schema_version != TRACE_SCHEMA_VERSION_V3:
+        zone_fields.append("airflow_m3_s")
+    for field in zone_fields:
         zone_values = _as_mapping(action[field], label=f"{label} {field}")
-        _exact_fields(zone_values, _ZONE_IDS, label=f"{label} {field}")
+        _exact_fields(zone_values, zone_ids, label=f"{label} {field}")
         _validate_numeric_tree(zone_values, label=f"{label} {field}")
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+        _finite_number(
+            action["fan_speed_fraction"], label=f"{label} fan_speed_fraction"
+        )
+        dampers = _as_mapping(
+            action["damper_position_by_id"],
+            label=f"{label} damper_position_by_id",
+        )
+        _exact_fields(dampers, _damper_ids(scenario), label=f"{label} dampers")
+        _validate_numeric_tree(dampers, label=f"{label} dampers")
 
 
-def _validate_loads(value: Any, *, label: str) -> None:
+def _validate_loads(value: Any, *, label: str, scenario: Scenario) -> None:
+    zone_ids = _zone_ids(scenario)
     loads = _as_mapping(value, label=label)
-    _exact_fields(loads, _ZONE_IDS, label=label)
-    for zone_id in sorted(_ZONE_IDS):
+    _exact_fields(loads, zone_ids, label=label)
+    for zone_id in sorted(zone_ids):
         zone_loads = _as_mapping(loads[zone_id], label=f"{label} {zone_id}")
         _exact_fields(zone_loads, _LOAD_FIELDS, label=f"{label} {zone_id}")
         _validate_numeric_tree(zone_loads, label=f"{label} {zone_id}")
+
+
+def _validate_air_network_receipt(
+    value: Any, *, label: str, scenario: Scenario
+) -> None:
+    receipt = _as_mapping(value, label=label)
+    _exact_fields(receipt, _AIR_NETWORK_RECEIPT_FIELDS, label=label)
+    zone_ids = _zone_ids(scenario)
+    damper_ids = _damper_ids(scenario)
+    for field in (
+        "requested_fan_speed_fraction",
+        "actual_fan_speed_fraction",
+        "fan_pressure_rise_pa",
+        "shared_pressure_loss_pa",
+        "total_flow_m3_s",
+        "fan_air_power_w",
+        "fan_electrical_power_w",
+        "total_efficiency",
+        "air_density_kg_m3",
+        "operating_point_residual_pa",
+    ):
+        _finite_number(receipt[field], label=f"{label} {field}")
+    for field in (
+        "requested_damper_position_by_id",
+        "actual_damper_position_by_id",
+    ):
+        values = _as_mapping(receipt[field], label=f"{label} {field}")
+        _exact_fields(values, damper_ids, label=f"{label} {field}")
+        _validate_numeric_tree(values, label=f"{label} {field}")
+    for field in (
+        "branch_pressure_loss_pa",
+        "zone_flow_m3_s",
+        "zone_mass_flow_kg_s",
+        "mass_balance_residual_kg_s",
+    ):
+        values = _as_mapping(receipt[field], label=f"{label} {field}")
+        _exact_fields(values, zone_ids, label=f"{label} {field}")
+        _validate_numeric_tree(values, label=f"{label} {field}")
 
 
 def _timeline_segment_for_step(scenario: Scenario, *, step: int) -> Mapping[str, Any]:
@@ -170,6 +279,7 @@ def validate_trace_bytes(
 
     rows: list[Mapping[str, Any]] = []
     expected_lineage: Mapping[str, Any] | None = None
+    zone_ids = _zone_ids(scenario)
     for index, encoded_line in enumerate(encoded_lines):
         try:
             row = json.loads(
@@ -192,7 +302,10 @@ def validate_trace_bytes(
         if actual_time_s != expected_time_s:
             raise TraceValidationError(f"unexpected time_s at row {index}")
 
-        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2:
+        if scenario.trace_schema_version in {
+            TRACE_SCHEMA_VERSION_V2,
+            TRACE_SCHEMA_VERSION_V3,
+        }:
             applied_mode = row["applied_operating_mode"]
             if index == 0 and applied_mode is not None:
                 raise TraceValidationError("applied operating mode row 0 must be null")
@@ -204,8 +317,8 @@ def validate_trace_bytes(
         telemetry = row["telemetry"]
         if not isinstance(telemetry, Mapping):
             raise TraceValidationError(f"telemetry at row {index} must be an object")
-        _exact_fields(telemetry, _ZONE_IDS, label=f"telemetry row {index}")
-        for zone_id in sorted(_ZONE_IDS):
+        _exact_fields(telemetry, zone_ids, label=f"telemetry row {index}")
+        for zone_id in sorted(zone_ids):
             zone_telemetry = telemetry[zone_id]
             if not isinstance(zone_telemetry, Mapping):
                 raise TraceValidationError(
@@ -227,13 +340,28 @@ def validate_trace_bytes(
                 raise TraceValidationError("loads row 0 must be null")
             if row["accounting_receipt"] is not None:
                 raise TraceValidationError("accounting receipt row 0 must be null")
+            if (
+                scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3
+                and row["air_network_receipt"] is not None
+            ):
+                raise TraceValidationError("air network receipt row 0 must be null")
         else:
             _validate_action(
-                row["commanded_action"], label=f"commanded action row {index}"
+                row["commanded_action"],
+                label=f"commanded action row {index}",
+                scenario=scenario,
+                commanded=True,
             )
-            _validate_loads(row["realised_loads"], label=f"loads row {index}")
+            _validate_loads(
+                row["realised_loads"],
+                label=f"loads row {index}",
+                scenario=scenario,
+            )
             segment = _timeline_segment_for_step(scenario, step=index - 1)
-            if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2 and (
+            if scenario.trace_schema_version in {
+                TRACE_SCHEMA_VERSION_V2,
+                TRACE_SCHEMA_VERSION_V3,
+            } and (
                 row["applied_operating_mode"] != segment["operating_mode"]
             ):
                 raise TraceValidationError(
@@ -259,8 +387,19 @@ def validate_trace_bytes(
             _validate_numeric_tree(
                 accounting_receipt, label=f"accounting receipt row {index}"
             )
+            if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+                _validate_air_network_receipt(
+                    row["air_network_receipt"],
+                    label=f"air network receipt row {index}",
+                    scenario=scenario,
+                )
 
-        _validate_action(row["actual_action"], label=f"actual action row {index}")
+        _validate_action(
+            row["actual_action"],
+            label=f"actual action row {index}",
+            scenario=scenario,
+            commanded=False,
+        )
         resource_state = _as_mapping(
             row["resource_state"], label=f"resource state row {index}"
         )
