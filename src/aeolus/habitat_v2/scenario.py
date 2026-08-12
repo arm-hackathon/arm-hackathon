@@ -10,16 +10,20 @@ SCENARIO_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_scenario_v1"
 SCENARIO_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_scenario_v2"
 SCENARIO_SCHEMA_VERSION_V3 = "aeolus_habitat_v2_scenario_v3"
 SCENARIO_SCHEMA_VERSION_V4 = "aeolus_habitat_v2_scenario_v4"
+SCENARIO_SCHEMA_VERSION_V5 = "aeolus_habitat_v2_scenario_v5"
 TRACE_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_trace_v1"
 TRACE_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_trace_v2"
 TRACE_SCHEMA_VERSION_V3 = "aeolus_habitat_v2_trace_v3"
 TRACE_SCHEMA_VERSION_V4 = "aeolus_habitat_v2_trace_v4"
+TRACE_SCHEMA_VERSION_V5 = "aeolus_habitat_v2_trace_v5"
 # V1 aliases are retained for callers that import the original contract names.
 SCENARIO_SCHEMA_VERSION = SCENARIO_SCHEMA_VERSION_V1
 TRACE_SCHEMA_VERSION = TRACE_SCHEMA_VERSION_V1
 EQUATION_CONTRACT_REVISION = "aeolus_habitat_v2_equations_v1"
 EQUATION_CONTRACT_REVISION_V2 = "aeolus_habitat_v2_equations_v2"
 EQUATION_CONTRACT_REVISION_V3 = "aeolus_habitat_v2_equations_v3"
+EQUATION_CONTRACT_REVISION_V4 = "aeolus_habitat_v2_equations_v4"
+ACTUATOR_FEEDBACK_CONTRACT_REVISION_V1 = "aeolus_habitat_v2_actuator_feedback_v1"
 
 _TOP_LEVEL_FIELDS = {
     "schema_version",
@@ -108,6 +112,7 @@ _COMMAND_FIELDS = {
 
 _TOP_LEVEL_FIELDS_V3 = _TOP_LEVEL_FIELDS | {"air_network"}
 _TOP_LEVEL_FIELDS_V4 = _TOP_LEVEL_FIELDS_V3 | {"sensor_model", "fault_profiles"}
+_TOP_LEVEL_FIELDS_V5 = _TOP_LEVEL_FIELDS_V4 | {"actuator_feedback"}
 _ZONE_FIELDS_V3 = _ZONE_FIELDS | {"geometry"}
 _ZONE_GEOMETRY_FIELDS = {"center_m", "size_m"}
 _EQUIPMENT_FIELDS_V3 = _EQUIPMENT_FIELDS - {
@@ -119,6 +124,30 @@ _EQUIPMENT_FIELDS_V3 = _EQUIPMENT_FIELDS - {
 _INITIAL_UTILITY_FIELDS_V3 = (
     _INITIAL_UTILITY_FIELDS - {"actual_airflow_m3_s"}
 ) | {"actual_fan_speed_fraction", "actual_damper_position_by_id"}
+_INITIAL_UTILITY_FIELDS_V5 = _INITIAL_UTILITY_FIELDS_V3 | {
+    "actual_cooling_removed_w",
+    "actual_oxygen_injection_mol_s",
+}
+_ACTUATOR_FEEDBACK_FIELDS = {
+    "dc_bus_voltage_v",
+    "cooling_slew_w_per_s",
+    "oxygen_slew_mol_s2",
+    "feedback_sensor_noise_amplitude",
+}
+_FEEDBACK_CHANNELS = {
+    "fan_speed_fraction",
+    "fan_dc_bus_current_a",
+    "damper_position_by_id",
+    "branch_airflow_m3_s",
+    "branch_differential_pressure_pa",
+    "scrubber_capture_rate_mol_s",
+    "condenser_removal_rate_mol_s",
+    "cooling_delivery_w",
+    "oxygen_delivery_mol_s",
+    "battery_state_of_charge",
+    "oxygen_store_fraction",
+    "sorbent_remaining_fraction",
+}
 _COMMAND_FIELDS_V3 = (_COMMAND_FIELDS - {"airflow_m3_s"}) | {
     "fan_speed_fraction",
     "damper_position_by_id",
@@ -211,6 +240,45 @@ _SENSOR_STUCK_FIELDS = {
     "start_step",
     "end_step",
 }
+_FEEDBACK_BIAS_FIELDS = {
+    "id",
+    "type",
+    "resource_id",
+    "channel",
+    "start_step",
+    "end_step",
+    "start_bias",
+    "end_bias",
+}
+_FEEDBACK_STUCK_FIELDS = {
+    "id",
+    "type",
+    "resource_id",
+    "channel",
+    "start_step",
+    "end_step",
+}
+_EFFECTIVENESS_FIELDS = {
+    "id",
+    "type",
+    "start_step",
+    "end_step",
+    "start_multiplier",
+    "end_multiplier",
+}
+_ZONE_EFFECTIVENESS_FIELDS = _EFFECTIVENESS_FIELDS | {"zone_id"}
+_V5_GLOBAL_EFFECTIVENESS_TYPES = {
+    "scrubber_capture_degradation",
+    "condenser_removal_degradation",
+    "scrubber_effectiveness_degradation",
+    "condenser_effectiveness_degradation",
+}
+_V5_ZONE_EFFECTIVENESS_TYPES = {
+    "cooling_delivery_degradation",
+    "oxygen_delivery_degradation",
+    "cooling_effectiveness_degradation",
+    "oxygen_effectiveness_degradation",
+}
 
 
 class ScenarioValidationError(ValueError):
@@ -269,13 +337,19 @@ def _top_level_fields_for_schema(schema_version: str) -> set[str]:
         return _TOP_LEVEL_FIELDS_V3
     if schema_version == SCENARIO_SCHEMA_VERSION_V4:
         return _TOP_LEVEL_FIELDS_V4
+    if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        return _TOP_LEVEL_FIELDS_V5
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
 def _zone_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
         return _ZONE_FIELDS
-    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
+    if schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
+    }:
         return _ZONE_FIELDS_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
@@ -283,7 +357,11 @@ def _zone_fields_for_schema(schema_version: str) -> set[str]:
 def _equipment_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
         return _EQUIPMENT_FIELDS
-    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
+    if schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
+    }:
         return _EQUIPMENT_FIELDS_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
@@ -293,13 +371,19 @@ def _initial_utility_fields_for_schema(schema_version: str) -> set[str]:
         return _INITIAL_UTILITY_FIELDS
     if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
         return _INITIAL_UTILITY_FIELDS_V3
+    if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        return _INITIAL_UTILITY_FIELDS_V5
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
 def _command_fields_for_schema(schema_version: str) -> set[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
         return _COMMAND_FIELDS
-    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
+    if schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
+    }:
         return _COMMAND_FIELDS_V3
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
@@ -311,12 +395,14 @@ def _timeline_fields_for_schema(schema_version: str) -> set[str]:
         SCENARIO_SCHEMA_VERSION_V2,
         SCENARIO_SCHEMA_VERSION_V3,
         SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
     }:
         return _TIMELINE_FIELDS_V2
     raise ScenarioValidationError(
         "schema_version must be "
         f"{SCENARIO_SCHEMA_VERSION_V1!r}, {SCENARIO_SCHEMA_VERSION_V2!r}, "
-        f"{SCENARIO_SCHEMA_VERSION_V3!r}, or {SCENARIO_SCHEMA_VERSION_V4!r}"
+        f"{SCENARIO_SCHEMA_VERSION_V3!r}, {SCENARIO_SCHEMA_VERSION_V4!r}, "
+        f"or {SCENARIO_SCHEMA_VERSION_V5!r}"
     )
 
 
@@ -329,6 +415,8 @@ def _trace_schema_for_scenario(schema_version: str) -> str:
         return TRACE_SCHEMA_VERSION_V3
     if schema_version == SCENARIO_SCHEMA_VERSION_V4:
         return TRACE_SCHEMA_VERSION_V4
+    if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        return TRACE_SCHEMA_VERSION_V5
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
@@ -339,6 +427,8 @@ def _equation_contract_for_scenario(schema_version: str) -> str:
         return EQUATION_CONTRACT_REVISION_V2
     if schema_version == SCENARIO_SCHEMA_VERSION_V4:
         return EQUATION_CONTRACT_REVISION_V3
+    if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        return EQUATION_CONTRACT_REVISION_V4
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
@@ -351,7 +441,11 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
         _reject_unknown_fields(
             zone["initial"], _ZONE_INITIAL_FIELDS, label="zone initial state"
         )
-        if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
+        if schema_version in {
+            SCENARIO_SCHEMA_VERSION_V3,
+            SCENARIO_SCHEMA_VERSION_V4,
+            SCENARIO_SCHEMA_VERSION_V5,
+        }:
             _reject_unknown_fields(
                 zone["geometry"], _ZONE_GEOMETRY_FIELDS, label="zone geometry"
             )
@@ -367,7 +461,11 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
         label="initial utility",
     )
 
-    if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
+    if schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
+    }:
         network = scenario["air_network"]
         _reject_unknown_fields(network, _AIR_NETWORK_FIELDS, label="air network")
         _reject_unknown_fields(network["fan"], _FAN_FIELDS, label="air network fan")
@@ -381,7 +479,7 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
                 branch, _BRANCH_FIELDS, label="air network branch"
             )
 
-    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V4, SCENARIO_SCHEMA_VERSION_V5}:
         sensor_model = scenario["sensor_model"]
         _reject_unknown_fields(
             sensor_model, _SENSOR_MODEL_FIELDS, label="sensor model"
@@ -413,6 +511,30 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
             elif profile_type == "sensor_stuck":
                 profile_fields = _SENSOR_STUCK_FIELDS
                 profile_label = "sensor stuck profile"
+            elif (
+                schema_version == SCENARIO_SCHEMA_VERSION_V5
+                and profile_type == "feedback_sensor_bias_drift"
+            ):
+                profile_fields = _FEEDBACK_BIAS_FIELDS
+                profile_label = "feedback sensor bias drift profile"
+            elif (
+                schema_version == SCENARIO_SCHEMA_VERSION_V5
+                and profile_type == "feedback_sensor_stuck"
+            ):
+                profile_fields = _FEEDBACK_STUCK_FIELDS
+                profile_label = "feedback sensor stuck profile"
+            elif (
+                schema_version == SCENARIO_SCHEMA_VERSION_V5
+                and profile_type in _V5_GLOBAL_EFFECTIVENESS_TYPES
+            ):
+                profile_fields = _EFFECTIVENESS_FIELDS
+                profile_label = "global effectiveness profile"
+            elif (
+                schema_version == SCENARIO_SCHEMA_VERSION_V5
+                and profile_type in _V5_ZONE_EFFECTIVENESS_TYPES
+            ):
+                profile_fields = _ZONE_EFFECTIVENESS_FIELDS
+                profile_label = "zone effectiveness profile"
             else:
                 raise ScenarioValidationError(
                     f"unsupported fault profile type {profile_type!r}"
@@ -436,6 +558,16 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
             _command_fields_for_schema(schema_version),
             label="plant command",
         )
+
+    if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        _reject_unknown_fields(
+            scenario["actuator_feedback"],
+            _ACTUATOR_FEEDBACK_FIELDS,
+            label="actuator feedback",
+        )
+        noise = scenario["actuator_feedback"]["feedback_sensor_noise_amplitude"]
+        if isinstance(noise, Mapping):
+            _reject_unknown_fields(noise, _FEEDBACK_CHANNELS, label="feedback noise")
 
 
 def _require_zone_keys(
@@ -512,6 +644,19 @@ def _validate_topology(scenario: Mapping[str, Any]) -> None:
                     f"damper topology mismatch at timeline[{index}].command"
                 )
 
+    if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        utility = scenario["initial_utility"]
+        _require_zone_keys(
+            utility["actual_cooling_removed_w"],
+            zone_ids,
+            path="initial_utility.actual_cooling_removed_w",
+        )
+        _require_zone_keys(
+            utility["actual_oxygen_injection_mol_s"],
+            zone_ids,
+            path="initial_utility.actual_oxygen_injection_mol_s",
+        )
+
 
 def _invalid(path: str, message: str) -> None:
     raise ScenarioValidationError(f"invalid scenario value at {path}: {message}")
@@ -566,12 +711,14 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
     _positive(scenario["dt_seconds"], path="dt_seconds")
     steps = _positive_int(scenario["steps"], path="steps")
 
-    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V4, SCENARIO_SCHEMA_VERSION_V5}:
         seen_profile_ids: set[str] = set()
         fan_intervals: list[tuple[int, int]] = []
         branch_intervals_by_zone: dict[str, list[tuple[int, int]]] = {}
         damper_intervals_by_id: dict[str, list[tuple[int, int]]] = {}
         sensor_intervals_by_target: dict[str, list[tuple[int, int]]] = {}
+        feedback_intervals_by_target: dict[str, list[tuple[int, int]]] = {}
+        effectiveness_intervals_by_target: dict[str, list[tuple[int, int]]] = {}
         declared_zone_ids = {str(zone["id"]) for zone in scenario["zones"]}
         declared_damper_ids = {
             str(branch["damper_id"])
@@ -659,6 +806,94 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 sensor_intervals.append((start_step, end_step))
                 continue
 
+            if schema_version == SCENARIO_SCHEMA_VERSION_V5 and profile_type in {
+                "feedback_sensor_bias_drift",
+                "feedback_sensor_stuck",
+            }:
+                resource_id = profile["resource_id"]
+                channel = profile["channel"]
+                if not isinstance(resource_id, str) or not resource_id.strip():
+                    _invalid(
+                        f"{prefix}.resource_id",
+                        "must be a non-empty component or resource id",
+                    )
+                if channel not in _FEEDBACK_CHANNELS:
+                    _invalid(
+                        f"{prefix}.channel",
+                        "must identify a declared operational feedback channel",
+                    )
+                valid_resource_ids = {
+                    "fan_speed_fraction": {str(scenario["air_network"]["fan"]["id"])},
+                    "fan_dc_bus_current_a": {str(scenario["air_network"]["fan"]["id"])},
+                    "damper_position_by_id": declared_damper_ids,
+                    "branch_airflow_m3_s": declared_zone_ids,
+                    "branch_differential_pressure_pa": declared_zone_ids,
+                    "scrubber_capture_rate_mol_s": {"scrubber"},
+                    "condenser_removal_rate_mol_s": {"condenser"},
+                    "cooling_delivery_w": declared_zone_ids,
+                    "oxygen_delivery_mol_s": declared_zone_ids,
+                    "battery_state_of_charge": {"battery"},
+                    "oxygen_store_fraction": {"oxygen_store"},
+                    "sorbent_remaining_fraction": {"sorbent"},
+                }[channel]
+                if resource_id not in valid_resource_ids:
+                    _invalid(
+                        f"{prefix}.resource_id",
+                        f"does not identify a target for {channel}",
+                    )
+                if profile_type == "feedback_sensor_bias_drift":
+                    _number(profile["start_bias"], path=f"{prefix}.start_bias")
+                    _number(profile["end_bias"], path=f"{prefix}.end_bias")
+                target = f"{channel}/{resource_id}"
+                intervals = feedback_intervals_by_target.setdefault(target, [])
+                for prior_start, prior_end in intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(prefix, f"feedback faults for {target} may not overlap")
+                intervals.append((start_step, end_step))
+                continue
+
+            if (
+                schema_version == SCENARIO_SCHEMA_VERSION_V5
+                and profile_type in _V5_GLOBAL_EFFECTIVENESS_TYPES
+            ):
+                for field in ("start_multiplier", "end_multiplier"):
+                    multiplier = _number(profile[field], path=f"{prefix}.{field}")
+                    if not 0.0 <= multiplier <= 1.0:
+                        _invalid(f"{prefix}.{field}", "must be between 0 and 1")
+                target = (
+                    "scrubber"
+                    if profile_type.startswith("scrubber")
+                    else "condenser"
+                )
+                intervals = effectiveness_intervals_by_target.setdefault(target, [])
+                for prior_start, prior_end in intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(prefix, f"effectiveness profiles for {target} may not overlap")
+                intervals.append((start_step, end_step))
+                continue
+
+            if (
+                schema_version == SCENARIO_SCHEMA_VERSION_V5
+                and profile_type in _V5_ZONE_EFFECTIVENESS_TYPES
+            ):
+                zone_id = profile["zone_id"]
+                if not isinstance(zone_id, str) or zone_id not in declared_zone_ids:
+                    _invalid(f"{prefix}.zone_id", "must identify a declared zone")
+                for field in ("start_multiplier", "end_multiplier"):
+                    multiplier = _number(profile[field], path=f"{prefix}.{field}")
+                    if not 0.0 <= multiplier <= 1.0:
+                        _invalid(f"{prefix}.{field}", "must be between 0 and 1")
+                resource_kind = (
+                    "cooling" if profile_type.startswith("cooling") else "oxygen"
+                )
+                target = f"{resource_kind}/{zone_id}"
+                intervals = effectiveness_intervals_by_target.setdefault(target, [])
+                for prior_start, prior_end in intervals:
+                    if max(start_step, prior_start) < min(end_step, prior_end):
+                        _invalid(prefix, f"effectiveness profiles for {target} may not overlap")
+                intervals.append((start_step, end_step))
+                continue
+
             zone_id = profile["zone_id"]
             if (
                 not isinstance(zone_id, str)
@@ -724,7 +959,11 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             initial["relative_humidity"],
             path=f"{prefix}.initial.relative_humidity",
         )
-        if schema_version in {SCENARIO_SCHEMA_VERSION_V3, SCENARIO_SCHEMA_VERSION_V4}:
+        if schema_version in {
+            SCENARIO_SCHEMA_VERSION_V3,
+            SCENARIO_SCHEMA_VERSION_V4,
+            SCENARIO_SCHEMA_VERSION_V5,
+        }:
             _vector3(zone["geometry"]["center_m"], path=f"{prefix}.geometry.center_m")
             _vector3(
                 zone["geometry"]["size_m"],
@@ -816,6 +1055,30 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 position,
                 path=f"initial_utility.actual_damper_position_by_id.{damper_id}",
             )
+        if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+            for zone_id, value in utility["actual_cooling_removed_w"].items():
+                cooling_value = _nonnegative(
+                    value,
+                    path=f"initial_utility.actual_cooling_removed_w.{zone_id}",
+                )
+                if cooling_value > equipment["cooling_max_thermal_w_per_zone"]:
+                    _invalid(
+                        f"initial_utility.actual_cooling_removed_w.{zone_id}",
+                        "exceeds per-zone cooling capacity",
+                    )
+            for zone_id, value in utility["actual_oxygen_injection_mol_s"].items():
+                _nonnegative(
+                    value,
+                    path=f"initial_utility.actual_oxygen_injection_mol_s.{zone_id}",
+                )
+            if (
+                sum(utility["actual_oxygen_injection_mol_s"].values())
+                > equipment["oxygen_injection_max_total_mol_s"]
+            ):
+                _invalid(
+                    "initial_utility.actual_oxygen_injection_mol_s",
+                    "exceeds total oxygen-injection capacity",
+                )
 
         network = scenario["air_network"]
         _vector3(
@@ -895,7 +1158,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                     path=f"{branch_prefix}.duct_polyline_m[{point_index}]",
                 )
 
-    if schema_version == SCENARIO_SCHEMA_VERSION_V4:
+    if schema_version in {SCENARIO_SCHEMA_VERSION_V4, SCENARIO_SCHEMA_VERSION_V5}:
         sensor_model = scenario["sensor_model"]
         seed = sensor_model["random_seed"]
         if isinstance(seed, bool) or not isinstance(seed, int):
@@ -906,6 +1169,36 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                     sensor_model[head][channel],
                     path=f"sensor_model.{head}.{channel}",
                 )
+
+    if schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        feedback = scenario["actuator_feedback"]
+        _positive(
+            feedback["dc_bus_voltage_v"],
+            path="actuator_feedback.dc_bus_voltage_v",
+        )
+        _positive(
+            feedback["cooling_slew_w_per_s"],
+            path="actuator_feedback.cooling_slew_w_per_s",
+        )
+        _positive(
+            feedback["oxygen_slew_mol_s2"],
+            path="actuator_feedback.oxygen_slew_mol_s2",
+        )
+        noise = feedback["feedback_sensor_noise_amplitude"]
+        if isinstance(noise, Mapping):
+            for channel in sorted(_FEEDBACK_CHANNELS):
+                _nonnegative(
+                    noise[channel],
+                    path=(
+                        "actuator_feedback.feedback_sensor_noise_amplitude."
+                        f"{channel}"
+                    ),
+                )
+        else:
+            _nonnegative(
+                noise,
+                path="actuator_feedback.feedback_sensor_noise_amplitude",
+            )
 
     timeline = scenario["timeline"]
     if not timeline:
@@ -927,6 +1220,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
             SCENARIO_SCHEMA_VERSION_V2,
             SCENARIO_SCHEMA_VERSION_V3,
             SCENARIO_SCHEMA_VERSION_V4,
+            SCENARIO_SCHEMA_VERSION_V5,
         }:
             mode = segment["operating_mode"]
             if not isinstance(mode, str) or mode not in _OPERATING_MODES:
@@ -998,6 +1292,7 @@ def derive_run_id(
     scenario_schema_version: str = SCENARIO_SCHEMA_VERSION,
     trace_schema_version: str = TRACE_SCHEMA_VERSION,
     equation_contract_revision: str = EQUATION_CONTRACT_REVISION,
+    actuator_feedback_contract_revision: str | None = None,
 ) -> str:
     lineage_payload = {
         "equation_contract_revision": equation_contract_revision,
@@ -1005,6 +1300,10 @@ def derive_run_id(
         "scenario_sha256": scenario_sha256,
         "trace_schema_version": trace_schema_version,
     }
+    if actuator_feedback_contract_revision is not None:
+        lineage_payload["actuator_feedback_contract_revision"] = (
+            actuator_feedback_contract_revision
+        )
     return hashlib.sha256(_canonical_bytes(lineage_payload)).hexdigest()
 
 
@@ -1017,6 +1316,7 @@ class Scenario:
     trace_schema_version: str
     equation_contract_revision: str
     run_id: str
+    actuator_feedback_contract_revision: str | None = None
 
     def validate_contract_identities(self) -> None:
         try:
@@ -1053,9 +1353,24 @@ class Scenario:
             scenario_schema_version=self.scenario_schema_version,
             trace_schema_version=self.trace_schema_version,
             equation_contract_revision=self.equation_contract_revision,
+            actuator_feedback_contract_revision=(
+                self.actuator_feedback_contract_revision
+            ),
         )
         if self.run_id != expected_run_id:
             raise ScenarioValidationError("run_id does not match scenario identities")
+        if self.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+            if (
+                self.actuator_feedback_contract_revision
+                != ACTUATOR_FEEDBACK_CONTRACT_REVISION_V1
+            ):
+                raise ScenarioValidationError(
+                    "unsupported actuator feedback contract identity"
+                )
+        elif self.actuator_feedback_contract_revision is not None:
+            raise ScenarioValidationError(
+                "actuator feedback identity is only valid for scenario-v5"
+            )
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Any]) -> "Scenario":
@@ -1092,6 +1407,11 @@ class Scenario:
             scenario_schema_version=schema_version,
             trace_schema_version=trace_schema_version,
             equation_contract_revision=equation_contract_revision,
+            actuator_feedback_contract_revision=(
+                ACTUATOR_FEEDBACK_CONTRACT_REVISION_V1
+                if schema_version == SCENARIO_SCHEMA_VERSION_V5
+                else None
+            ),
         )
         return cls(
             data=normalised,
@@ -1101,4 +1421,9 @@ class Scenario:
             trace_schema_version=trace_schema_version,
             equation_contract_revision=equation_contract_revision,
             run_id=run_id,
+            actuator_feedback_contract_revision=(
+                ACTUATOR_FEEDBACK_CONTRACT_REVISION_V1
+                if schema_version == SCENARIO_SCHEMA_VERSION_V5
+                else None
+            ),
         )

@@ -3,7 +3,7 @@
 **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
 **U**ser-defined **S**cenarios
 
-Version `0.6.0` adds a scenario-v4 deterministic fault and observation layer on
+Version `0.7.0` adds a closed scenario-v5 actuator-feedback layer on
 the corrected scenario-v3 multizone air network. It provides fan degradation,
 branch-resistance increase, damper jam, sensor bias/drift and stuck-sensor
 profiles, plus redundant primary/secondary observations and evaluator-only
@@ -146,6 +146,21 @@ actuator or recovery authority.
 The V2 command validates the strict scenario schema, executes the deterministic
 plant, validates every trace row against the parsed scenario and refuses to
 overwrite an existing output file.
+
+Run the checked-in scenario-v5 actuator-feedback example:
+
+```bash
+uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
+  scenarios/habitat_v2_actuator_feedback.json \
+  out/habitat-v2-actuator-feedback.jsonl
+```
+
+Scenario-v5 is a new closed lineage. It retains V4's eight-zone topology,
+physical fault receipts and independent primary/secondary telemetry, then adds
+rate-limited achieved cooling and oxygen state, effectiveness faults, and
+stateless deterministic operational feedback. Its trace lineage carries the
+separate `aeolus_habitat_v2_actuator_feedback_v1` identity. V5 commands and
+traces are causally replayed; V1–V4 contracts are preserved unchanged.
 
 Generate a standard deterministic legacy-plant replay from a source checkout:
 
