@@ -25,9 +25,9 @@ The measured fan-speed channel now follows the fault-effective physical fan resp
 
 All commands used Python 3.11 through the locked uv environment unless stated otherwise.
 
-- focused actuator-feedback suite: `20 passed`
-- Habitat V2 suite: `179 passed`
-- full repository suite: `650 passed`
+- focused actuator-feedback suite: `27 passed`
+- Habitat V2 suite: `186 passed`
+- full repository suite: `657 passed`
 - Ruff: passed
 - `compileall` for `src` and `tests`: passed
 - `uv lock --check`: passed
