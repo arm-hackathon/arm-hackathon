@@ -8,7 +8,7 @@ import pytest
 
 from aeolus.habitat_v2.physics import advance_one_step, initial_state
 from aeolus.habitat_v2.runner import run_scenario
-from aeolus.habitat_v2.scenario import Scenario
+from aeolus.habitat_v2.scenario import Scenario, ScenarioValidationError
 from aeolus.habitat_v2.trace import validate_trace_bytes
 
 
@@ -383,6 +383,42 @@ def test_v5_external_command_rejects_non_numeric_json_types(mutation) -> None:
     mutation(command)
 
     with pytest.raises(ValueError, match="finite numeric data"):
+        advance_one_step_with_command(scenario, state, command)
+    assert state == initial_state(scenario)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize(
+    ("field", "nested"),
+    [
+        ("fan_speed_fraction", False),
+        ("damper_position_by_id", True),
+        ("scrubber_duty", False),
+        ("condenser_duty", False),
+        ("cooling_removed_w", True),
+        ("oxygen_injection_mol_s", True),
+    ],
+)
+def test_v5_external_command_rejects_non_finite_values_with_field_path(
+    value: float, field: str, nested: bool
+) -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario = Scenario.from_mapping(v5_mapping())
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    expected_path = field
+    if nested:
+        child = next(iter(command[field]))
+        command[field][child] = value
+        expected_path = f"{field}.{child}"
+    else:
+        command[field] = value
+
+    with pytest.raises(
+        ScenarioValidationError,
+        match=rf"external command {expected_path} must be finite numeric data",
+    ):
         advance_one_step_with_command(scenario, state, command)
     assert state == initial_state(scenario)
 
