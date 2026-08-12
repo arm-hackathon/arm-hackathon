@@ -1,7 +1,7 @@
 # AEOLUS Habitat V2 Numerical Provenance Ledger
 
-Date: 2026-08-09
-Status: implementation draft. Public sources support requirements and architecture, not an exact Artemis habitat.
+Date: 2026-08-12
+Status: implemented deterministic V1-V4 analogue. Public sources support requirements and architecture, not an exact Artemis habitat.
 
 ## Classification rules
 
@@ -161,6 +161,12 @@ These values remain provisional until the exact scenario is implemented and test
 - fan, scrubber, condenser, cooling, oxygen-store and battery capacities: **engineering assumptions**;
 - actuator time constants and sensor imperfections: **engineering assumptions or stress-test ranges**;
 - fault timing, severity and combinations: **stress-test ranges**.
+
+The scenario-v4 checked-in compound fault values are stress-test inputs for
+software and evaluation behavior. Fan effectiveness multipliers, branch
+resistance multipliers, jam timing, sensor-noise amplitudes, sensor-bias values
+and stuck-sensor intervals are not measured component reliability data and are
+not attributed to a NASA, ESA, Artemis, Gateway or flight design.
 
 ## Explicitly unsupported claims
 

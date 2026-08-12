@@ -583,18 +583,29 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         branch_by_damper = {
             str(branch["damper_id"]): branch for branch in network["branches"]
         }
+        physical_faults = physical_fault_effects(
+            scenario,
+            emitted_step=state.step + 1,
+            previous_damper_position_by_id=(
+                state.utility.actual_damper_position_by_id
+            ),
+        )
+        jammed_damper_ids = set(physical_faults.jammed_damper_ids)
         actual_dampers = {
-            damper_id: _slew(
-                float(state.utility.actual_damper_position_by_id[damper_id]),
-                float(command["damper_position_by_id"][damper_id]),
-                float(branch_by_damper[damper_id]["damper_slew_fraction_per_s"])
-                * dt_seconds,
+            damper_id: (
+                float(state.utility.actual_damper_position_by_id[damper_id])
+                if damper_id in jammed_damper_ids
+                else _slew(
+                    float(state.utility.actual_damper_position_by_id[damper_id]),
+                    float(command["damper_position_by_id"][damper_id]),
+                    float(
+                        branch_by_damper[damper_id]["damper_slew_fraction_per_s"]
+                    )
+                    * dt_seconds,
+                )
             )
             for damper_id in sorted(branch_by_damper)
         }
-        physical_faults = physical_fault_effects(
-            scenario, emitted_step=state.step + 1
-        )
         effective_fan_speed = (
             actual_fan_speed * physical_faults.fan_speed_multiplier
         )

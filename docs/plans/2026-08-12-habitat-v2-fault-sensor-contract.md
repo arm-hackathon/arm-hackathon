@@ -1,9 +1,9 @@
 # Habitat V2 deterministic fault and sensor contract
 
 Date: 2026-08-12
-Status: approved for isolated local implementation
+Status: implemented locally; final package evidence and bounded review pending
 Branch: `ben/habitat-v2-fault-sensors`
-Base: `5df56c0327a1557a99cfca085ce620f042cccb88`
+Base: `6cbb8a400bdc2bd2f0628d7c540435c767bb67c0`
 
 ## Plain-language goal
 
@@ -197,9 +197,9 @@ actions and completed network receipts.
 For emitted step `n`:
 
 1. Select the scenario timeline segment and active v4 profiles for `n`.
-2. Slew fan and dampers from prior achieved actuator state.
-3. Hold jammed dampers, then apply fan and branch effectiveness to the network
-   solve.
+2. Slew the fan and unjammed dampers from prior achieved actuator state. Jammed
+   dampers retain their exact prior achieved position.
+3. Apply fan and branch effectiveness to the network solve.
 4. Advance recirculation, species, thermal and electrical state.
 5. Validate accounting and physical invariants against truth.
 6. Compute healthy primary and secondary sensor observations from truth.
