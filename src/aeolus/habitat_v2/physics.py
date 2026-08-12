@@ -1199,6 +1199,12 @@ def _external_command_number(value: Any, *, path: str) -> float:
     return number
 
 
+def _external_command_mapping(value: Any, *, path: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise ScenarioValidationError(f"external command {path} must be an object")
+    return value
+
+
 def _validate_external_command(
     scenario: Scenario, command: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -1227,24 +1233,66 @@ def _validate_external_command(
         raise ScenarioValidationError(
             f"invalid external command fields; unknown={unknown}, missing={missing}"
         )
-    normalised = json.loads(_canonical_command_bytes(command).decode("utf-8"))
-    zone_ids = {str(zone["id"]) for zone in scenario.data["zones"]}
+    zone_ids = tuple(sorted(str(zone["id"]) for zone in scenario.data["zones"]))
+    zone_id_set = set(zone_ids)
+    normalised: dict[str, Any] = {
+        "scrubber_duty": _external_command_number(
+            command["scrubber_duty"], path="scrubber_duty"
+        ),
+        "condenser_duty": _external_command_number(
+            command["condenser_duty"], path="condenser_duty"
+        ),
+    }
     for field in ("cooling_removed_w", "oxygen_injection_mol_s"):
-        if set(normalised[field]) != zone_ids:
+        values = _external_command_mapping(command[field], path=field)
+        if set(values) != zone_id_set:
             raise ScenarioValidationError(f"external command {field} topology mismatch")
+        normalised[field] = {
+            zone_id: _external_command_number(
+                values[zone_id], path=f"{field}.{zone_id}"
+            )
+            for zone_id in zone_ids
+        }
     if scenario.scenario_schema_version in {
         SCENARIO_SCHEMA_VERSION_V3,
         SCENARIO_SCHEMA_VERSION_V4,
         SCENARIO_SCHEMA_VERSION_V5,
     }:
-        damper_ids = {
-            str(branch["damper_id"])
-            for branch in scenario.data["air_network"]["branches"]
-        }
-        if set(normalised["damper_position_by_id"]) != damper_ids:
+        damper_ids = tuple(
+            sorted(
+                str(branch["damper_id"])
+                for branch in scenario.data["air_network"]["branches"]
+            )
+        )
+        damper_values = _external_command_mapping(
+            command["damper_position_by_id"], path="damper_position_by_id"
+        )
+        if set(damper_values) != set(damper_ids):
             raise ScenarioValidationError(
                 "external command damper topology mismatch"
             )
+        normalised["fan_speed_fraction"] = _external_command_number(
+            command["fan_speed_fraction"], path="fan_speed_fraction"
+        )
+        normalised["damper_position_by_id"] = {
+            damper_id: _external_command_number(
+                damper_values[damper_id],
+                path=f"damper_position_by_id.{damper_id}",
+            )
+            for damper_id in damper_ids
+        }
+    else:
+        airflow_values = _external_command_mapping(
+            command["airflow_m3_s"], path="airflow_m3_s"
+        )
+        if set(airflow_values) != zone_id_set:
+            raise ScenarioValidationError("external command airflow topology mismatch")
+        normalised["airflow_m3_s"] = {
+            zone_id: _external_command_number(
+                airflow_values[zone_id], path=f"airflow_m3_s.{zone_id}"
+            )
+            for zone_id in zone_ids
+        }
     equipment = scenario.data["equipment"]
     for field in ("scrubber_duty", "condenser_duty"):
         value = _external_command_number(normalised[field], path=field)
