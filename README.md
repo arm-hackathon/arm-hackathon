@@ -3,13 +3,15 @@
 **A**irflow and **E**nvironmental **O**bservation **L**aboratory for
 **U**ser-defined **S**cenarios
 
-Version `0.2.3` is an integration-only local package of the closed
-recovery-development work. It is not a published or hardware-qualified release;
-the `0.2.0` C4/C11 artifacts remain source-pinned historical evidence.
+Version `0.3.0` adds the local Habitat Plant V2 deterministic foundation while
+preserving the closed recovery-development evidence. It is not a published or
+hardware-qualified release. The `0.2.0` C4/C11 artifacts remain source-pinned
+historical evidence.
 
-AEOLUS is a deterministic habitat simulation in abstract CO₂ and airflow units.
-It is not a spacecraft, life-support, building-control, or safety-critical
-system, and it must not control physical equipment.
+AEOLUS contains a legacy deterministic simulator in abstract units and a
+separate Habitat Plant V2 grey-box research analogue with explicit SI
+accounting. Neither is a spacecraft, life-support, building-control or
+safety-critical system, and neither must control physical equipment.
 
 ## Current status: deterministic recovery passes blind final verification
 
@@ -77,7 +79,18 @@ uv run --locked --python 3.11 --extra dev ruff check .
 python -m compileall -q src tests
 ```
 
-Generate a standard deterministic plant replay from a source checkout:
+Run the checked-in Habitat Plant V2 reference scenario from a source checkout:
+
+```bash
+uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
+  scenarios/habitat_v2_reference.json out/habitat-v2-reference.jsonl
+```
+
+The V2 command validates the strict scenario schema, executes the deterministic
+plant, validates every trace row against the parsed scenario and refuses to
+overwrite an existing output file.
+
+Generate a standard deterministic legacy-plant replay from a source checkout:
 
 ```bash
 uv run --locked --python 3.11 python -m aeolus \
@@ -94,9 +107,14 @@ require `PYTHONPATH=src`:
 
 ```bash
 python -I -m aeolus /absolute/path/to/scenario.json /absolute/path/to/trace.jsonl
+python -I -m aeolus.habitat_v2 \
+  /absolute/path/to/habitat-v2-scenario.json \
+  /absolute/path/to/habitat-v2-trace.jsonl
 ```
 
-Scenario JSON remains an explicit input rather than a hidden packaged fixture.
+Both commands require an explicit scenario file and refuse to overwrite an
+existing trace. The checked-in reference scenarios are source examples, not
+hidden package fixtures.
 For the deterministic recovery API, use the schema-v10
 `scenarios/recovery_habitat.json` input as shown in the recovery acceptance
 record.
