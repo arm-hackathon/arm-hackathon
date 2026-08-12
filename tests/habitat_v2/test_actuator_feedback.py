@@ -356,6 +356,37 @@ def test_v5_external_command_is_validated_before_mutation_and_bound_to_receipt()
     assert state == initial_state(scenario)
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda command: command.update({"fan_speed_fraction": True}),
+        lambda command: command.update({"fan_speed_fraction": "0.4"}),
+        lambda command: command["damper_position_by_id"].update(
+            {next(iter(command["damper_position_by_id"])): False}
+        ),
+        lambda command: command.update({"scrubber_duty": "0.5"}),
+        lambda command: command.update({"condenser_duty": True}),
+        lambda command: command["cooling_removed_w"].update(
+            {next(iter(command["cooling_removed_w"])): False}
+        ),
+        lambda command: command["oxygen_injection_mol_s"].update(
+            {next(iter(command["oxygen_injection_mol_s"])): "0.0001"}
+        ),
+    ],
+)
+def test_v5_external_command_rejects_non_numeric_json_types(mutation) -> None:
+    from aeolus.habitat_v2.physics import advance_one_step_with_command
+
+    scenario = Scenario.from_mapping(v5_mapping())
+    state = initial_state(scenario)
+    command = deepcopy(scenario.data["timeline"][0]["command"])
+    mutation(command)
+
+    with pytest.raises(ValueError, match="finite numeric data"):
+        advance_one_step_with_command(scenario, state, command)
+    assert state == initial_state(scenario)
+
+
 def test_v5_run_and_trace_validation_bind_feedback_rows() -> None:
     scenario = Scenario.from_mapping(v5_mapping())
     run = run_scenario(scenario)
