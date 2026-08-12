@@ -74,6 +74,25 @@ class UtilityState:
     external_heat_received_j: float
     actual_fan_speed_fraction: float | None = None
     actual_damper_position_by_id: Mapping[str, float] = field(default_factory=dict)
+    actual_cooling_removed_w: Mapping[str, float] = field(default_factory=dict)
+    actual_oxygen_injection_mol_s: Mapping[str, float] = field(default_factory=dict)
+    effective_scrubber_capture_ability: float = 1.0
+    effective_condenser_removal_ability: float = 1.0
+    effective_cooling_delivery_by_zone: Mapping[str, float] = field(default_factory=dict)
+    effective_oxygen_delivery_by_zone: Mapping[str, float] = field(default_factory=dict)
+    last_operational_feedback: Mapping[str, object] | None = None
+
+    @property
+    def achieved_cooling_removed_w(self) -> Mapping[str, float]:
+        """V5 name for the immutable cooling actuator state."""
+
+        return self.actual_cooling_removed_w
+
+    @property
+    def achieved_oxygen_injection_mol_s(self) -> Mapping[str, float]:
+        """V5 name for the immutable oxygen actuator state."""
+
+        return self.actual_oxygen_injection_mol_s
 
 
 @dataclass(frozen=True)

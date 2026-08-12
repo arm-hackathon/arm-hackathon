@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import hashlib
+import json
 import math
 from typing import Any, Mapping
 
@@ -12,9 +14,12 @@ from .air_network import (
     solve_air_network,
 )
 from .faults import physical_fault_effects
+from .actuators import achieve_actuator_state
+from .instrumentation import measure_operational_feedback
 from .scenario import (
     SCENARIO_SCHEMA_VERSION_V3,
     SCENARIO_SCHEMA_VERSION_V4,
+    SCENARIO_SCHEMA_VERSION_V5,
     Scenario,
     ScenarioValidationError,
 )
@@ -135,6 +140,63 @@ def _air_network_receipt(
     return receipt
 
 
+def _operational_feedback_truth(
+    scenario: Scenario,
+    state: PlantState,
+    *,
+    network_result: AirNetworkResult,
+    recirculation_receipt: Mapping[str, Any],
+    dt_seconds: float,
+    effective_fan_speed_fraction: float | None = None,
+) -> dict[str, Mapping[str, float] | float]:
+    voltage = float(scenario.data["actuator_feedback"]["dc_bus_voltage_v"])
+    equipment = scenario.data["equipment"]
+    return {
+        "fan_speed_fraction": float(
+            state.utility.actual_fan_speed_fraction
+            if effective_fan_speed_fraction is None
+            else effective_fan_speed_fraction
+        ),
+        "fan_dc_bus_current_a": network_result.fan_electrical_power_w / voltage,
+        "damper_position_by_id": {
+            damper_id: float(state.utility.actual_damper_position_by_id[damper_id])
+            for damper_id in sorted(state.utility.actual_damper_position_by_id)
+        },
+        "branch_airflow_m3_s": {
+            zone_id: float(network_result.zone_flow_m3_s[zone_id])
+            for zone_id in sorted(network_result.zone_flow_m3_s)
+        },
+        "branch_differential_pressure_pa": {
+            zone_id: float(network_result.branch_pressure_loss_pa[zone_id])
+            for zone_id in sorted(network_result.branch_pressure_loss_pa)
+        },
+        "scrubber_capture_rate_mol_s": float(
+            recirculation_receipt["co2_captured_mol"]
+        )
+        / dt_seconds,
+        "condenser_removal_rate_mol_s": float(
+            recirculation_receipt["water_condensed_mol"]
+        )
+        / dt_seconds,
+        "cooling_delivery_w": {
+            zone_id: float(state.utility.effective_cooling_delivery_by_zone[zone_id])
+            for zone_id in sorted(state.utility.effective_cooling_delivery_by_zone)
+        },
+        "oxygen_delivery_mol_s": {
+            zone_id: float(
+                state.utility.effective_oxygen_delivery_by_zone[zone_id]
+            )
+            for zone_id in sorted(state.utility.effective_oxygen_delivery_by_zone)
+        },
+        "battery_state_of_charge": float(state.utility.battery_energy_wh)
+        / float(equipment["battery_capacity_wh"]),
+        "oxygen_store_fraction": float(state.utility.oxygen_store_mol)
+        / max(1e-12, float(scenario.data["initial_utility"]["oxygen_store_mol"])),
+        "sorbent_remaining_fraction": float(state.utility.co2_sorbent_remaining_mol)
+        / float(equipment["scrubber_capacity_mol"]),
+    }
+
+
 def _recirculate(
     zones: Mapping[str, ZoneState],
     *,
@@ -145,6 +207,9 @@ def _recirculate(
     equipment: Mapping[str, Any],
     sorbent_remaining_mol: float,
     dt_seconds: float,
+    scrubber_capture_ability: float = 1.0,
+    condenser_removal_ability: float = 1.0,
+    include_effectiveness_receipt: bool = False,
 ) -> tuple[dict[str, ZoneState], dict[str, Any]]:
     species = ("co2_mol", "o2_mol", "water_vapor_mol", "inert_mol")
     extracted: dict[str, dict[str, float]] = {}
@@ -172,21 +237,31 @@ def _recirculate(
 
     total_extracted = sum(extracted_totals.values())
     if total_extracted == 0.0:
-        return dict(zones), {
+        receipt = {
             "exchange_fraction": {zone_id: 0.0 for zone_id in zones},
             "co2_captured_mol": 0.0,
             "water_condensed_mol": 0.0,
             "species_residual_mol": {name: 0.0 for name in species},
         }
+        if include_effectiveness_receipt:
+            receipt["scrubber_capture_ability"] = scrubber_capture_ability
+            receipt["condenser_removal_ability"] = condenser_removal_ability
+        return dict(zones), receipt
 
     co2_captured_mol = min(
         pool["co2_mol"],
-        float(equipment["scrubber_max_co2_mol_s"]) * scrubber_duty * dt_seconds,
+        float(equipment["scrubber_max_co2_mol_s"])
+        * scrubber_duty
+        * scrubber_capture_ability
+        * dt_seconds,
         sorbent_remaining_mol,
     )
     water_condensed_mol = min(
         pool["water_vapor_mol"],
-        float(equipment["condenser_max_water_mol_s"]) * condenser_duty * dt_seconds,
+        float(equipment["condenser_max_water_mol_s"])
+        * condenser_duty
+        * condenser_removal_ability
+        * dt_seconds,
     )
     pool["co2_mol"] -= co2_captured_mol
     pool["water_vapor_mol"] -= water_condensed_mol
@@ -215,12 +290,16 @@ def _recirculate(
         - sum(getattr(zone, name) for zone in zones.values())
         for name in species
     }
-    return mixed, {
+    receipt = {
         "extracted_mol": extracted,
         "co2_captured_mol": co2_captured_mol,
         "water_condensed_mol": water_condensed_mol,
         "species_residual_mol": residual,
     }
+    if include_effectiveness_receipt:
+        receipt["scrubber_capture_ability"] = scrubber_capture_ability
+        receipt["condenser_removal_ability"] = condenser_removal_ability
+    return mixed, receipt
 
 
 def _recirculation_heat_transfer_j(
@@ -359,8 +438,20 @@ def _electrical_balance(
     actual_condenser_duty: float,
     generation_w: float,
     dt_seconds: float,
+    achieved_cooling_removed_w: Mapping[str, float] | None = None,
+    achieved_oxygen_injection_mol_s: Mapping[str, float] | None = None,
 ) -> tuple[float, dict[str, float]]:
     duration_hours = dt_seconds / 3600.0
+    cooling_command = (
+        command["cooling_removed_w"]
+        if achieved_cooling_removed_w is None
+        else achieved_cooling_removed_w
+    )
+    oxygen_command = (
+        command["oxygen_injection_mol_s"]
+        if achieved_oxygen_injection_mol_s is None
+        else achieved_oxygen_injection_mol_s
+    )
     load_power_w = {
         "fixed_load_wh": float(equipment["base_load_w"]),
         "fan_load_wh": (
@@ -376,12 +467,12 @@ def _electrical_balance(
             float(equipment["condenser_power_w_full"]) * actual_condenser_duty
         ),
         "cooling_load_wh": (
-            sum(float(value) for value in command["cooling_removed_w"].values())
+            sum(float(value) for value in cooling_command.values())
             / float(equipment["cooling_coefficient_of_performance"])
         ),
         "oxygen_injection_load_wh": (
             float(equipment["oxygen_injection_power_w_per_mol_s"])
-            * sum(float(value) for value in command["oxygen_injection_mol_s"].values())
+            * sum(float(value) for value in oxygen_command.values())
         ),
     }
     load_energy_wh = {
@@ -493,6 +584,7 @@ def initial_state(scenario: Scenario) -> PlantState:
     if scenario.scenario_schema_version in {
         SCENARIO_SCHEMA_VERSION_V3,
         SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
     }:
         initial_fan_speed = float(utility["actual_fan_speed_fraction"])
         initial_dampers = {
@@ -515,27 +607,87 @@ def initial_state(scenario: Scenario) -> PlantState:
             for zone_id, value in utility["actual_airflow_m3_s"].items()
         }
 
-    return PlantState(
+    initial_utility = UtilityState(
+        co2_sorbent_remaining_mol=float(utility["co2_sorbent_remaining_mol"]),
+        captured_co2_mol=float(utility["captured_co2_mol"]),
+        condensed_water_mol=float(utility["condensed_water_mol"]),
+        oxygen_store_mol=float(utility["oxygen_store_mol"]),
+        battery_energy_wh=float(utility["battery_energy_wh"]),
+        actual_airflow_m3_s=initial_airflow,
+        actual_scrubber_duty=float(utility["actual_scrubber_duty"]),
+        actual_condenser_duty=float(utility["actual_condenser_duty"]),
+        external_heat_rejected_j=float(utility["external_heat_rejected_j"]),
+        external_heat_received_j=float(utility["external_heat_received_j"]),
+        actual_fan_speed_fraction=initial_fan_speed,
+        actual_damper_position_by_id=initial_dampers,
+        actual_cooling_removed_w=(
+            {
+                str(zone_id): float(value)
+                for zone_id, value in utility["actual_cooling_removed_w"].items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else {}
+        ),
+        actual_oxygen_injection_mol_s=(
+            {
+                str(zone_id): float(value)
+                for zone_id, value in utility["actual_oxygen_injection_mol_s"].items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else {}
+        ),
+        effective_cooling_delivery_by_zone=(
+            {
+                str(zone_id): float(value)
+                for zone_id, value in utility["actual_cooling_removed_w"].items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else {}
+        ),
+        effective_oxygen_delivery_by_zone=(
+            {
+                str(zone_id): float(value)
+                for zone_id, value in utility["actual_oxygen_injection_mol_s"].items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else {}
+        ),
+    )
+    initial_state_value = PlantState(
         step=0,
         zones=zones,
-        utility=UtilityState(
-            co2_sorbent_remaining_mol=float(utility["co2_sorbent_remaining_mol"]),
-            captured_co2_mol=float(utility["captured_co2_mol"]),
-            condensed_water_mol=float(utility["condensed_water_mol"]),
-            oxygen_store_mol=float(utility["oxygen_store_mol"]),
-            battery_energy_wh=float(utility["battery_energy_wh"]),
-            actual_airflow_m3_s=initial_airflow,
-            actual_scrubber_duty=float(utility["actual_scrubber_duty"]),
-            actual_condenser_duty=float(utility["actual_condenser_duty"]),
-            external_heat_rejected_j=float(utility["external_heat_rejected_j"]),
-            external_heat_received_j=float(utility["external_heat_received_j"]),
-            actual_fan_speed_fraction=initial_fan_speed,
-            actual_damper_position_by_id=initial_dampers,
+        utility=initial_utility,
+    )
+    if scenario.scenario_schema_version != SCENARIO_SCHEMA_VERSION_V5:
+        return initial_state_value
+    feedback_truth = _operational_feedback_truth(
+        scenario,
+        initial_state_value,
+        network_result=initial_network_result,
+        recirculation_receipt={"co2_captured_mol": 0.0, "water_condensed_mol": 0.0},
+        dt_seconds=float(scenario.data["dt_seconds"]),
+    )
+    initial_feedback, _ = measure_operational_feedback(
+        scenario,
+        truth=feedback_truth,
+        step=0,
+    )
+    return replace(
+        initial_state_value,
+        utility=replace(
+            initial_state_value.utility,
+            last_operational_feedback=initial_feedback,
         ),
     )
 
 
-def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
+def _advance_one_step_canonical(
+    scenario: Scenario,
+    state: PlantState,
+    *,
+    command_override: Mapping[str, Any] | None = None,
+    external_command_digest: str | None = None,
+) -> StepResult:
     if state.step >= scenario.data["steps"]:
         raise ScenarioValidationError("cannot advance beyond configured steps")
 
@@ -565,11 +717,12 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         }
 
     equipment = scenario.data["equipment"]
-    command = segment["command"]
+    command = segment["command"] if command_override is None else command_override
     network_result: AirNetworkResult | None = None
     if scenario.scenario_schema_version in {
         SCENARIO_SCHEMA_VERSION_V3,
         SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
     }:
         network = scenario.data["air_network"]
         current_fan_speed = state.utility.actual_fan_speed_fraction
@@ -642,6 +795,45 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         float(command["condenser_duty"]),
         float(equipment["condenser_duty_slew_per_s"]) * dt_seconds,
     )
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        achievement = achieve_actuator_state(
+            current_cooling_removed_w=state.utility.actual_cooling_removed_w,
+            current_oxygen_injection_mol_s=state.utility.actual_oxygen_injection_mol_s,
+            requested_cooling_removed_w=command["cooling_removed_w"],
+            requested_oxygen_injection_mol_s=command["oxygen_injection_mol_s"],
+            cooling_slew_w_per_s=float(
+                scenario.data["actuator_feedback"]["cooling_slew_w_per_s"]
+            ),
+            oxygen_slew_mol_s2=float(
+                scenario.data["actuator_feedback"]["oxygen_slew_mol_s2"]
+            ),
+            dt_seconds=dt_seconds,
+        )
+        achieved_cooling_removed_w = achievement.cooling_removed_w
+        achieved_oxygen_injection_mol_s = achievement.oxygen_injection_mol_s
+        effective_cooling_delivery_by_zone = {
+            zone_id: value
+            * float(
+                physical_faults.cooling_delivery_multiplier_by_zone.get(zone_id, 1.0)
+            )
+            for zone_id, value in achieved_cooling_removed_w.items()
+        }
+        effective_oxygen_delivery_by_zone = {
+            zone_id: value
+            * float(
+                physical_faults.oxygen_delivery_multiplier_by_zone.get(zone_id, 1.0)
+            )
+            for zone_id, value in achieved_oxygen_injection_mol_s.items()
+        }
+        scrubber_capture_ability = physical_faults.scrubber_capture_multiplier
+        condenser_removal_ability = physical_faults.condenser_removal_multiplier
+    else:
+        achieved_cooling_removed_w = command["cooling_removed_w"]
+        achieved_oxygen_injection_mol_s = command["oxygen_injection_mol_s"]
+        effective_cooling_delivery_by_zone = achieved_cooling_removed_w
+        effective_oxygen_delivery_by_zone = achieved_oxygen_injection_mol_s
+        scrubber_capture_ability = 1.0
+        condenser_removal_ability = 1.0
     zone_configs = {str(zone["id"]): zone for zone in scenario.data["zones"]}
     next_zones, recirculation_receipt = _recirculate(
         next_zones,
@@ -652,11 +844,16 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         equipment=equipment,
         sorbent_remaining_mol=state.utility.co2_sorbent_remaining_mol,
         dt_seconds=dt_seconds,
+        scrubber_capture_ability=scrubber_capture_ability,
+        condenser_removal_ability=condenser_removal_ability,
+        include_effectiveness_receipt=(
+            scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+        ),
     )
     co2_captured_mol = float(recirculation_receipt["co2_captured_mol"])
     water_condensed_mol = float(recirculation_receipt["water_condensed_mol"])
     oxygen_injected_by_zone = {
-        zone_id: float(command["oxygen_injection_mol_s"][zone_id]) * dt_seconds
+        zone_id: float(effective_oxygen_delivery_by_zone[zone_id]) * dt_seconds
         for zone_id in sorted(next_zones)
     }
     total_oxygen_injected_mol = sum(oxygen_injected_by_zone.values())
@@ -679,7 +876,7 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         next_zones,
         zone_configs=zone_configs,
         loads=segment["loads"],
-        cooling_removed_w=command["cooling_removed_w"],
+        cooling_removed_w=effective_cooling_delivery_by_zone,
         recirculation_heat_added_j=recirculation_heat_added_j,
         dt_seconds=dt_seconds,
     )
@@ -702,6 +899,16 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         actual_condenser_duty=actual_condenser_duty,
         generation_w=float(segment["generation_w"]),
         dt_seconds=dt_seconds,
+        achieved_cooling_removed_w=(
+            achieved_cooling_removed_w
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else None
+        ),
+        achieved_oxygen_injection_mol_s=(
+            achieved_oxygen_injection_mol_s
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else None
+        ),
     )
     electrical_heat_rejected_j = (
         electrical_receipt["served_load_wh"]
@@ -796,6 +1003,48 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         actual_condenser_duty=actual_condenser_duty,
         actual_fan_speed_fraction=actual_fan_speed,
         actual_damper_position_by_id=actual_dampers,
+        actual_cooling_removed_w=(
+            {
+                zone_id: float(value)
+                for zone_id, value in achieved_cooling_removed_w.items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else state.utility.actual_cooling_removed_w
+        ),
+        actual_oxygen_injection_mol_s=(
+            {
+                zone_id: float(value)
+                for zone_id, value in achieved_oxygen_injection_mol_s.items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else state.utility.actual_oxygen_injection_mol_s
+        ),
+        effective_scrubber_capture_ability=(
+            scrubber_capture_ability
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else state.utility.effective_scrubber_capture_ability
+        ),
+        effective_condenser_removal_ability=(
+            condenser_removal_ability
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else state.utility.effective_condenser_removal_ability
+        ),
+        effective_cooling_delivery_by_zone=(
+            {
+                zone_id: float(value)
+                for zone_id, value in effective_cooling_delivery_by_zone.items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else state.utility.effective_cooling_delivery_by_zone
+        ),
+        effective_oxygen_delivery_by_zone=(
+            {
+                zone_id: float(value)
+                for zone_id, value in effective_oxygen_delivery_by_zone.items()
+            }
+            if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5
+            else state.utility.effective_oxygen_delivery_by_zone
+        ),
     )
 
     step_receipt: dict[str, Any] = {
@@ -807,6 +1056,70 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
         "thermal": thermal_receipt,
         "electrical": electrical_receipt,
     }
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        step_receipt["actuators"] = {
+            "fan": {
+                "requested_fraction": float(command["fan_speed_fraction"]),
+                "achieved_fraction": float(actual_fan_speed),
+                "effective_fraction": float(effective_fan_speed),
+            },
+            "dampers": {
+                "requested_by_id": {
+                    damper_id: float(command["damper_position_by_id"][damper_id])
+                    for damper_id in sorted(command["damper_position_by_id"])
+                },
+                "achieved_by_id": {
+                    damper_id: float(actual_dampers[damper_id])
+                    for damper_id in sorted(actual_dampers)
+                },
+                "effective_by_id": {
+                    damper_id: float(actual_dampers[damper_id])
+                    for damper_id in sorted(actual_dampers)
+                },
+            },
+            "scrubber": {
+                "requested_duty": float(command["scrubber_duty"]),
+                "achieved_duty": float(actual_scrubber_duty),
+                "effectiveness_multiplier": float(scrubber_capture_ability),
+                "effective_duty": float(actual_scrubber_duty)
+                * float(scrubber_capture_ability),
+            },
+            "condenser": {
+                "requested_duty": float(command["condenser_duty"]),
+                "achieved_duty": float(actual_condenser_duty),
+                "effectiveness_multiplier": float(condenser_removal_ability),
+                "effective_duty": float(actual_condenser_duty)
+                * float(condenser_removal_ability),
+            },
+            "cooling": {
+                "requested_w": {
+                    zone_id: float(command["cooling_removed_w"][zone_id])
+                    for zone_id in sorted(command["cooling_removed_w"])
+                },
+                "achieved_w": {
+                    zone_id: float(achieved_cooling_removed_w[zone_id])
+                    for zone_id in sorted(achieved_cooling_removed_w)
+                },
+                "effective_w": {
+                    zone_id: float(effective_cooling_delivery_by_zone[zone_id])
+                    for zone_id in sorted(effective_cooling_delivery_by_zone)
+                },
+            },
+            "oxygen": {
+                "requested_mol_s": {
+                    zone_id: float(command["oxygen_injection_mol_s"][zone_id])
+                    for zone_id in sorted(command["oxygen_injection_mol_s"])
+                },
+                "achieved_mol_s": {
+                    zone_id: float(achieved_oxygen_injection_mol_s[zone_id])
+                    for zone_id in sorted(achieved_oxygen_injection_mol_s)
+                },
+                "effective_mol_s": {
+                    zone_id: float(effective_oxygen_delivery_by_zone[zone_id])
+                    for zone_id in sorted(effective_oxygen_delivery_by_zone)
+                },
+            },
+        }
     if network_result is not None and actual_fan_speed is not None:
         step_receipt["air_network"] = _air_network_receipt(
             network_result,
@@ -814,7 +1127,8 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
             actual_fan_speed_fraction=actual_fan_speed,
             effective_fan_speed_fraction=(
                 effective_fan_speed
-                if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V4
+                if scenario.scenario_schema_version
+                in {SCENARIO_SCHEMA_VERSION_V4, SCENARIO_SCHEMA_VERSION_V5}
                 else None
             ),
             requested_damper_position_by_id=command["damper_position_by_id"],
@@ -823,11 +1137,240 @@ def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
     if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V4:
         step_receipt["active_faults"] = list(physical_faults.active_faults)
 
+    next_state = PlantState(
+        step=state.step + 1,
+        zones=next_zones,
+        utility=next_utility,
+    )
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        feedback_truth = _operational_feedback_truth(
+            scenario,
+            next_state,
+            network_result=network_result,
+            recirculation_receipt=recirculation_receipt,
+            dt_seconds=dt_seconds,
+            effective_fan_speed_fraction=effective_fan_speed,
+        )
+        operational_feedback, feedback_faults = measure_operational_feedback(
+            scenario,
+            truth=feedback_truth,
+            step=next_state.step,
+            previous=state.utility.last_operational_feedback,
+        )
+        next_state = replace(
+            next_state,
+            utility=replace(
+                next_state.utility,
+                last_operational_feedback=operational_feedback,
+            ),
+        )
+        step_receipt["operational_feedback"] = operational_feedback
+        step_receipt["active_faults"] = sorted(
+            [dict(value) for value in physical_faults.active_faults]
+            + [dict(value) for value in feedback_faults],
+            key=lambda value: str(value["fault_id"]),
+        )
+        step_receipt["realised_loads"] = segment["loads"]
+        if external_command_digest is not None:
+            step_receipt["external_command_digest"] = external_command_digest
+
     return StepResult(
-        state=PlantState(
-            step=state.step + 1,
-            zones=next_zones,
-            utility=next_utility,
-        ),
+        state=next_state,
         receipt=step_receipt,
+    )
+
+
+def _canonical_command_bytes(command: Mapping[str, Any]) -> bytes:
+    return json.dumps(
+        command,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _external_command_number(value: Any, *, path: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ScenarioValidationError(f"external command {path} must be finite numeric data")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ScenarioValidationError(f"external command {path} must be finite numeric data")
+    return number
+
+
+def _external_command_mapping(value: Any, *, path: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise ScenarioValidationError(f"external command {path} must be an object")
+    return value
+
+
+def _validate_external_command(
+    scenario: Scenario, command: Mapping[str, Any]
+) -> dict[str, Any]:
+    if not isinstance(command, Mapping):
+        raise ScenarioValidationError("external command must be an object")
+    segment = _segment_for_step(scenario, 0)
+    expected = segment["command"]
+    if scenario.scenario_schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
+    }:
+        expected_fields = {
+            "fan_speed_fraction",
+            "damper_position_by_id",
+            "scrubber_duty",
+            "condenser_duty",
+            "cooling_removed_w",
+            "oxygen_injection_mol_s",
+        }
+    else:
+        expected_fields = set(expected)
+    unknown = sorted(set(command) - expected_fields)
+    missing = sorted(expected_fields - set(command))
+    if unknown or missing:
+        raise ScenarioValidationError(
+            f"invalid external command fields; unknown={unknown}, missing={missing}"
+        )
+    zone_ids = tuple(sorted(str(zone["id"]) for zone in scenario.data["zones"]))
+    zone_id_set = set(zone_ids)
+    normalised: dict[str, Any] = {
+        "scrubber_duty": _external_command_number(
+            command["scrubber_duty"], path="scrubber_duty"
+        ),
+        "condenser_duty": _external_command_number(
+            command["condenser_duty"], path="condenser_duty"
+        ),
+    }
+    for field in ("cooling_removed_w", "oxygen_injection_mol_s"):
+        values = _external_command_mapping(command[field], path=field)
+        if set(values) != zone_id_set:
+            raise ScenarioValidationError(f"external command {field} topology mismatch")
+        normalised[field] = {
+            zone_id: _external_command_number(
+                values[zone_id], path=f"{field}.{zone_id}"
+            )
+            for zone_id in zone_ids
+        }
+    if scenario.scenario_schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
+    }:
+        damper_ids = tuple(
+            sorted(
+                str(branch["damper_id"])
+                for branch in scenario.data["air_network"]["branches"]
+            )
+        )
+        damper_values = _external_command_mapping(
+            command["damper_position_by_id"], path="damper_position_by_id"
+        )
+        if set(damper_values) != set(damper_ids):
+            raise ScenarioValidationError(
+                "external command damper topology mismatch"
+            )
+        normalised["fan_speed_fraction"] = _external_command_number(
+            command["fan_speed_fraction"], path="fan_speed_fraction"
+        )
+        normalised["damper_position_by_id"] = {
+            damper_id: _external_command_number(
+                damper_values[damper_id],
+                path=f"damper_position_by_id.{damper_id}",
+            )
+            for damper_id in damper_ids
+        }
+    else:
+        airflow_values = _external_command_mapping(
+            command["airflow_m3_s"], path="airflow_m3_s"
+        )
+        if set(airflow_values) != zone_id_set:
+            raise ScenarioValidationError("external command airflow topology mismatch")
+        normalised["airflow_m3_s"] = {
+            zone_id: _external_command_number(
+                airflow_values[zone_id], path=f"airflow_m3_s.{zone_id}"
+            )
+            for zone_id in zone_ids
+        }
+    equipment = scenario.data["equipment"]
+    for field in ("scrubber_duty", "condenser_duty"):
+        value = _external_command_number(normalised[field], path=field)
+        if not 0.0 <= value <= 1.0:
+            raise ScenarioValidationError(f"external command {field} is out of bounds")
+    for field in ("cooling_removed_w", "oxygen_injection_mol_s"):
+        for zone_id, value in normalised[field].items():
+            value_float = _external_command_number(
+                value, path=f"{field}.{zone_id}"
+            )
+            if value_float < 0.0:
+                raise ScenarioValidationError(
+                    f"external command {field}.{zone_id} is out of bounds"
+                )
+    if any(
+        _external_command_number(
+            value, path=f"cooling_removed_w.{zone_id}"
+        )
+        > float(equipment["cooling_max_thermal_w_per_zone"])
+        for zone_id, value in normalised["cooling_removed_w"].items()
+    ):
+        raise ScenarioValidationError("external command cooling exceeds capacity")
+    if sum(
+        _external_command_number(
+            value, path=f"oxygen_injection_mol_s.{zone_id}"
+        )
+        for zone_id, value in normalised["oxygen_injection_mol_s"].items()
+    ) > float(
+        equipment["oxygen_injection_max_total_mol_s"]
+    ):
+        raise ScenarioValidationError("external command oxygen exceeds capacity")
+    if scenario.scenario_schema_version in {
+        SCENARIO_SCHEMA_VERSION_V3,
+        SCENARIO_SCHEMA_VERSION_V4,
+        SCENARIO_SCHEMA_VERSION_V5,
+    }:
+        for damper_id, value in normalised["damper_position_by_id"].items():
+            value_float = _external_command_number(
+                value, path=f"damper_position_by_id.{damper_id}"
+            )
+            if not 0.0 <= value_float <= 1.0:
+                raise ScenarioValidationError(
+                    "external command damper position is out of bounds"
+                )
+        fan_speed = _external_command_number(
+            normalised["fan_speed_fraction"], path="fan_speed_fraction"
+        )
+        if not 0.0 <= fan_speed <= 1.0:
+            raise ScenarioValidationError(
+                "external command fan speed is out of bounds"
+            )
+    else:
+        for zone_id, value in normalised["airflow_m3_s"].items():
+            if _external_command_number(
+                value, path=f"airflow_m3_s.{zone_id}"
+            ) < 0.0:
+                raise ScenarioValidationError(
+                    "external command airflow is out of bounds"
+                )
+    return normalised
+
+
+def advance_one_step(scenario: Scenario, state: PlantState) -> StepResult:
+    return _advance_one_step_canonical(scenario, state)
+
+
+def advance_one_step_with_command(
+    scenario: Scenario,
+    state: PlantState,
+    command: Mapping[str, Any],
+) -> StepResult:
+    if state.step >= scenario.data["steps"]:
+        raise ScenarioValidationError("cannot advance beyond configured steps")
+    validated_command = _validate_external_command(scenario, command)
+    digest = hashlib.sha256(_canonical_command_bytes(validated_command)).hexdigest()
+    return _advance_one_step_canonical(
+        scenario,
+        state,
+        command_override=validated_command,
+        external_command_digest=digest,
     )
