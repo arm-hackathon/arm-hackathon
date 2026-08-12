@@ -5,6 +5,7 @@ import json
 import math
 from typing import Any, Mapping
 
+from . import physics as physics_module
 from .physics import StepResult, advance_one_step, initial_state
 from .scenario import (
     Scenario,
@@ -52,8 +53,47 @@ class SimulationRun:
     trace_bytes: bytes
 
 
+def _require_causal_receipt_match(
+    actual: Any, expected: Any, *, path: str
+) -> None:
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping) or set(actual) != set(expected):
+            raise AccountingInvariantError(
+                f"{path} does not match causal recomputation"
+            )
+        for key in sorted(expected):
+            _require_causal_receipt_match(
+                actual[key], expected[key], path=f"{path}.{key}"
+            )
+        return
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+        if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+            raise AccountingInvariantError(
+                f"{path} does not match causal recomputation"
+            )
+        actual_value = float(actual)
+        expected_value = float(expected)
+        tolerance = max(
+            1e-12,
+            1e-10 * max(1.0, abs(actual_value), abs(expected_value)),
+        )
+        if (
+            not math.isfinite(actual_value)
+            or abs(actual_value - expected_value) > tolerance
+        ):
+            raise AccountingInvariantError(
+                f"{path} does not match causal recomputation"
+            )
+        return
+    if actual != expected:
+        raise AccountingInvariantError(f"{path} does not match causal recomputation")
+
+
 def validate_accounting_receipt(
-    receipt: Mapping[str, Any], *, scenario: Scenario | None = None
+    receipt: Mapping[str, Any],
+    *,
+    scenario: Scenario | None = None,
+    pre_step_state: PlantState | None = None,
 ) -> None:
     species = receipt["species_accounting"]
     tolerance_mol = _finite_accounting_value(
@@ -143,10 +183,21 @@ def validate_accounting_receipt(
 
     network = receipt.get("air_network")
     if network is None:
+        if (
+            scenario is not None
+            and scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3
+        ):
+            raise AccountingInvariantError(
+                "scenario-v3 accounting requires an air-network receipt"
+            )
         return
     if scenario is None:
         raise AccountingInvariantError(
             "air-network accounting requires the parsed scenario contract"
+        )
+    if pre_step_state is None:
+        raise AccountingInvariantError(
+            "air-network accounting requires the pre-step plant state"
         )
 
     def finite_network_value(field: str) -> float:
@@ -313,6 +364,20 @@ def validate_accounting_receipt(
         raise AccountingInvariantError(
             "electrical fan load does not match air-network fan power"
         )
+
+    recomputed_receipt = physics_module.advance_one_step(
+        scenario, pre_step_state
+    ).receipt
+    _require_causal_receipt_match(
+        network,
+        recomputed_receipt["air_network"],
+        path="air-network receipt",
+    )
+    _require_causal_receipt_match(
+        electrical["fan_load_wh"],
+        recomputed_receipt["electrical"]["fan_load_wh"],
+        path="electrical fan load",
+    )
 
 
 def _assert_finite(value: Any, *, path: str) -> None:
@@ -577,7 +642,11 @@ def run_scenario(scenario: Scenario) -> SimulationRun:
             if segment["start_step"] <= state.step < segment["end_step"]
         )
         result: StepResult = advance_one_step(scenario, state)
-        validate_accounting_receipt(result.receipt, scenario=scenario)
+        validate_accounting_receipt(
+            result.receipt,
+            scenario=scenario,
+            pre_step_state=state,
+        )
         state = result.state
         _assert_state_invariants(scenario, state)
         rows.append(_row(scenario, state, segment=segment, receipt=result.receipt))

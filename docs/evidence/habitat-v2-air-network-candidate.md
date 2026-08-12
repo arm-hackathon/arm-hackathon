@@ -5,7 +5,24 @@ Branch: `ben/habitat-v2-air-network`
 Base commit: `087b1e9a97bba7260876386363a3e76662b9d4f5b`
 Version impact: `minor`
 Package version: `0.5.0`
-Publication status: local candidate only
+Publication status: rejected local candidate, superseded by the receipt-authority
+correction on `ben/habitat-v2-receipt-authority-fix`
+
+## Supersession notice
+
+Independent review rejected candidate `5df56c0327a1557a99cfca085ce620f042cccb88`.
+Its standalone accounting validator checked internal network algebra and fan-load
+cross-accounting, but did not bind a self-consistent alternative network receipt
+to the command, pre-step actuator state and canonical network solve. The artifact
+hashes and test output below remain a historical receipt for the rejected bytes;
+they are not current release evidence.
+
+The correction requires scenario-v3 accounting validation to receive the trusted
+pre-step plant state, reruns the canonical physical transition, compares every
+air-network receipt field and the electrical fan load, and rejects an omitted
+scenario-v3 network receipt. Current correction evidence is retained separately
+as `habitat-v2-air-network-receipt-authority-correction.md` and in the external
+candidate archive.
 
 ## Scope
 

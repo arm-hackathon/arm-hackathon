@@ -7,7 +7,8 @@
   motorised damper per declared zone.
 - Added explicit SI-labelled volumetric flow, fixed-reference-density mass flow,
   fan air/electrical power, actuator and operating-point receipts.
-- Bound network receipts to the parsed scenario, cross-checked fan power against
+- Bound network receipts to the parsed scenario and exact pre-step actuator
+  state through canonical step recomputation, cross-checked fan power against
   the electrical bus receipt, and retained full byte-for-byte replay validation.
 - Added a checked-in eight-zone notional habitat covering all four operating
   modes while preserving frozen scenario-v1 and scenario-v2 replay bytes.
