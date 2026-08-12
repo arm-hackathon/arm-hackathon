@@ -476,6 +476,15 @@ def test_report_parser_rejects_inconsistent_decision_latency_even_when_rehashed(
         type(_report("fan_degradation")).from_canonical_mapping(report)
 
 
+def test_report_parser_rejects_false_earliest_divergence_even_when_rehashed() -> None:
+    report = _report("fan_degradation").as_canonical_mapping()
+    assert report["first_divergence_step"] == 2
+    report["earliest_divergence_step"] = 1
+    _rehash(report, "report_sha256")
+    with pytest.raises(QualificationError, match="earliest divergence"):
+        type(_report("fan_degradation")).from_canonical_mapping(report)
+
+
 def test_aggregate_parser_rejects_unvalidated_case_and_tracks_overclaim_denominator() -> None:
     report = _report("fan_degradation")
     case = QualificationCase(
