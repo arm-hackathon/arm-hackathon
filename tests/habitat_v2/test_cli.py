@@ -14,6 +14,11 @@ from ._helpers import reference_scenario_mapping
 REFERENCE_SCENARIO_PATH = (
     Path(__file__).resolve().parents[2] / "scenarios" / "habitat_v2_reference.json"
 )
+OPERATING_MODE_SCENARIO_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "scenarios"
+    / "habitat_v2_operating_modes.json"
+)
 
 
 def test_checked_in_reference_scenario_loads_and_runs() -> None:
@@ -23,6 +28,38 @@ def test_checked_in_reference_scenario_loads_and_runs() -> None:
     assert scenario.data["name"] == "two-zone-reference"
     assert run.final_state.step == scenario.data["steps"]
     assert validate_trace_bytes(run.trace_bytes, scenario=scenario) == run.rows
+
+
+def test_checked_in_operating_mode_scenario_replays_deterministically() -> None:
+    scenario = load_scenario_file(OPERATING_MODE_SCENARIO_PATH)
+    first = run_scenario(scenario)
+    second = run_scenario(scenario)
+
+    assert [segment["operating_mode"] for segment in scenario.data["timeline"]] == [
+        "occupied",
+        "eva_transition",
+        "contingency",
+        "dormant",
+    ]
+    assert first.trace_bytes == second.trace_bytes
+    assert validate_trace_bytes(first.trace_bytes, scenario=scenario) == first.rows
+
+
+def test_cli_writes_and_validates_operating_mode_trace(tmp_path, capsys) -> None:
+    trace_path = tmp_path / "operating-modes.jsonl"
+    scenario = load_scenario_file(OPERATING_MODE_SCENARIO_PATH)
+
+    assert main([str(OPERATING_MODE_SCENARIO_PATH), str(trace_path)]) == 0
+    rows = validate_trace_bytes(trace_path.read_bytes(), scenario=scenario)
+
+    assert [row["applied_operating_mode"] for row in rows] == [
+        None,
+        "occupied",
+        "eva_transition",
+        "contingency",
+        "dormant",
+    ]
+    assert f"run_id={scenario.run_id}" in capsys.readouterr().out
 
 
 def test_cli_writes_valid_trace_and_refuses_overwrite(tmp_path, capsys) -> None:

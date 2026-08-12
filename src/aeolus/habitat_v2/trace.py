@@ -5,10 +5,9 @@ import math
 from typing import Any, Mapping
 
 from .scenario import (
-    EQUATION_CONTRACT_REVISION,
-    SCENARIO_SCHEMA_VERSION,
-    TRACE_SCHEMA_VERSION,
     Scenario,
+    TRACE_SCHEMA_VERSION_V1,
+    TRACE_SCHEMA_VERSION_V2,
     derive_run_id,
 )
 
@@ -52,7 +51,7 @@ _ACCOUNTING_FIELDS = {
     "electrical",
 }
 _INVARIANT_FIELDS = {"passed"}
-_TRACE_FIELDS = {
+_TRACE_FIELDS_V1 = {
     "schema_version",
     "lineage",
     "step",
@@ -65,6 +64,7 @@ _TRACE_FIELDS = {
     "accounting_receipt",
     "invariant_status",
 }
+_TRACE_FIELDS_V2 = _TRACE_FIELDS_V1 | {"applied_operating_mode"}
 _LINEAGE_FIELDS = {
     "run_id",
     "scenario_sha256",
@@ -76,6 +76,14 @@ _LINEAGE_FIELDS = {
 
 class TraceValidationError(ValueError):
     """Raised when trace bytes do not satisfy the frozen lineage contract."""
+
+
+def _trace_fields_for_scenario(scenario: Scenario) -> set[str]:
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V1:
+        return _TRACE_FIELDS_V1
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2:
+        return _TRACE_FIELDS_V2
+    raise TraceValidationError("unsupported trace schema in parsed scenario")
 
 
 def _reject_json_constant(value: str) -> None:
@@ -172,8 +180,8 @@ def validate_trace_bytes(
             raise TraceValidationError(f"invalid JSON at row {index}") from error
         if not isinstance(row, Mapping):
             raise TraceValidationError(f"row {index} must be an object")
-        _exact_fields(row, _TRACE_FIELDS, label=f"row {index}")
-        if row["schema_version"] != TRACE_SCHEMA_VERSION:
+        _exact_fields(row, _trace_fields_for_scenario(scenario), label=f"row {index}")
+        if row["schema_version"] != scenario.trace_schema_version:
             raise TraceValidationError(f"unsupported trace schema at row {index}")
         if isinstance(row["step"], bool) or not isinstance(row["step"], int):
             raise TraceValidationError(f"step at row {index} must be an integer")
@@ -183,6 +191,15 @@ def validate_trace_bytes(
         actual_time_s = _finite_number(row["time_s"], label=f"time_s at row {index}")
         if actual_time_s != expected_time_s:
             raise TraceValidationError(f"unexpected time_s at row {index}")
+
+        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2:
+            applied_mode = row["applied_operating_mode"]
+            if index == 0 and applied_mode is not None:
+                raise TraceValidationError("applied operating mode row 0 must be null")
+            if index > 0 and not isinstance(applied_mode, str):
+                raise TraceValidationError(
+                    f"applied operating mode row {index} must be a string"
+                )
 
         telemetry = row["telemetry"]
         if not isinstance(telemetry, Mapping):
@@ -216,6 +233,12 @@ def validate_trace_bytes(
             )
             _validate_loads(row["realised_loads"], label=f"loads row {index}")
             segment = _timeline_segment_for_step(scenario, step=index - 1)
+            if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2 and (
+                row["applied_operating_mode"] != segment["operating_mode"]
+            ):
+                raise TraceValidationError(
+                    f"applied operating mode row {index} does not match scenario timeline"
+                )
             if row["commanded_action"] != segment["command"]:
                 raise TraceValidationError(
                     f"commanded action row {index} does not match scenario timeline"
@@ -265,11 +288,11 @@ def validate_trace_bytes(
                 raise TraceValidationError(
                     f"lineage row {index} {field} must be a string"
                 )
-        if lineage["scenario_schema_version"] != SCENARIO_SCHEMA_VERSION:
+        if lineage["scenario_schema_version"] != scenario.scenario_schema_version:
             raise TraceValidationError("unsupported scenario schema in lineage")
-        if lineage["trace_schema_version"] != TRACE_SCHEMA_VERSION:
+        if lineage["trace_schema_version"] != scenario.trace_schema_version:
             raise TraceValidationError("unsupported trace schema in lineage")
-        if lineage["equation_contract_revision"] != EQUATION_CONTRACT_REVISION:
+        if lineage["equation_contract_revision"] != scenario.equation_contract_revision:
             raise TraceValidationError("unsupported equation contract in lineage")
         if lineage["scenario_sha256"] != scenario.scenario_sha256:
             raise TraceValidationError(

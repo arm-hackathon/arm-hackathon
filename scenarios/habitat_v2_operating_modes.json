@@ -1,0 +1,222 @@
+{
+  "dt_seconds": 60.0,
+  "equipment": {
+    "air_density_kg_m3": 0.85,
+    "air_specific_heat_j_kg_k": 1005.0,
+    "airflow_slew_m3_s2": 0.01,
+    "base_load_w": 500.0,
+    "battery_capacity_wh": 10000.0,
+    "battery_charge_efficiency": 0.95,
+    "battery_discharge_efficiency": 0.95,
+    "battery_max_charge_w": 2000.0,
+    "battery_max_discharge_w": 3000.0,
+    "condenser_duty_slew_per_s": 0.01,
+    "condenser_max_water_mol_s": 0.003,
+    "condenser_power_w_full": 400.0,
+    "cooling_coefficient_of_performance": 2.5,
+    "cooling_max_thermal_w_per_zone": 1000.0,
+    "fan_power_w_per_m3_s": 1000.0,
+    "max_total_airflow_m3_s": 0.2,
+    "max_zone_airflow_m3_s": 0.15,
+    "oxygen_injection_max_total_mol_s": 0.001,
+    "oxygen_injection_power_w_per_mol_s": 100000.0,
+    "scrubber_capacity_mol": 1000.0,
+    "scrubber_duty_slew_per_s": 0.01,
+    "scrubber_max_co2_mol_s": 0.001,
+    "scrubber_power_w_full": 500.0
+  },
+  "initial_utility": {
+    "actual_airflow_m3_s": {
+      "crew_cabin": 0.0,
+      "work_airlock": 0.0
+    },
+    "actual_condenser_duty": 0.0,
+    "actual_scrubber_duty": 0.0,
+    "battery_energy_wh": 5000.0,
+    "captured_co2_mol": 0.0,
+    "co2_sorbent_remaining_mol": 500.0,
+    "condensed_water_mol": 0.0,
+    "external_heat_received_j": 0.0,
+    "external_heat_rejected_j": 0.0,
+    "oxygen_store_mol": 100.0
+  },
+  "name": "two-zone-operating-modes",
+  "schema_version": "aeolus_habitat_v2_scenario_v2",
+  "steps": 4,
+  "timeline": [
+    {
+      "command": {
+        "airflow_m3_s": {
+          "crew_cabin": 0.08,
+          "work_airlock": 0.06
+        },
+        "condenser_duty": 0.5,
+        "cooling_removed_w": {
+          "crew_cabin": 120.0,
+          "work_airlock": 120.0
+        },
+        "oxygen_injection_mol_s": {
+          "crew_cabin": 0.0003,
+          "work_airlock": 0.0003
+        },
+        "scrubber_duty": 0.6
+      },
+      "end_step": 1,
+      "generation_w": 3000.0,
+      "loads": {
+        "crew_cabin": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        },
+        "work_airlock": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        }
+      },
+      "operating_mode": "occupied",
+      "start_step": 0
+    },
+    {
+      "command": {
+        "airflow_m3_s": {
+          "crew_cabin": 0.08,
+          "work_airlock": 0.06
+        },
+        "condenser_duty": 0.5,
+        "cooling_removed_w": {
+          "crew_cabin": 120.0,
+          "work_airlock": 120.0
+        },
+        "oxygen_injection_mol_s": {
+          "crew_cabin": 0.0003,
+          "work_airlock": 0.0003
+        },
+        "scrubber_duty": 0.6
+      },
+      "end_step": 2,
+      "generation_w": 3000.0,
+      "loads": {
+        "crew_cabin": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        },
+        "work_airlock": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        }
+      },
+      "operating_mode": "eva_transition",
+      "start_step": 1
+    },
+    {
+      "command": {
+        "airflow_m3_s": {
+          "crew_cabin": 0.08,
+          "work_airlock": 0.06
+        },
+        "condenser_duty": 0.5,
+        "cooling_removed_w": {
+          "crew_cabin": 120.0,
+          "work_airlock": 120.0
+        },
+        "oxygen_injection_mol_s": {
+          "crew_cabin": 0.0003,
+          "work_airlock": 0.0003
+        },
+        "scrubber_duty": 0.6
+      },
+      "end_step": 3,
+      "generation_w": 3000.0,
+      "loads": {
+        "crew_cabin": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        },
+        "work_airlock": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        }
+      },
+      "operating_mode": "contingency",
+      "start_step": 2
+    },
+    {
+      "command": {
+        "airflow_m3_s": {
+          "crew_cabin": 0.08,
+          "work_airlock": 0.06
+        },
+        "condenser_duty": 0.5,
+        "cooling_removed_w": {
+          "crew_cabin": 120.0,
+          "work_airlock": 120.0
+        },
+        "oxygen_injection_mol_s": {
+          "crew_cabin": 0.0003,
+          "work_airlock": 0.0003
+        },
+        "scrubber_duty": 0.6
+      },
+      "end_step": 4,
+      "generation_w": 3000.0,
+      "loads": {
+        "crew_cabin": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        },
+        "work_airlock": {
+          "co2_generation_mol_s": 0.00025,
+          "o2_consumption_mol_s": 0.0003,
+          "sensible_heat_w": 110.0,
+          "water_vapor_generation_mol_s": 0.0012
+        }
+      },
+      "operating_mode": "dormant",
+      "start_step": 3
+    }
+  ],
+  "zones": [
+    {
+      "id": "crew_cabin",
+      "initial": {
+        "co2_ppm": 800.0,
+        "o2_mole_fraction": 0.3,
+        "pressure_pa": 72000.0,
+        "relative_humidity": 0.45,
+        "temperature_k": 295.15
+      },
+      "passive_thermal_conductance_w_per_k": 12.0,
+      "sink_temperature_k": 280.0,
+      "thermal_capacity_j_per_k": 5000000.0,
+      "volume_m3": 40.0
+    },
+    {
+      "id": "work_airlock",
+      "initial": {
+        "co2_ppm": 800.0,
+        "o2_mole_fraction": 0.3,
+        "pressure_pa": 72000.0,
+        "relative_humidity": 0.45,
+        "temperature_k": 295.15
+      },
+      "passive_thermal_conductance_w_per_k": 10.0,
+      "sink_temperature_k": 280.0,
+      "thermal_capacity_j_per_k": 4000000.0,
+      "volume_m3": 30.0
+    }
+  ]
+}
