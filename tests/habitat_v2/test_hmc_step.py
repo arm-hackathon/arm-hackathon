@@ -44,8 +44,8 @@ def test_no_proposal_full_cycle_commits_step_and_next_observation_atomically() -
     contract = _contract()
     hmc = HabitatManagementComputer.reset(scenario, contract, b"s" * 32)
     snapshot_zero, verification_zero = hmc.observe()
-    hmc.verify_snapshot(snapshot_zero, verification_zero)
-    proposal = hmc.propose(None)
+    handle_zero = hmc.verify_snapshot(snapshot_zero, verification_zero)
+    proposal = hmc.propose(None, handle_zero)
     arbitration = hmc.arbitrate()
     state_before = hmc._state
     arbitration_chain = hmc.current_control_chain_sha256
@@ -165,7 +165,7 @@ def test_second_cycle_uses_current_sequence_and_repeats_last_final_command() -> 
     scenario = _scenario()
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"t" * 32)
     snapshot_zero, verification_zero = hmc.observe()
-    hmc.verify_snapshot(snapshot_zero, verification_zero)
+    handle_zero = hmc.verify_snapshot(snapshot_zero, verification_zero)
     first_command = snapshot_zero.to_mapping()["command_reference"]["command"]
     first_command["fan_speed_fraction"] = 1.0
     proposal_body = {
@@ -182,11 +182,11 @@ def test_second_cycle_uses_current_sequence_and_repeats_last_final_command() -> 
         "confidence": None,
     }
     proposal_sha256 = hashlib.sha256(_canonical_bytes(proposal_body)).hexdigest()
-    hmc.propose({**proposal_body, "proposal_sha256": proposal_sha256})
+    hmc.propose({**proposal_body, "proposal_sha256": proposal_sha256}, handle_zero)
     arbitration_zero = hmc.arbitrate()
     step_zero = hmc.step()
     snapshot_one, verification_one = hmc.observe()
-    hmc.verify_snapshot(snapshot_one, verification_one)
+    handle_one = hmc.verify_snapshot(snapshot_one, verification_one)
     achieved_fan = next(
         sample["value"]
         for sample in snapshot_one.to_mapping()["operational_feedback"]["samples"]
@@ -194,7 +194,7 @@ def test_second_cycle_uses_current_sequence_and_repeats_last_final_command() -> 
     )
     assert achieved_fan != arbitration_zero.final_command["fan_speed_fraction"]
 
-    proposal_one = hmc.propose(None)
+    proposal_one = hmc.propose(None, handle_one)
     arbitration_one = hmc.arbitrate()
     step_one = hmc.step()
     snapshot_two, verification_two = hmc.observe()

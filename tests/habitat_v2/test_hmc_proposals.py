@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import copy
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,10 @@ from aeolus.habitat_v2.hmc_contract import load_hmc_contract
 from aeolus.habitat_v2.physics import validate_external_command
 from aeolus.habitat_v2.proposal import ProposalReceipt
 from aeolus.habitat_v2.scenario import Scenario
-from aeolus.habitat_v2.snapshot import _issue_receipt_control_event
+from aeolus.habitat_v2.snapshot import (
+    SnapshotVerificationError,
+    _issue_receipt_control_event,
+)
 
 
 def _scenario() -> Scenario:
@@ -63,14 +67,14 @@ def test_no_proposal_issues_one_exact_receipt_without_plant_or_health_mutation()
     contract = _contract()
     hmc = HabitatManagementComputer.reset(_scenario(), contract, b"p" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     state_before = hmc._state
     sensor_memory_before = hmc._sensor_memory
     health_tracker_before = hmc._health_tracker
     measurement_before = hmc._last_operational_measurement
     previous_chain = hmc.current_control_chain_sha256
 
-    receipt = hmc.propose(None)
+    receipt = hmc.propose(None, handle)
 
     assert type(receipt) is ProposalReceipt
     assert hmc.lifecycle_phase == "PROPOSED"
@@ -131,7 +135,7 @@ def test_opaque_malformed_proposal_emits_closed_rejection_without_retaining_inpu
     contract = _contract()
     hmc = HabitatManagementComputer.reset(_scenario(), contract, b"m" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     state_before = hmc._state
     sensor_memory_before = hmc._sensor_memory
     health_tracker_before = hmc._health_tracker
@@ -145,7 +149,7 @@ def test_opaque_malformed_proposal_emits_closed_rejection_without_retaining_inpu
         + reason_bytes
     ).hexdigest()
 
-    receipt = hmc.propose(object())
+    receipt = hmc.propose(object(), handle)
 
     assert hmc.lifecycle_phase == "PROPOSED"
     assert hmc._state is state_before
@@ -182,11 +186,11 @@ def test_canonicalisable_malformed_proposal_hashes_exact_input_without_retaining
 ):
     hmc = HabitatManagementComputer.reset(_scenario(), _contract(), b"c" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     proposal: dict[str, object] = {}
     expected_evidence = hashlib.sha256(_canonical_bytes(proposal)).hexdigest()
 
-    receipt = hmc.propose(proposal)
+    receipt = hmc.propose(proposal, handle)
 
     mapping = receipt.to_mapping()
     assert mapping["attempt_class"] == "REJECTED_INPUT"
@@ -211,7 +215,7 @@ def test_valid_control_proposal_is_reparsed_and_bound_to_exact_command_identity(
     scenario = _scenario()
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"v" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     command = validate_external_command(
         scenario,
         scenario.data["timeline"][0]["command"],
@@ -232,7 +236,7 @@ def test_valid_control_proposal_is_reparsed_and_bound_to_exact_command_identity(
     proposal_sha256 = hashlib.sha256(_canonical_bytes(body)).hexdigest()
     proposal = {**body, "proposal_sha256": proposal_sha256}
 
-    receipt = hmc.propose(proposal)
+    receipt = hmc.propose(proposal, handle)
 
     mapping = receipt.to_mapping()
     assert mapping["attempt_class"] == "CANONICAL_PROPOSAL"
@@ -252,31 +256,166 @@ def test_valid_control_proposal_is_reparsed_and_bound_to_exact_command_identity(
     )
 
 
-def test_control_event_digest_omits_only_the_exact_event_self_digest() -> None:
-    previous_chain = "11" * 32
-    content = {
-        "proposal_receipt_sha256": "22" * 32,
-        "decision": "safe_hold",
-    }
+def test_control_event_rejects_minimal_arbitrary_self_digest_mapping() -> None:
+    content = {"proposal_receipt_sha256": "22" * 32, "decision": "safe_hold"}
     receipt_sha256 = hashlib.sha256(_canonical_bytes(content)).hexdigest()
-    receipt = {**content, "arbitration_receipt_sha256": receipt_sha256}
 
-    event = _issue_receipt_control_event(
-        event_ordinal=2,
-        event_kind="ARBITRATION",
-        receipt_mapping=receipt,
-        receipt_sha256=receipt_sha256,
-        previous_control_chain_sha256=previous_chain,
+    with pytest.raises(ValueError, match="closed schema"):
+        _issue_receipt_control_event(
+            event_ordinal=2,
+            event_kind="ARBITRATION",
+            receipt_mapping={**content, "arbitration_receipt_sha256": receipt_sha256},
+            receipt_sha256=receipt_sha256,
+            previous_control_chain_sha256="11" * 32,
+        )
+
+
+def _issued_arbitration_mapping() -> tuple[dict[str, object], str, int, str]:
+    hmc = HabitatManagementComputer.reset(_scenario(), _contract(), b"e" * 32)
+    snapshot, verification = hmc.observe()
+    handle = hmc.verify_snapshot(snapshot, verification)
+    hmc.propose(None, handle)
+    receipt = hmc.arbitrate().to_mapping()
+    return (
+        receipt,
+        str(receipt["arbitration_receipt_sha256"]),
+        int(receipt["event_ordinal"]),
+        str(receipt["previous_control_chain_sha256"]),
     )
 
-    assert event.receipt == receipt
-    assert event.receipt_sha256 == receipt_sha256
-    assert event.control_chain_sha256 == _chain_hash(
-        previous_chain,
-        2,
-        "ARBITRATION",
-        receipt_sha256,
-    )
+
+@pytest.mark.parametrize("mutation", ["extra", "missing"])
+def test_control_event_rejects_non_exact_receipt_fields(mutation: str) -> None:
+    receipt, digest, ordinal, previous = _issued_arbitration_mapping()
+    if mutation == "extra":
+        receipt["extra"] = True
+    else:
+        receipt.pop("reason_codes")
+
+    with pytest.raises(ValueError, match="closed schema"):
+        _issue_receipt_control_event(
+            event_ordinal=ordinal,
+            event_kind="ARBITRATION",
+            receipt_mapping=receipt,
+            receipt_sha256=digest,
+            previous_control_chain_sha256=previous,
+        )
+
+
+def test_control_event_rejects_wrong_receipt_schema_identity() -> None:
+    receipt, digest, ordinal, previous = _issued_arbitration_mapping()
+    receipt["receipt_schema_sha256"] = "00" * 32
+
+    with pytest.raises(ValueError, match="schema identity"):
+        _issue_receipt_control_event(
+            event_ordinal=ordinal,
+            event_kind="ARBITRATION",
+            receipt_mapping=receipt,
+            receipt_sha256=digest,
+            previous_control_chain_sha256=previous,
+        )
+
+
+@pytest.mark.parametrize("mismatch", ["ordinal", "previous"])
+def test_control_event_rejects_receipt_causal_mismatch(mismatch: str) -> None:
+    receipt, digest, ordinal, previous = _issued_arbitration_mapping()
+
+    with pytest.raises(ValueError, match="ordinal|previous chain"):
+        _issue_receipt_control_event(
+            event_ordinal=ordinal + (mismatch == "ordinal"),
+            event_kind="ARBITRATION",
+            receipt_mapping=receipt,
+            receipt_sha256=digest,
+            previous_control_chain_sha256=(
+                "00" * 32 if mismatch == "previous" else previous
+            ),
+        )
+
+
+def test_control_event_rejects_receipt_for_wrong_event_kind() -> None:
+    receipt, digest, ordinal, previous = _issued_arbitration_mapping()
+
+    with pytest.raises(ValueError, match="closed schema"):
+        _issue_receipt_control_event(
+            event_ordinal=ordinal,
+            event_kind="PROPOSAL",
+            receipt_mapping=receipt,
+            receipt_sha256=digest,
+            previous_control_chain_sha256=previous,
+        )
+
+
+def test_proposal_requires_exact_current_runtime_capability_and_fails_closed() -> None:
+    scenario = _scenario()
+    contract = _contract()
+    hmc = HabitatManagementComputer.reset(scenario, contract, b"x" * 32)
+    foreign_hmc = HabitatManagementComputer.reset(scenario, contract, b"x" * 32)
+    snapshot, verification = hmc.observe()
+    foreign_snapshot, foreign_verification = foreign_hmc.observe()
+    handle = hmc.verify_snapshot(snapshot, verification)
+    foreign_handle = foreign_hmc.verify_snapshot(foreign_snapshot, foreign_verification)
+    chain_before = hmc.current_control_chain_sha256
+    events_before = hmc.control_events
+
+    with pytest.raises(TypeError):
+        hmc.propose(None)  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="not serialisable"):
+        copy(handle)
+    cloned_handle = object.__new__(type(handle))
+    for field in (
+        "owner_identity",
+        "control_run_id",
+        "authority_epoch",
+        "snapshot_sha256",
+        "verification_receipt_sha256",
+        "cycle_id",
+        "sequence",
+        "snapshot_identity",
+        "receipt_identity",
+    ):
+        object.__setattr__(cloned_handle, field, getattr(handle, field))
+    for invalid in (None, object(), foreign_handle, cloned_handle):
+        with pytest.raises(SnapshotVerificationError, match="exact current"):
+            hmc.propose(None, invalid)  # type: ignore[arg-type]
+
+    assert hmc.lifecycle_phase == "OBSERVED"
+    assert hmc.current_control_chain_sha256 == chain_before
+    assert hmc.control_events == events_before
+    receipt = hmc.propose(None, handle)
+    assert receipt.observation_snapshot_sha256 == snapshot.snapshot_sha256
+
+    with pytest.raises(RuntimeError, match="PROPOSED"):
+        hmc.propose(None, handle)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("owner_identity", 0),
+        ("control_run_id", "00" * 32),
+        ("authority_epoch", "00" * 32),
+        ("cycle_id", "00" * 32),
+        ("sequence", 1),
+        ("snapshot_sha256", "00" * 32),
+        ("verification_receipt_sha256", "00" * 32),
+        ("snapshot_identity", 0),
+        ("receipt_identity", 0),
+    ),
+)
+def test_proposal_rejects_every_mismatched_capability_binding(
+    field: str,
+    replacement: object,
+) -> None:
+    hmc = HabitatManagementComputer.reset(_scenario(), _contract(), b"b" * 32)
+    snapshot, verification = hmc.observe()
+    handle = hmc.verify_snapshot(snapshot, verification)
+    object.__setattr__(handle, field, replacement)
+
+    with pytest.raises(SnapshotVerificationError, match="exact current"):
+        hmc.propose(None, handle)
+
+    assert hmc.lifecycle_phase == "OBSERVED"
+    assert len(hmc.control_events) == 1
 
 
 def test_proposal_receipt_public_construction_and_subclassing_are_disabled() -> None:
