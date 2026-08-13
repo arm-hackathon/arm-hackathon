@@ -9,6 +9,8 @@ from typing import Any
 from .control_trace import (
     StepReceipt,
     TerminalFailureReceipt,
+    ControlTrace,
+    _issue_control_trace,
     _issue_step_receipt,
     _issue_terminal_failure_receipt,
 )
@@ -321,7 +323,9 @@ class HabitatManagementComputer:
 
     def observe(
         self,
-    ) -> tuple[OperationalSnapshot, SnapshotVerificationReceipt] | TerminalFailureReceipt:
+    ) -> (
+        tuple[OperationalSnapshot, SnapshotVerificationReceipt] | TerminalFailureReceipt
+    ):
         if self._phase in {LifecyclePhase.OBSERVED, LifecyclePhase.STEPPED}:
             if (
                 self._cached_snapshot is None
@@ -388,52 +392,52 @@ class HabitatManagementComputer:
             ]
             snapshot = _issue_operational_snapshot(
                 {
-                "schema_version": self._contract.snapshot_schema_version,
-                "control_run_id": self._control_run_id,
-                "authority_epoch": self._authority_epoch,
-                "sequence": 0,
-                "completed_step": measurement.completed_step,
-                "completed_time_s": measurement.completed_time_s,
-                "completed_application_step": None,
-                "completed_operating_mode": None,
-                "primary_telemetry": {
-                    "source_kind": "primary_sensor_head",
-                    "samples": primary,
-                },
-                "secondary_telemetry": {
-                    "source_kind": "secondary_sensor_head",
-                    "samples": secondary,
-                },
-                "primary_minus_secondary": {
-                    "source_kind": "derived_primary_minus_secondary",
-                    "samples": disagreement,
-                },
-                "command_reference": {
-                    "source_kind": "authoritative_command_reference",
-                    "command_reference_kind": hold.command_reference_kind,
-                    "command": hold.command.to_mapping(),
-                },
-                "operational_feedback": {
-                    "source_kind": "operational_feedback_instrument",
-                    "samples": feedback,
-                },
-                "operational_resource_gauges": {
-                    "source_kind": "operational_resource_gauge",
-                    "samples": resource_gauges,
-                },
-                "derived_health": {
-                    "source_kind": "derived_health",
-                    "health_state": health.health_state,
-                },
-                "active_operational_alarms": {
-                    "source_kind": "alarm_receipt",
-                    "alarms": [alarm.to_mapping() for alarm in health.alarms],
-                },
-                "hmc_contract_sha256": self._contract.hmc_contract_sha256,
-                "snapshot_schema_sha256": self._snapshot_schema_sha256,
-                "observable_topology_sha256": self._observable_topology.sha256,
-                "completed_plant_receipt_digest": null_plant,
-                "completed_step_receipt_digest": null_step,
+                    "schema_version": self._contract.snapshot_schema_version,
+                    "control_run_id": self._control_run_id,
+                    "authority_epoch": self._authority_epoch,
+                    "sequence": 0,
+                    "completed_step": measurement.completed_step,
+                    "completed_time_s": measurement.completed_time_s,
+                    "completed_application_step": None,
+                    "completed_operating_mode": None,
+                    "primary_telemetry": {
+                        "source_kind": "primary_sensor_head",
+                        "samples": primary,
+                    },
+                    "secondary_telemetry": {
+                        "source_kind": "secondary_sensor_head",
+                        "samples": secondary,
+                    },
+                    "primary_minus_secondary": {
+                        "source_kind": "derived_primary_minus_secondary",
+                        "samples": disagreement,
+                    },
+                    "command_reference": {
+                        "source_kind": "authoritative_command_reference",
+                        "command_reference_kind": hold.command_reference_kind,
+                        "command": hold.command.to_mapping(),
+                    },
+                    "operational_feedback": {
+                        "source_kind": "operational_feedback_instrument",
+                        "samples": feedback,
+                    },
+                    "operational_resource_gauges": {
+                        "source_kind": "operational_resource_gauge",
+                        "samples": resource_gauges,
+                    },
+                    "derived_health": {
+                        "source_kind": "derived_health",
+                        "health_state": health.health_state,
+                    },
+                    "active_operational_alarms": {
+                        "source_kind": "alarm_receipt",
+                        "alarms": [alarm.to_mapping() for alarm in health.alarms],
+                    },
+                    "hmc_contract_sha256": self._contract.hmc_contract_sha256,
+                    "snapshot_schema_sha256": self._snapshot_schema_sha256,
+                    "observable_topology_sha256": self._observable_topology.sha256,
+                    "completed_plant_receipt_digest": null_plant,
+                    "completed_step_receipt_digest": null_step,
                 }
             )
             issuer_id = _domain_hash(
@@ -454,28 +458,30 @@ class HabitatManagementComputer:
             )
             receipt = _issue_snapshot_verification_receipt(
                 {
-                "receipt_schema_sha256": (
-                    self._contract.snapshot_verification_receipt_schema_sha256
-                ),
-                "snapshot_verification_contract_sha256": (
-                    self._contract.snapshot_verification_contract_sha256
-                ),
-                "hmc_contract_sha256": self._contract.hmc_contract_sha256,
-                "snapshot_schema_sha256": self._snapshot_schema_sha256,
-                "observable_topology_sha256": self._observable_topology.sha256,
-                "control_run_id": self._control_run_id,
-                "authority_epoch": self._authority_epoch,
-                "issuer_id": issuer_id,
-                "cycle_id": cycle_id,
-                "sequence": 0,
-                "completed_step": measurement.completed_step,
-                "completed_time_s": measurement.completed_time_s,
-                "snapshot_sha256": snapshot.snapshot_sha256,
-                "completed_plant_receipt_digest": null_plant,
-                "completed_step_receipt_digest": null_step,
-                "previous_verification_receipt_digest": null_verification,
-                "event_ordinal": 0,
-                "previous_control_chain_sha256": (self._current_control_chain_sha256),
+                    "receipt_schema_sha256": (
+                        self._contract.snapshot_verification_receipt_schema_sha256
+                    ),
+                    "snapshot_verification_contract_sha256": (
+                        self._contract.snapshot_verification_contract_sha256
+                    ),
+                    "hmc_contract_sha256": self._contract.hmc_contract_sha256,
+                    "snapshot_schema_sha256": self._snapshot_schema_sha256,
+                    "observable_topology_sha256": self._observable_topology.sha256,
+                    "control_run_id": self._control_run_id,
+                    "authority_epoch": self._authority_epoch,
+                    "issuer_id": issuer_id,
+                    "cycle_id": cycle_id,
+                    "sequence": 0,
+                    "completed_step": measurement.completed_step,
+                    "completed_time_s": measurement.completed_time_s,
+                    "snapshot_sha256": snapshot.snapshot_sha256,
+                    "completed_plant_receipt_digest": null_plant,
+                    "completed_step_receipt_digest": null_step,
+                    "previous_verification_receipt_digest": null_verification,
+                    "event_ordinal": 0,
+                    "previous_control_chain_sha256": (
+                        self._current_control_chain_sha256
+                    ),
                 }
             )
             event = _issue_control_event(
@@ -1190,6 +1196,12 @@ class HabitatManagementComputer:
         )
 
     def step(self) -> StepReceipt | TerminalFailureReceipt:
+        return self._step_with_executor(advance_one_step_with_command)
+
+    def _step_with_executor(
+        self, executor: Any
+    ) -> StepReceipt | TerminalFailureReceipt:
+        """Execute one authorised cycle with the supplied trusted physics boundary."""
         if self._phase is not LifecyclePhase.ARBITRATED:
             raise RuntimeError(
                 f"step is not valid during lifecycle phase {self._phase.value}"
@@ -1218,7 +1230,7 @@ class HabitatManagementComputer:
         application_step = pre_step_state.step
         final_command = self._cached_final_command
         try:
-            candidate = advance_one_step_with_command(
+            candidate = executor(
                 self._scenario,
                 pre_step_state,
                 final_command.to_mapping(),
@@ -1334,3 +1346,17 @@ class HabitatManagementComputer:
         self._current_control_chain_sha256 = staged.snapshot_event.control_chain_sha256
         self._phase = LifecyclePhase.STEPPED
         return staged.step_receipt
+
+    def export_control_trace(self, hmc_implementation_git_sha: str) -> ControlTrace:
+        """Export the immutable canonical whole-control-trace artifact."""
+        return _issue_control_trace(
+            scenario=self._scenario,
+            contract=self._contract,
+            reset_nonce=self._reset_nonce,
+            state=self._state,
+            lifecycle_phase=self._phase.value,
+            events=tuple(self._control_events),
+            hmc_implementation_git_sha=hmc_implementation_git_sha,
+        )
+
+    finalize_control_trace = export_control_trace
