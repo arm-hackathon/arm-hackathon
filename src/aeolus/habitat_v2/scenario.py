@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import math
-from typing import Any, Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
 
 SCENARIO_SCHEMA_VERSION_V1 = "aeolus_habitat_v2_scenario_v1"
 SCENARIO_SCHEMA_VERSION_V2 = "aeolus_habitat_v2_scenario_v2"
@@ -121,9 +122,10 @@ _EQUIPMENT_FIELDS_V3 = _EQUIPMENT_FIELDS - {
     "airflow_slew_m3_s2",
     "fan_power_w_per_m3_s",
 }
-_INITIAL_UTILITY_FIELDS_V3 = (
-    _INITIAL_UTILITY_FIELDS - {"actual_airflow_m3_s"}
-) | {"actual_fan_speed_fraction", "actual_damper_position_by_id"}
+_INITIAL_UTILITY_FIELDS_V3 = (_INITIAL_UTILITY_FIELDS - {"actual_airflow_m3_s"}) | {
+    "actual_fan_speed_fraction",
+    "actual_damper_position_by_id",
+}
 _INITIAL_UTILITY_FIELDS_V5 = _INITIAL_UTILITY_FIELDS_V3 | {
     "actual_cooling_removed_w",
     "actual_oxygen_injection_mol_s",
@@ -376,15 +378,15 @@ def _initial_utility_fields_for_schema(schema_version: str) -> set[str]:
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
-def _command_fields_for_schema(schema_version: str) -> set[str]:
+def command_fields_for_schema(schema_version: str) -> frozenset[str]:
     if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
-        return _COMMAND_FIELDS
+        return frozenset(_COMMAND_FIELDS)
     if schema_version in {
         SCENARIO_SCHEMA_VERSION_V3,
         SCENARIO_SCHEMA_VERSION_V4,
         SCENARIO_SCHEMA_VERSION_V5,
     }:
-        return _COMMAND_FIELDS_V3
+        return frozenset(_COMMAND_FIELDS_V3)
     raise ScenarioValidationError(f"unsupported scenario schema {schema_version!r}")
 
 
@@ -475,15 +477,11 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
             label="air network shared resistance",
         )
         for branch in network["branches"]:
-            _reject_unknown_fields(
-                branch, _BRANCH_FIELDS, label="air network branch"
-            )
+            _reject_unknown_fields(branch, _BRANCH_FIELDS, label="air network branch")
 
     if schema_version in {SCENARIO_SCHEMA_VERSION_V4, SCENARIO_SCHEMA_VERSION_V5}:
         sensor_model = scenario["sensor_model"]
-        _reject_unknown_fields(
-            sensor_model, _SENSOR_MODEL_FIELDS, label="sensor model"
-        )
+        _reject_unknown_fields(sensor_model, _SENSOR_MODEL_FIELDS, label="sensor model")
         for head in ("primary_noise_amplitude", "secondary_noise_amplitude"):
             _reject_unknown_fields(
                 sensor_model[head],
@@ -555,7 +553,7 @@ def _validate_nested_schema(scenario: Mapping[str, Any]) -> None:
             _reject_unknown_fields(load, _ZONE_LOAD_FIELDS, label="zone load")
         _reject_unknown_fields(
             segment["command"],
-            _command_fields_for_schema(schema_version),
+            set(command_fields_for_schema(schema_version)),
             label="plant command",
         )
 
@@ -601,8 +599,12 @@ def _validate_topology(scenario: Mapping[str, Any]) -> None:
             raise ScenarioValidationError(
                 "scenario-v3 zone topology must contain 2..16 unique zone ids"
             )
-        if any(not isinstance(zone_id, str) or not zone_id.strip() for zone_id in zone_ids):
-            raise ScenarioValidationError("scenario-v3 zone ids must be non-empty strings")
+        if any(
+            not isinstance(zone_id, str) or not zone_id.strip() for zone_id in zone_ids
+        ):
+            raise ScenarioValidationError(
+                "scenario-v3 zone ids must be non-empty strings"
+            )
         branches = scenario["air_network"]["branches"]
         branch_zone_ids = [branch["zone_id"] for branch in branches]
         damper_ids = [branch["damper_id"] for branch in branches]
@@ -614,9 +616,7 @@ def _validate_topology(scenario: Mapping[str, Any]) -> None:
             raise ScenarioValidationError(
                 "scenario-v3 air-network damper ids must be unique"
             )
-        initial_dampers = scenario["initial_utility"][
-            "actual_damper_position_by_id"
-        ]
+        initial_dampers = scenario["initial_utility"]["actual_damper_position_by_id"]
         if set(initial_dampers) != set(damper_ids):
             raise ScenarioValidationError(
                 "initial damper state must match air-network damper ids"
@@ -698,7 +698,9 @@ def _positive_int(value: Any, *, path: str) -> int:
 def _vector3(value: Any, *, path: str, positive: bool = False) -> tuple[float, ...]:
     if not isinstance(value, list) or len(value) != 3:
         _invalid(path, "must be an array of exactly three numbers")
-    numbers = tuple(_number(item, path=f"{path}[{index}]") for index, item in enumerate(value))
+    numbers = tuple(
+        _number(item, path=f"{path}[{index}]") for index, item in enumerate(value)
+    )
     if positive and any(number <= 0.0 for number in numbers):
         _invalid(path, "all dimensions must be greater than zero")
     return numbers
@@ -721,8 +723,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
         effectiveness_intervals_by_target: dict[str, list[tuple[int, int]]] = {}
         declared_zone_ids = {str(zone["id"]) for zone in scenario["zones"]}
         declared_damper_ids = {
-            str(branch["damper_id"])
-            for branch in scenario["air_network"]["branches"]
+            str(branch["damper_id"]) for branch in scenario["air_network"]["branches"]
         }
         for index, profile in enumerate(scenario["fault_profiles"]):
             prefix = f"fault_profiles[{index}]"
@@ -760,9 +761,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                     or not damper_id.strip()
                     or damper_id not in declared_damper_ids
                 ):
-                    _invalid(
-                        f"{prefix}.damper_id", "must identify a declared damper"
-                    )
+                    _invalid(f"{prefix}.damper_id", "must identify a declared damper")
                 damper_intervals = damper_intervals_by_id.setdefault(damper_id, [])
                 for prior_start, prior_end in damper_intervals:
                     if max(start_step, prior_start) < min(end_step, prior_end):
@@ -784,9 +783,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 ):
                     _invalid(f"{prefix}.zone_id", "must identify a declared zone")
                 if sensor_head not in {"primary", "secondary"}:
-                    _invalid(
-                        f"{prefix}.sensor_head", "must be primary or secondary"
-                    )
+                    _invalid(f"{prefix}.sensor_head", "must be primary or secondary")
                 if channel not in _SENSOR_CHANNELS:
                     _invalid(
                         f"{prefix}.channel",
@@ -848,7 +845,9 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 intervals = feedback_intervals_by_target.setdefault(target, [])
                 for prior_start, prior_end in intervals:
                     if max(start_step, prior_start) < min(end_step, prior_end):
-                        _invalid(prefix, f"feedback faults for {target} may not overlap")
+                        _invalid(
+                            prefix, f"feedback faults for {target} may not overlap"
+                        )
                 intervals.append((start_step, end_step))
                 continue
 
@@ -861,14 +860,15 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                     if not 0.0 <= multiplier <= 1.0:
                         _invalid(f"{prefix}.{field}", "must be between 0 and 1")
                 target = (
-                    "scrubber"
-                    if profile_type.startswith("scrubber")
-                    else "condenser"
+                    "scrubber" if profile_type.startswith("scrubber") else "condenser"
                 )
                 intervals = effectiveness_intervals_by_target.setdefault(target, [])
                 for prior_start, prior_end in intervals:
                     if max(start_step, prior_start) < min(end_step, prior_end):
-                        _invalid(prefix, f"effectiveness profiles for {target} may not overlap")
+                        _invalid(
+                            prefix,
+                            f"effectiveness profiles for {target} may not overlap",
+                        )
                 intervals.append((start_step, end_step))
                 continue
 
@@ -890,7 +890,10 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 intervals = effectiveness_intervals_by_target.setdefault(target, [])
                 for prior_start, prior_end in intervals:
                     if max(start_step, prior_start) < min(end_step, prior_end):
-                        _invalid(prefix, f"effectiveness profiles for {target} may not overlap")
+                        _invalid(
+                            prefix,
+                            f"effectiveness profiles for {target} may not overlap",
+                        )
                 intervals.append((start_step, end_step))
                 continue
 
@@ -1000,12 +1003,14 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
         efficiency = _number(equipment[field], path=f"equipment.{field}")
         if not 0.0 < efficiency <= 1.0:
             _invalid(f"equipment.{field}", "must be in (0, 1]")
-    if schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}:
-        if equipment["max_zone_airflow_m3_s"] > equipment["max_total_airflow_m3_s"]:
-            _invalid(
-                "equipment.max_zone_airflow_m3_s",
-                "cannot exceed max_total_airflow_m3_s",
-            )
+    if (
+        schema_version in {SCENARIO_SCHEMA_VERSION_V1, SCENARIO_SCHEMA_VERSION_V2}
+        and equipment["max_zone_airflow_m3_s"] > equipment["max_total_airflow_m3_s"]
+    ):
+        _invalid(
+            "equipment.max_zone_airflow_m3_s",
+            "cannot exceed max_total_airflow_m3_s",
+        )
 
     utility = scenario["initial_utility"]
     utility_inventory_fields = {
@@ -1111,7 +1116,10 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 shared_resistance[field],
                 path=f"air_network.shared_resistance.{field}",
             )
-        if sum(float(shared_resistance[field]) for field in _SHARED_RESISTANCE_FIELDS) <= 0.0:
+        if (
+            sum(float(shared_resistance[field]) for field in _SHARED_RESISTANCE_FIELDS)
+            <= 0.0
+        ):
             _invalid(
                 "air_network.shared_resistance",
                 "at least one shared resistance must be greater than zero",
@@ -1137,9 +1145,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 path=f"{branch_prefix}.damper_leak_fraction",
             )
             if not 0.0 < leak_fraction <= 1.0:
-                _invalid(
-                    f"{branch_prefix}.damper_leak_fraction", "must be in (0, 1]"
-                )
+                _invalid(f"{branch_prefix}.damper_leak_fraction", "must be in (0, 1]")
             for field in (
                 "supply_diffuser_position_m",
                 "return_grille_position_m",
@@ -1190,8 +1196,7 @@ def _validate_values(scenario: Mapping[str, Any]) -> None:
                 _nonnegative(
                     noise[channel],
                     path=(
-                        "actuator_feedback.feedback_sensor_noise_amplitude."
-                        f"{channel}"
+                        f"actuator_feedback.feedback_sensor_noise_amplitude.{channel}"
                     ),
                 )
         else:
@@ -1373,7 +1378,7 @@ class Scenario:
             )
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Any]) -> "Scenario":
+    def from_mapping(cls, mapping: Mapping[str, Any]) -> Scenario:
         if not isinstance(mapping, Mapping):
             raise ScenarioValidationError("scenario must be a JSON object")
 
