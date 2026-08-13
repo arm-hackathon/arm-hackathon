@@ -88,17 +88,35 @@ It binds the ordered qualification-case/report grading manifest
 and hard-negative result manifest
 `442ed9b59b75e5d603d23fda26d9aee172933946ade3189c63683fd16445cd76`.
 
-The complete external qualification packet, containing the six manifests,
+The complete qualification packet, containing the six manifests,
 operational-provenance bindings, canonical reports, hard-negative result and
 aggregate metrics, has SHA-256
 `1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b`.
-It is stored outside the source tree at
-`C:/Users/Nxiss/AppData/Local/hermes/cache/aeolus-observability-evidence/qualification-packet.json`.
+It is tracked at
+[`habitat-v2-operational-observability-qualification-packet.json`](habitat-v2-operational-observability-qualification-packet.json).
+
+Rebuild and verify it from the repository root with:
+
+```bash
+uv run --locked --python 3.11 --extra dev python \
+  scripts/build_habitat_v2_observability_packet.py \
+  --source-root . \
+  --output out/habitat-v2-observability-qualification-packet.json \
+  --expected-sha256 \
+  1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b
+```
+
+The command rebuilds every scenario trace and report from tracked simulator and
+scenario bytes. It verifies the expected digest before writing, so a mismatched
+rebuild cannot overwrite an accepted output. CI executes the same builder into
+a temporary path and requires byte equality with the tracked packet.
 
 ## Verification receipt
 
 The final freeze reruns focused qualification, full project and Habitat V2
-suites, Ruff, `compileall`, locked dependency and diff checks, package build,
-isolated installed-package qualification smoke, and duplicate canonical report
-byte comparison. The local commit and final package artifact hashes are the
-source of the final freeze identity; no publication is part of this scope.
+suites, Ruff, `compileall`, locked dependency and exact-range diff checks,
+package build, isolated installed-package qualification smoke, duplicate
+canonical report byte comparison, and tracked qualification-packet rebuild.
+The Git commit, tracked packet and final package artifact hashes are the source
+of the final freeze identity. Draft publication does not imply merge, release,
+deployment, model, or hardware approval.

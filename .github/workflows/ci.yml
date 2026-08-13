@@ -30,6 +30,21 @@ jobs:
       - name: Run full locked test suite
         run: uv run --locked --python 3.11 --extra dev python -m pytest -q
 
+      - name: Rebuild tracked Habitat V2 observability packet
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKET_OUTPUT="$(mktemp "${RUNNER_TEMP}/observability-packet.XXXXXX.json")"
+          uv run --locked --python 3.11 --extra dev python \
+            scripts/build_habitat_v2_observability_packet.py \
+            --source-root "$GITHUB_WORKSPACE" \
+            --output "$PACKET_OUTPUT" \
+            --expected-sha256 \
+            1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b
+          cmp --silent \
+            docs/evidence/habitat-v2-operational-observability-qualification-packet.json \
+            "$PACKET_OUTPUT"
+
       - name: Lint with locked Ruff
         run: uv run --locked --python 3.11 --extra dev ruff check .
 
