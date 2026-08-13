@@ -77,8 +77,8 @@ def test_no_proposal_arbitration_selects_initial_achieved_hold_without_mutation(
     contract = _contract()
     hmc = HabitatManagementComputer.reset(scenario, contract, b"a" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    proposal_receipt = hmc.propose(None)
+    handle = hmc.verify_snapshot(snapshot, verification)
+    proposal_receipt = hmc.propose(None, handle)
     previous_chain = hmc.current_control_chain_sha256
     state_before = hmc._state
     hold = command_from_achieved_state(scenario, state_before).command
@@ -155,7 +155,7 @@ def test_occupied_valid_proposal_is_accepted_but_external_source_never_owns_comm
     scenario = _scenario()
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"o" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     proposed_command = json.loads(json.dumps(scenario.data["timeline"][0]["command"]))
     proposal_body = {
         "schema_version": "aeolus_habitat_v2_control_proposal_v1",
@@ -172,7 +172,7 @@ def test_occupied_valid_proposal_is_accepted_but_external_source_never_owns_comm
     }
     proposal_sha256 = hashlib.sha256(_canonical_bytes(proposal_body)).hexdigest()
     proposal_receipt = hmc.propose(
-        {**proposal_body, "proposal_sha256": proposal_sha256}
+        {**proposal_body, "proposal_sha256": proposal_sha256}, handle
     )
     state_before = hmc._state
 
@@ -204,8 +204,8 @@ def test_rejected_proposal_arbitration_falls_back_to_complete_safe_hold() -> Non
     scenario = _scenario()
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"r" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    proposal_receipt = hmc.propose({})
+    handle = hmc.verify_snapshot(snapshot, verification)
+    proposal_receipt = hmc.propose({}, handle)
     hold = command_from_achieved_state(scenario, hmc._state).command
 
     receipt = hmc.arbitrate()
@@ -228,7 +228,7 @@ def test_dormant_mode_clamps_only_oxygen_and_cooling_increases_to_safe_hold() ->
     scenario = _scenario_with_first_mode("dormant")
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"d" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     hold = command_from_achieved_state(scenario, hmc._state).command.to_mapping()
     proposed = json.loads(json.dumps(hold))
     proposed["fan_speed_fraction"] = min(1.0, hold["fan_speed_fraction"] + 0.1)
@@ -253,7 +253,7 @@ def test_dormant_mode_clamps_only_oxygen_and_cooling_increases_to_safe_hold() ->
         "confidence": 1.0,
     }
     proposal_sha256 = hashlib.sha256(_canonical_bytes(proposal_body)).hexdigest()
-    hmc.propose({**proposal_body, "proposal_sha256": proposal_sha256})
+    hmc.propose({**proposal_body, "proposal_sha256": proposal_sha256}, handle)
 
     receipt = hmc.arbitrate()
 
@@ -277,7 +277,7 @@ def test_low_battery_gauge_clamps_all_normal_proposal_increases_to_hold() -> Non
     scenario = _scenario_with_low_battery()
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"b" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     snapshot_mapping = snapshot.to_mapping()
     battery_sample = next(
         sample
@@ -315,7 +315,7 @@ def test_low_battery_gauge_clamps_all_normal_proposal_increases_to_hold() -> Non
         "confidence": None,
     }
     proposal_sha256 = hashlib.sha256(_canonical_bytes(proposal_body)).hexdigest()
-    hmc.propose({**proposal_body, "proposal_sha256": proposal_sha256})
+    hmc.propose({**proposal_body, "proposal_sha256": proposal_sha256}, handle)
 
     receipt = hmc.arbitrate()
 

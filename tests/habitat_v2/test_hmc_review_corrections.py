@@ -91,8 +91,8 @@ def _valid_proposal(
 
 def _prepare_arbitrated_no_proposal(hmc: HabitatManagementComputer):
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    proposal = hmc.propose(None)
+    handle = hmc.verify_snapshot(snapshot, verification)
+    proposal = hmc.propose(None, handle)
     arbitration = hmc.arbitrate()
     return snapshot, verification, proposal, arbitration
 
@@ -135,10 +135,10 @@ def test_unknown_health_overrides_a_valid_proposal_with_safe_hold(
     scenario = _scenario()
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"u" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     requested = command_from_achieved_state(scenario, hmc._state).command.to_mapping()
     requested["fan_speed_fraction"] = 1.0
-    hmc.propose(_valid_proposal(hmc, snapshot, requested))
+    hmc.propose(_valid_proposal(hmc, snapshot, requested), handle)
     hold = command_from_achieved_state(scenario, hmc._state).command
 
     receipt = hmc.arbitrate()
@@ -180,9 +180,9 @@ def test_conflicting_critical_environmental_alarms_select_deterministic_emergenc
     scenario = _scenario()
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"e" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     requested = command_from_achieved_state(scenario, hmc._state).command.to_mapping()
-    hmc.propose(_valid_proposal(hmc, snapshot, requested))
+    hmc.propose(_valid_proposal(hmc, snapshot, requested), handle)
 
     receipt = hmc.arbitrate()
 
@@ -221,8 +221,8 @@ def test_emergency_override_records_normal_reserve_floor_crossing(
     scenario = _scenario(low_battery=True)
     hmc = HabitatManagementComputer.reset(scenario, _contract(), b"r" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    hmc.propose(None)
+    handle = hmc.verify_snapshot(snapshot, verification)
+    hmc.propose(None, handle)
 
     receipt = hmc.arbitrate()
 
@@ -298,7 +298,7 @@ def test_physics_failure_after_authority_consumption_emits_one_terminal_receipt(
     for causal_call in (
         hmc.observe,
         lambda: hmc.verify_snapshot(snapshot, verification),
-        lambda: hmc.propose(None),
+        lambda: hmc.propose(None, object()),  # type: ignore[arg-type]
         hmc.arbitrate,
         hmc.step,
     ):
@@ -437,8 +437,8 @@ def test_infeasible_safe_hold_enters_terminal_before_step_authority(
     contract = _contract()
     hmc = HabitatManagementComputer.reset(_scenario(), contract, b"i" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    hmc.propose(None)
+    handle = hmc.verify_snapshot(snapshot, verification)
+    hmc.propose(None, handle)
     committed_state = hmc._state
     events_before = hmc.control_events
 
@@ -491,10 +491,10 @@ def test_infeasible_emergency_preflight_falls_back_to_feasible_safe_hold(
     contract = _contract()
     hmc = HabitatManagementComputer.reset(scenario, contract, b"g" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
+    handle = hmc.verify_snapshot(snapshot, verification)
     requested = command_from_achieved_state(scenario, hmc._state).command.to_mapping()
     requested["fan_speed_fraction"] = 0.4
-    hmc.propose(_valid_proposal(hmc, snapshot, requested))
+    hmc.propose(_valid_proposal(hmc, snapshot, requested), handle)
     safe_hold = command_from_achieved_state(scenario, hmc._state).command
     original_preflight = hmc_module.preflight_external_command
     calls: list[str] = []
@@ -556,8 +556,8 @@ def test_second_cycle_pre_arbitration_terminal_does_not_link_prior_arbitration(
     first_step = hmc.step()
     assert type(first_step).__name__ == "StepReceipt"
     snapshot_one, verification_one = hmc.observe()
-    hmc.verify_snapshot(snapshot_one, verification_one)
-    second_proposal = hmc.propose(None)
+    handle_one = hmc.verify_snapshot(snapshot_one, verification_one)
+    second_proposal = hmc.propose(None, handle_one)
     assert hmc._cached_arbitration_receipt is None
 
     def infeasible_preflight(_scenario, _state, command, application_step):
@@ -626,9 +626,10 @@ def test_initial_observation_failure_enters_closed_terminal_state(
     assert mapping["reason_code"] == reason_code
     assert mapping["application_step"] is None
     assert mapping["lifecycle_phase"] == "RESET"
-    assert mapping["last_good_snapshot_sha256"] == hmc._contract.data["null_roots"][
-        "snapshot"
-    ]["sha256"]
+    assert (
+        mapping["last_good_snapshot_sha256"]
+        == hmc._contract.data["null_roots"]["snapshot"]["sha256"]
+    )
     assert mapping["proposal_receipt_sha256"] is None
     assert mapping["arbitration_receipt_sha256"] is None
     assert mapping["final_command_sha256"] is None
@@ -658,8 +659,8 @@ def test_unexpected_emergency_preflight_failure_falls_back_then_terminal_if_hold
     )
     hmc = HabitatManagementComputer.reset(_scenario(), _contract(), b"x" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    hmc.propose(None)
+    handle = hmc.verify_snapshot(snapshot, verification)
+    hmc.propose(None, handle)
     calls = 0
 
     def fail_preflight(*_args, **_kwargs):
