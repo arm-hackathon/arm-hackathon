@@ -902,7 +902,7 @@ def _trace_validate_receipt(
     if parsed["receipt_schema_sha256"] != expected_schema:
         raise ControlTraceParseError(f"{name} receipt schema identity is inconsistent")
     for field in parsed:
-        if field.endswith("_sha256"):
+        if field.endswith(("_sha256", "_digest")):
             if parsed[field] is None and field in _NULLABLE_RECEIPT_DIGEST_FIELDS:
                 continue
             _trace_sha256(parsed[field], label=f"{name} receipt {field}")

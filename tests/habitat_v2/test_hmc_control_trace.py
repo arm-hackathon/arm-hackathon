@@ -435,6 +435,25 @@ def test_parser_rejects_rehashed_reset_and_proposed_terminal_evidence_forgery(
         parse_control_trace(_trace_bytes(mapping), scenario, contract)
 
 
+def test_parser_rejects_rehashed_malformed_terminal_candidate_digest() -> None:
+    scenario, contract, trace = _issued_terminal_trace(
+        "ARBITRATED", "COMMAND_DIGEST_MISMATCH", "1" * 64
+    )
+    mapping = _mapping(trace)
+    events = mapping["events"]
+    assert type(events) is list
+    terminal_index = len(events) - 1
+    terminal = events[terminal_index]["receipt"]
+    terminal["candidate_plant_receipt_digest"] = "not-a-sha256-digest"
+    _rehash_trace_from_event(mapping, terminal_index, contract)
+
+    with pytest.raises(
+        ControlTraceError,
+        match="terminal receipt candidate_plant_receipt_digest must be lowercase SHA-256 hex",
+    ):
+        parse_control_trace(_trace_bytes(mapping), scenario, contract)
+
+
 @pytest.mark.parametrize(
     ("field", "replacement"),
     (
