@@ -105,6 +105,7 @@ def validate_accounting_receipt(
     *,
     scenario: Scenario | None = None,
     pre_step_state: PlantState | None = None,
+    command: Mapping[str, Any] | None = None,
 ) -> None:
     species = receipt["species_accounting"]
     tolerance_mol = _finite_accounting_value(
@@ -192,6 +193,29 @@ def validate_accounting_receipt(
     if abs(electrical_residual_wh) > electrical_tolerance_wh:
         raise AccountingInvariantError("electrical residual exceeds declared tolerance")
 
+    has_external_command_digest = "external_command_digest" in receipt
+    recomputed_receipt: Mapping[str, Any] | None = None
+    if has_external_command_digest:
+        if scenario is None:
+            raise AccountingInvariantError(
+                "external-command accounting requires the parsed scenario contract"
+            )
+        if pre_step_state is None:
+            raise AccountingInvariantError(
+                "external-command accounting requires the pre-step plant state"
+            )
+        if command is None:
+            raise AccountingInvariantError(
+                "external-command accounting requires the supplied command"
+            )
+        recomputed_receipt = physics_module.advance_one_step_with_command(
+            scenario, pre_step_state, command
+        ).receipt
+    elif command is not None:
+        raise AccountingInvariantError(
+            "timeline accounting does not accept external command context"
+        )
+
     network = receipt.get("air_network")
     if network is None:
         if scenario is not None and scenario.trace_schema_version in {
@@ -201,6 +225,18 @@ def validate_accounting_receipt(
         }:
             raise AccountingInvariantError(
                 "scenario-v3/v4 accounting requires an air-network receipt"
+            )
+        if recomputed_receipt is not None:
+            _require_causal_receipt_match(
+                receipt,
+                recomputed_receipt,
+                path="accounting receipt",
+            )
+        elif scenario is not None and pre_step_state is not None:
+            _require_causal_receipt_match(
+                receipt,
+                physics_module.advance_one_step(scenario, pre_step_state).receipt,
+                path="accounting receipt",
             )
         return
     if scenario is None:
@@ -377,9 +413,10 @@ def validate_accounting_receipt(
             "electrical fan load does not match air-network fan power"
         )
 
-    recomputed_receipt = physics_module.advance_one_step(
-        scenario, pre_step_state
-    ).receipt
+    if recomputed_receipt is None:
+        recomputed_receipt = physics_module.advance_one_step(
+            scenario, pre_step_state
+        ).receipt
     _require_causal_receipt_match(
         receipt,
         recomputed_receipt,
