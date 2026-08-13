@@ -9,8 +9,8 @@
 **Release mode:** parallel PRs with one later release decision
 **Current integration version:** `0.7.0`, unreleased
 **Publication rule:** draft PRs only until human review and comprehension gates pass
-**Evidence refresh:** 2026-08-13, after publishing corrected O1 and restacked H1 heads
-**Current code status:** O1 and H1 are published draft PRs; neither is approved, merged, tagged, released, deployed, or a learned-model qualification
+**Evidence refresh:** 2026-08-13, after publishing corrected O1 and restacked H1 heads and independently reviewing the O1 packet correction
+**Current code status:** O1 and H1 are published draft PRs. The eight-file O1 packet correction has one bounded independent review with no blocking findings. Candidate-wide O1 review and H1 review remain pending. Neither candidate is approved, merged, tagged, released, deployed, or a learned-model qualification
 **Project-submission boundary:** an early hackathon entry is separate from GitHub merge/release status and does not freeze later repository work
 
 ## 1. Plain-language objective
@@ -137,7 +137,7 @@ Every stage must preserve these invariants:
 | Stage | Intended branch | Intended base | Review idea | Version impact |
 |---|---|---|---|---|
 | Tracker | `ben/habitat-v2-model-admission-prd` | `alex/ai-2` | This PRD and live evidence checklist, draft PR #33 | `none` |
-| O1 | `ben/habitat-v2-observability-restack` | `alex/ai-2` | Operational observability on corrected plant bytes, draft PR #34 at `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0` | `minor`, consolidated release line |
+| O1 | `ben/habitat-v2-observability-restack` | `alex/ai-2` | Operational observability on corrected plant bytes, draft PR #34 at `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0`; packet correction independently reviewed | `minor`, consolidated release line |
 | H1 | `ben/habitat-v2-hmc-restack` | O1 | Deterministic HMC plus full control-trace replay, draft PR #35 at `0445af158edbbd7189dcbe7cad8600ca35deddb0` | `minor`, consolidated release line |
 | D1 | `ben/habitat-v2-forecast-data-foundation` | H1 | Model contract, corpus, splits, baselines, evaluator | `minor`, consolidated release line |
 | E1 | `ben/habitat-v2-forecast-experiment-freeze` | D1 | Frozen experiment and final-access protocol | `none` unless executable behaviour changes |
@@ -188,10 +188,11 @@ A green focused subset is not a green full suite. A historical receipt is not cu
 - [x] Run the complete locked suite and installed-wheel smoke.
 - [x] Freeze commit, diff hash, artifacts, and external bundle.
 - [x] Publish the corrected O1 draft PR with exact evidence and limitations.
+- [x] Run one bounded independent review of the eight-file qualification-packet reproducibility correction at exact commit `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0` against parent `ed3fd5c949a382ec8ffdb060733990dd00803777`.
 
-**Gate status:** published draft and verification complete. Independent review, Ben's comprehension gate, ready-for-review transition, merge and release remain pending.
+**Gate status:** published draft, verification, and independent review of the packet correction are complete. Candidate-wide O1 review, Ben's comprehension gate, ready-for-review transition, merge and release remain pending.
 
-**Frozen evidence:** draft PR #34, <https://github.com/arm-hackathon/arm-hackathon/pull/34>, targets `alex/ai-2` at `ec8a6e07cddcd97915398e5a84d348b30d850c86`. Exact head `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0`, tree `aa28c9204afeeee48ea116360e4b710c7827d1d5`, three commits, 25 changed files and base-relative binary diff SHA-256 `eaf3f0d63b8055681324388dab17743da1f6063634fc1fa63f9aba9b0406b855`. Detached exact-head verification passed 810/810 full locked tests, 51/51 focused qualification-plus-packet tests, Ruff, focused formatting, compilation, lock validation and exact-range diff hygiene. The canonical packet is tracked at `docs/evidence/habitat-v2-operational-observability-qualification-packet.json`; its Git blob is `f232b9e4a54caaee1494779dbc113e88f23e55be`, and a tracked fail-closed producer plus CI byte-comparison gate reproduces SHA-256 `1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b`. Metrics are harmful concern coverage 6/6, healthy false concerns 0/1, eligible localisation 5/5, ambiguous abstention 1/1 and overclaims 0/6. Exact fault identification remains deliberately unclaimed. Isolated installed-wheel packet generation passed. Fresh GitHub Actions run `31718771048` passed the locked suite and installed-wheel smoke. The bounded implementation audit is author self-review, not independent approval. No physical, hardware, deployment or learned-model qualification is claimed.
+**Frozen evidence:** draft PR #34, <https://github.com/arm-hackathon/arm-hackathon/pull/34>, targets `alex/ai-2` at `ec8a6e07cddcd97915398e5a84d348b30d850c86`. Exact head `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0`, tree `aa28c9204afeeee48ea116360e4b710c7827d1d5`, three commits, 25 changed files and base-relative binary diff SHA-256 `eaf3f0d63b8055681324388dab17743da1f6063634fc1fa63f9aba9b0406b855`. Detached exact-head verification passed 810/810 full locked tests, 51/51 focused qualification-plus-packet tests, Ruff, focused formatting, compilation, lock validation and exact-range diff hygiene. The canonical packet is tracked at `docs/evidence/habitat-v2-operational-observability-qualification-packet.json`; its Git blob is `f232b9e4a54caaee1494779dbc113e88f23e55be`, and a tracked fail-closed producer plus CI byte-comparison gate reproduces SHA-256 `1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b`. Metrics are harmful concern coverage 6/6, healthy false concerns 0/1, eligible localisation 5/5, ambiguous abstention 1/1 and overclaims 0/6. Exact fault identification remains deliberately unclaimed. Isolated installed-wheel packet generation passed. Fresh GitHub Actions run `31718771048` passed the locked suite and installed-wheel smoke. The bounded implementation audit remains author self-review. A separate bounded reviewer inspected only the eight-file packet correction from `ed3fd5c949a382ec8ffdb060733990dd00803777` to `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0` and found no Critical, High, Medium, or blocking findings. The reviewer personally confirmed the exact parent and scope, two byte-identical packet rebuilds, fail-closed no-write behaviour on digest mismatch, 3/3 focused tests, 810/810 full tests, packaging and isolated import, CI command suitability, no secret exposure, and no Alex/Yaro path overlap. The minor non-blocking note is that malformed `--expected-sha256` length or format is not explicitly tested. The public receipt is recorded in the PR #34 body and <https://github.com/arm-hackathon/arm-hackathon/pull/34#issuecomment-5283342918>. This clears the packet correction only, not candidate-wide independent approval of all O1 implementation bytes. No physical, hardware, deployment or learned-model qualification is claimed.
 
 ### Gate H1: deterministic HMC convergence
 
@@ -376,7 +377,8 @@ Report separately:
 For each code candidate:
 
 - [x] Freeze base SHA, head SHA, clean tree, changed files, binary diff, binary diff SHA-256, tests, artifacts, and publication state for O1 and H1.
-- [ ] Run one bounded independent review against the accepted contract and exact bytes for each code candidate.
+- [x] Run one bounded independent review of the O1 eight-file packet reproducibility correction against exact commit `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0` and parent `ed3fd5c949a382ec8ffdb060733990dd00803777`.
+- [ ] Run candidate-wide bounded independent reviews against the accepted contract and exact bytes for O1 and H1.
 - [ ] If rejected, retain the rejected receipt and permit one finding-specific correction with a new regression and targeted retest.
 - [ ] Teach Ben the changed behaviour and safety boundary.
 - [ ] Complete five diff-grounded comprehension questions covering purpose, data flow, invariant, edge/failure case, and trade-off.
@@ -384,7 +386,7 @@ For each code candidate:
 - [x] Verify the posted PR bodies, exact remote heads and fresh GitHub Actions checks for #34 and #35.
 - [x] Keep both PRs in draft state. Do not mark ready, merge, tag, release or deploy without separate authorization.
 
-**Gate status:** draft publication evidence complete for O1 and H1. Independent review, teaching, Ben's five-question comprehension gate, ready-for-review decision, merge and release remain pending. This tracker update does not satisfy those human gates.
+**Gate status:** draft publication evidence is complete for O1 and H1, and the O1 packet correction has a bounded independent review with no blocking findings. Candidate-wide O1 and H1 reviews, teaching, Ben's five-question comprehension gate, ready-for-review decision, merge and release remain pending. This tracker update does not satisfy those remaining human gates.
 
 ## 8. Frozen experiment design constraints
 
