@@ -11,7 +11,19 @@ abnormality/localisation/exact-identification answers, explicit treatment IDs,
 temporally complete clearance/recovery fixtures, hard-negative checks, and
 denominator-explicit aggregate metrics. See
 [`docs/evidence/habitat-v2-operational-observability-qualification.md`](docs/evidence/habitat-v2-operational-observability-qualification.md)
-for the bounded contract and qualification receipt. Version `0.7.0` added the
+for the bounded contract, tracked packet, and qualification receipt. Rebuild and
+verify that packet from a source checkout with:
+
+```bash
+uv run --locked --python 3.11 --extra dev python \
+  scripts/build_habitat_v2_observability_packet.py \
+  --source-root . \
+  --output out/habitat-v2-observability-qualification-packet.json \
+  --expected-sha256 \
+  1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b
+```
+
+Version `0.7.0` added the
 closed scenario-v5 actuator-feedback layer on
 the corrected scenario-v3 multizone air network. It provides fan degradation,
 branch-resistance increase, damper jam, sensor bias/drift and stuck-sensor
