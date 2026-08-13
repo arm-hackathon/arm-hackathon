@@ -9,8 +9,8 @@ from typing import Any
 
 from .hmc_contract import HMCContract, canonical_json_bytes
 from .scenario import Scenario
+from .snapshot import ControlEvent, _FinalIssuedType
 from .state import PlantState
-from .snapshot import ControlEvent, _FinalIssuedType, _chain_digest
 
 _STEP_RECEIPT_ISSUANCE_TOKEN = object()
 _TERMINAL_RECEIPT_ISSUANCE_TOKEN = object()
@@ -284,6 +284,28 @@ def _issue_terminal_failure_receipt(
     )
 
 
+def _chain_digest(
+    domain: str,
+    previous: str,
+    ordinal: int,
+    kind: str,
+    receipt_digest: str,
+) -> str:
+    kind_bytes = kind.encode("utf-8")
+    try:
+        payload = (
+            domain.encode("utf-8")
+            + bytes.fromhex(previous)
+            + ordinal.to_bytes(8, "big")
+            + len(kind_bytes).to_bytes(8, "big")
+            + kind_bytes
+            + bytes.fromhex(receipt_digest)
+        )
+    except (ValueError, OverflowError) as error:
+        raise ValueError("control-chain input is malformed") from error
+    return hashlib.sha256(payload).hexdigest()
+
+
 __all__ = (
     "StepReceipt",
     "StepReceiptIssuanceError",
@@ -404,7 +426,7 @@ def _trace_decode(data: bytes) -> dict[str, Any]:
         raise ControlTraceParseError("control trace root must be a JSON object")
     try:
         canonical = canonical_json_bytes(value)
-    except Exception as error:  # noqa: BLE001 - closed parser boundary
+    except Exception as error:
         raise ControlTraceParseError(
             "control trace contains non-finite JSON"
         ) from error
@@ -828,13 +850,13 @@ def _trace_validate_header(
                 )
             else:
                 expected_value = getattr(contract, field, None)
-            if parsed[field] != expected_value:
-                # Run/epoch/topology are checked against Scenario below; contract-only
-                # fields must always match the closed contract.
-                if field not in {"control_run_id", "authority_epoch"}:
-                    raise ControlTraceParseError(
-                        f"header {field} identity is inconsistent"
-                    )
+            # Run/epoch/topology are checked against Scenario below; contract-only
+            # fields must always match the closed contract.
+            if parsed[field] != expected_value and field not in {
+                "control_run_id",
+                "authority_epoch",
+            }:
+                raise ControlTraceParseError(f"header {field} identity is inconsistent")
     _trace_validate_context(parsed, scenario, contract)
     return parsed, scenario, contract
 
@@ -880,7 +902,7 @@ def _trace_validate_receipt(
     if parsed["receipt_schema_sha256"] != expected_schema:
         raise ControlTraceParseError(f"{name} receipt schema identity is inconsistent")
     for field in parsed:
-        if field.endswith("_sha256"):
+        if field.endswith(("_sha256", "_digest")):
             if parsed[field] is None and field in _NULLABLE_RECEIPT_DIGEST_FIELDS:
                 continue
             _trace_sha256(parsed[field], label=f"{name} receipt {field}")
@@ -936,7 +958,7 @@ def _trace_validate_receipt(
 
             try:
                 command = validate_external_command(scenario, parsed["final_command"])
-            except Exception as error:  # noqa: BLE001 - parser boundary
+            except Exception as error:
                 raise ControlTraceParseError(
                     "arbitration final command is invalid"
                 ) from error
@@ -1010,6 +1032,7 @@ def _trace_validate_event(
     if parsed["receipt_sha256"] != receipt[self_field]:
         raise ControlTraceParseError("control event receipt and kind do not match")
     expected_chain = _chain_digest(
+        str(contract.data["control_trace"]["domains"]["chain"]),
         previous_chain,
         ordinal,
         parsed["event_kind"],
@@ -1075,6 +1098,71 @@ def _trace_validate_sequence(
                 )
         elif events[-2]["event_kind"] not in {"PROPOSAL", "ARBITRATION"}:
             raise ControlTraceParseError("terminal event is not causally reachable")
+
+
+def _trace_validate_terminal_matrix(
+    receipt: dict[str, Any],
+    *,
+    footer: dict[str, Any],
+) -> None:
+    phase = receipt["lifecycle_phase"]
+    reason = receipt["reason_code"]
+    initial_reasons = {
+        "OPERATIONAL_MEASUREMENT_INVALID",
+        "HEALTH_REDUCTION_FAILED",
+        "SNAPSHOT_ISSUANCE_FAILED",
+    }
+    execution_reasons = {
+        "PHYSICS_EXECUTION_FAILED",
+        "COMMAND_DIGEST_MISMATCH",
+        "PLANT_RECEIPT_INVALID",
+        "OPERATIONAL_MEASUREMENT_INVALID",
+        "HEALTH_REDUCTION_FAILED",
+        "SNAPSHOT_ISSUANCE_FAILED",
+    }
+    evidence = (
+        receipt["proposal_receipt_sha256"],
+        receipt["arbitration_receipt_sha256"],
+        receipt["final_command_sha256"],
+        receipt["candidate_plant_receipt_digest"],
+    )
+    expected_step = footer["final_sequence"]
+    valid = False
+    if phase == "RESET":
+        valid = (
+            reason in initial_reasons
+            and receipt["sequence"] == 0
+            and receipt["application_step"] is None
+            and evidence == (None, None, None, None)
+        )
+    elif phase == "PROPOSED":
+        valid = (
+            reason == "SAFE_HOLD_INFEASIBLE"
+            and receipt["sequence"] == expected_step
+            and receipt["application_step"] == expected_step
+            and evidence[0] is not None
+            and evidence[1] is None
+            and evidence[2] is not None
+            and evidence[3] is None
+        )
+    elif phase == "ARBITRATED":
+        candidate = evidence[3]
+        candidate_valid = (
+            candidate is None
+            if reason == "PHYSICS_EXECUTION_FAILED"
+            else (True if reason == "PLANT_RECEIPT_INVALID" else candidate is not None)
+        )
+        valid = (
+            reason in execution_reasons
+            and receipt["sequence"] == expected_step
+            and receipt["application_step"] == expected_step
+            and all(value is not None for value in evidence[:3])
+            and candidate_valid
+        )
+    if not valid:
+        raise ControlTraceParseError(
+            "terminal phase, reason, or evidence combination is unsupported"
+        )
 
 
 def _trace_validate_causality(
@@ -1184,6 +1272,7 @@ def _trace_validate_causality(
             latest_plant = receipt["plant_receipt_digest"]
             pending_step = receipt
         elif kind == "TERMINAL":
+            _trace_validate_terminal_matrix(receipt, footer=footer)
             if receipt["last_good_snapshot_sha256"] != latest_snapshot:
                 raise ControlTraceParseError(
                     "terminal last-good snapshot is inconsistent"
@@ -1203,10 +1292,6 @@ def _trace_validate_causality(
                 raise ControlTraceParseError(
                     "terminal arbitration linkage is inconsistent"
                 )
-            if expected_arb is None and receipt["final_command_sha256"] is not None:
-                raise ControlTraceParseError(
-                    "terminal final command linkage is inconsistent"
-                )
             if (
                 expected_arb is not None
                 and receipt["final_command_sha256"]
@@ -1214,16 +1299,6 @@ def _trace_validate_causality(
             ):
                 raise ControlTraceParseError(
                     "terminal final command is not linked to ARBITRATION"
-                )
-            if receipt["sequence"] != footer["final_sequence"]:
-                raise ControlTraceParseError("terminal sequence is inconsistent")
-            if receipt["application_step"] != (
-                None
-                if expected_arb is None and current_proposal is None
-                else footer["final_sequence"]
-            ):
-                raise ControlTraceParseError(
-                    "terminal application step is inconsistent"
                 )
             if (
                 footer["terminal_failure_receipt_sha256"]
@@ -1368,6 +1443,7 @@ def _trace_validate_authority_semantics(
 
     verifier = HabitatManagementComputer.reset(scenario, contract, reset_nonce)
     current_snapshot_sha256: str | None = None
+    current_verified_snapshot = None
     for event in events:
         kind = event["event_kind"]
         receipt = event["receipt"]
@@ -1386,11 +1462,11 @@ def _trace_validate_authority_semantics(
                 )
             ):
                 raise ControlTraceParseError("snapshot semantics do not replay")
-            verifier.verify_snapshot(snapshot, verification)
+            current_verified_snapshot = verifier.verify_snapshot(snapshot, verification)
             current_snapshot_sha256 = snapshot.snapshot_sha256
             continue
         if kind == "PROPOSAL":
-            if current_snapshot_sha256 is None:
+            if current_snapshot_sha256 is None or current_verified_snapshot is None:
                 raise ControlTraceParseError("proposal replay lacks a current snapshot")
             _trace_validate_proposal_semantics(
                 receipt,
@@ -1399,11 +1475,14 @@ def _trace_validate_authority_semantics(
                 snapshot_sha256=current_snapshot_sha256,
             )
             if receipt["attempt_class"] == "NONE":
-                issued = verifier.propose(None)
+                issued = verifier.propose(None, current_verified_snapshot)
             elif receipt["attempt_class"] == "CANONICAL_PROPOSAL":
-                issued = verifier.propose(receipt["proposal"])
+                issued = verifier.propose(
+                    receipt["proposal"], current_verified_snapshot
+                )
             else:
                 issued = _trace_hydrate_rejected_proposal(verifier, event)
+            current_verified_snapshot = None
             if not _trace_same_mapping(
                 issued.to_mapping(), receipt
             ) or not _trace_same_mapping(
@@ -1556,15 +1635,12 @@ def replay_control_trace(
     data: bytes, scenario: Scenario, contract: HMCContract
 ) -> ControlTraceReplayResult:
     """Validate then replay committed external commands from a whole trace."""
-    try:
-        trace = parse_control_trace(data, scenario, contract)
-    except ControlTraceError:
-        raise
+    trace = parse_control_trace(data, scenario, contract)
     from .physics import (
         advance_one_step_with_command,
+        initial_state,
         validate_external_command,
         validate_external_step_result,
-        initial_state,
     )
 
     state = initial_state(scenario)
@@ -1589,7 +1665,7 @@ def replay_control_trace(
                 raise ValueError("arbitration command digest mismatch")
             candidate = advance_one_step_with_command(scenario, state, command)
             validate_external_step_result(scenario, state, command, candidate)
-        except Exception as error:  # noqa: BLE001 - replay failure boundary
+        except Exception as error:
             raise ControlTraceReplayError(
                 "trace command or plant replay failed"
             ) from error
@@ -1626,15 +1702,15 @@ ControlTraceReplay = ControlTraceReplayResult
 __all__ += (
     "ControlTrace",
     "ControlTraceError",
+    "ControlTraceExportError",
     "ControlTraceIssuanceError",
     "ControlTraceParseError",
+    "ControlTraceReplay",
     "ControlTraceReplayError",
     "ControlTraceReplayResult",
-    "ControlTraceReplay",
     "ControlTraceValidationError",
-    "ControlTraceExportError",
-    "parse_control_trace",
-    "replay_control_trace",
     "_issue_control_trace",
     "_trace_state_mapping",
+    "parse_control_trace",
+    "replay_control_trace",
 )

@@ -92,3 +92,12 @@ def test_hmc_contract_rejects_tracking_threshold_inside_noise_only_envelope() ->
 
     with pytest.raises(HMCContractError, match="noise-only envelope"):
         HMCContract.from_mapping(forged)
+
+
+@pytest.mark.parametrize("field", ["header_fields", "footer_fields"])
+def test_hmc_contract_requires_exact_control_trace_record_fields(field: str) -> None:
+    forged = deepcopy(_checked_mapping())
+    forged["control_trace"][field].insert(-1, "extra_sha256")  # type: ignore[index]
+
+    with pytest.raises(HMCContractError, match=field):
+        HMCContract.from_mapping(forged)

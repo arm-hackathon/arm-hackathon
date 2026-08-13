@@ -179,7 +179,7 @@ class HabitatManagementComputer:
     _sequence: int
     _control_events: list[ControlEvent]
     _current_control_chain_sha256: str
-    _verified_handles: dict[tuple[int, int], VerifiedSnapshotHandle]
+    _verified_snapshot_handle: VerifiedSnapshotHandle | None
 
     @property
     def snapshot_schema_sha256(self) -> str:
@@ -318,7 +318,7 @@ class HabitatManagementComputer:
             _sequence=0,
             _control_events=[],
             _current_control_chain_sha256=null_control_chain,
-            _verified_handles={},
+            _verified_snapshot_handle=None,
         )
 
     def observe(
@@ -509,9 +509,9 @@ class HabitatManagementComputer:
         snapshot: OperationalSnapshot,
         receipt: SnapshotVerificationReceipt,
     ) -> VerifiedSnapshotHandle:
-        if self._phase is LifecyclePhase.TERMINAL:
+        if self._phase is not LifecyclePhase.OBSERVED:
             raise RuntimeError(
-                "verify_snapshot is not valid during lifecycle phase TERMINAL"
+                f"verify_snapshot is not valid during lifecycle phase {self._phase.value}"
             )
         if (
             snapshot is not self._cached_snapshot
@@ -521,8 +521,7 @@ class HabitatManagementComputer:
             raise SnapshotVerificationError(
                 "snapshot verification requires the exact issued snapshot and receipt"
             )
-        key = (id(snapshot), id(receipt))
-        cached = self._verified_handles.get(key)
+        cached = self._verified_snapshot_handle
         if cached is not None:
             return cached
         event = self._control_events[-1]
@@ -530,6 +529,7 @@ class HabitatManagementComputer:
             snapshot=snapshot,
             receipt=receipt,
             event=event,
+            owner_identity=id(self),
         )
         if (
             receipt.control_run_id != self._control_run_id
@@ -541,16 +541,40 @@ class HabitatManagementComputer:
             raise SnapshotVerificationError(
                 "snapshot verification identities do not match the issuing HMC"
             )
-        self._verified_handles[key] = handle
+        self._verified_snapshot_handle = handle
         return handle
 
-    def propose(self, proposal: object | None) -> ProposalReceipt:
+    def propose(
+        self,
+        proposal: object | None,
+        verified_snapshot: VerifiedSnapshotHandle,
+    ) -> ProposalReceipt:
         if self._phase is not LifecyclePhase.OBSERVED:
             raise RuntimeError(
                 f"propose is not valid during lifecycle phase {self._phase.value}"
             )
         if self._cached_snapshot is None or self._cached_verification_receipt is None:
             raise RuntimeError("OBSERVED lifecycle is missing its cached evidence")
+        receipt = self._cached_verification_receipt
+        if (
+            type(verified_snapshot) is not VerifiedSnapshotHandle
+            or verified_snapshot is not self._verified_snapshot_handle
+            or verified_snapshot.owner_identity != id(self)
+            or verified_snapshot.control_run_id != self._control_run_id
+            or verified_snapshot.authority_epoch != self._authority_epoch
+            or verified_snapshot.cycle_id != receipt.cycle_id
+            or verified_snapshot.sequence != self._sequence
+            or verified_snapshot.snapshot_sha256
+            != self._cached_snapshot.snapshot_sha256
+            or verified_snapshot.verification_receipt_sha256
+            != receipt.snapshot_verification_receipt_sha256
+            or verified_snapshot.snapshot_identity != id(self._cached_snapshot)
+            or verified_snapshot.receipt_identity != id(receipt)
+        ):
+            raise SnapshotVerificationError(
+                "proposal requires the exact current verified snapshot capability"
+            )
+        self._verified_snapshot_handle = None
         event_ordinal = len(self._control_events)
         common = {
             "receipt_schema_sha256": self._contract.proposal_receipt_schema_sha256,
@@ -768,6 +792,7 @@ class HabitatManagementComputer:
             previous_control_chain_sha256=self._current_control_chain_sha256,
         )
         self._step_capability = None
+        self._verified_snapshot_handle = None
         self._terminal_failure_receipt = receipt
         self._control_events.append(event)
         self._current_control_chain_sha256 = event.control_chain_sha256
@@ -1342,6 +1367,7 @@ class HabitatManagementComputer:
         self._sequence = staged.sequence
         self._cached_snapshot = staged.snapshot
         self._cached_verification_receipt = staged.verification_receipt
+        self._verified_snapshot_handle = None
         self._control_events.extend((staged.step_event, staged.snapshot_event))
         self._current_control_chain_sha256 = staged.snapshot_event.control_chain_sha256
         self._phase = LifecyclePhase.STEPPED
