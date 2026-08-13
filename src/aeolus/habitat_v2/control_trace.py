@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
 from .hmc_contract import HMCContract, canonical_json_bytes
 from .scenario import Scenario
-from .state import PlantState
 from .snapshot import ControlEvent, _FinalIssuedType
+from .state import PlantState
 
 _STEP_RECEIPT_ISSUANCE_TOKEN = object()
 _TERMINAL_RECEIPT_ISSUANCE_TOKEN = object()
@@ -71,15 +71,6 @@ def _is_sha256(value: object) -> bool:
     return (
         type(value) is str
         and len(value) == 64
-        and value == value.lower()
-        and all(character in "0123456789abcdef" for character in value)
-    )
-
-
-def _is_git_object_id(value: object) -> bool:
-    return (
-        type(value) is str
-        and len(value) in {40, 64}
         and value == value.lower()
         and all(character in "0123456789abcdef" for character in value)
     )
@@ -293,61 +284,6 @@ def _issue_terminal_failure_receipt(
     )
 
 
-_RECEIPT_NAME_BY_KIND = {
-    "SNAPSHOT_VERIFICATION": "snapshot_verification",
-    "PROPOSAL": "proposal",
-    "ARBITRATION": "arbitration",
-    "STEP": "step",
-    "TERMINAL": "terminal",
-}
-_CONTRACT_IDENTITY_FIELDS = {
-    "hmc_contract_sha256": "hmc_contract_sha256",
-    "snapshot_schema_sha256": "snapshot_schema_sha256",
-    "snapshot_verification_contract_sha256": ("snapshot_verification_contract_sha256"),
-    "external_command_contract_sha256": "external_command_contract_sha256",
-    "preflight_contract_sha256": "preflight_contract_sha256",
-    "health_policy_sha256": "health_policy_sha256",
-    "safety_policy_sha256": "safety_policy_sha256",
-    "safe_action_catalogue_sha256": "safe_action_catalogue_sha256",
-    "proposal_receipt_schema_sha256": "proposal_receipt_schema_sha256",
-    "arbitration_receipt_schema_sha256": "arbitration_receipt_schema_sha256",
-    "step_receipt_schema_sha256": "step_receipt_schema_sha256",
-    "terminal_receipt_schema_sha256": "terminal_receipt_schema_sha256",
-    "control_trace_schema_sha256": "control_trace_schema_sha256",
-}
-
-
-@dataclass(frozen=True, slots=True)
-class ControlTraceValidationResult:
-    canonical_bytes: bytes
-    header: Mapping[str, Any]
-    events: tuple[Mapping[str, Any], ...]
-    footer: Mapping[str, Any]
-    terminal_status: str
-    final_sequence: int
-    final_control_chain_sha256: str
-    final_state_sha256: str
-
-
-def _fail(message: str) -> None:
-    raise ControlTraceValidationError(message)
-
-
-def _self_digest(mapping: Mapping[str, Any], field: str) -> str:
-    body = dict(mapping)
-    body.pop(field, None)
-    return hashlib.sha256(canonical_json_bytes(body)).hexdigest()
-
-
-def _domain_digest(domain: str, records: Sequence[Mapping[str, Any]]) -> str:
-    payload = bytearray(domain.encode("utf-8"))
-    for record in records:
-        encoded = canonical_json_bytes(record)
-        payload.extend(len(encoded).to_bytes(8, "big"))
-        payload.extend(encoded)
-    return hashlib.sha256(payload).hexdigest()
-
-
 def _chain_digest(
     domain: str,
     previous: str,
@@ -366,633 +302,15 @@ def _chain_digest(
             + bytes.fromhex(receipt_digest)
         )
     except (ValueError, OverflowError) as error:
-        raise ControlTraceValidationError("control-chain input is malformed") from error
+        raise ValueError("control-chain input is malformed") from error
     return hashlib.sha256(payload).hexdigest()
 
 
-def _exact_fields(value: object, fields: Sequence[str], label: str) -> dict[str, Any]:
-    if type(value) is not dict:
-        _fail(f"{label} must be a JSON object")
-    mapping = value
-    unknown = sorted(set(mapping) - set(fields))
-    missing = sorted(set(fields) - set(mapping))
-    if unknown or missing:
-        _fail(f"invalid {label} fields; unknown={unknown}, missing={missing}")
-    return mapping
-
-
-def _header_identity_values(contract: HMCContract) -> dict[str, str]:
-    return {
-        field: str(getattr(contract, attribute))
-        for field, attribute in _CONTRACT_IDENTITY_FIELDS.items()
-    }
-
-
-def create_control_trace_header(
-    *,
-    contract: HMCContract,
-    hmc_implementation_git_sha: str,
-    scenario_sha256: str,
-    plant_run_id: str,
-    observable_topology_sha256: str,
-    control_run_id: str,
-    authority_epoch: str,
-    reset_nonce: bytes,
-) -> dict[str, Any]:
-    """Create the exact self-digested V1 header from HMC reset metadata."""
-    if type(contract) is not HMCContract:
-        raise TypeError("control trace requires the exact HMCContract type")
-    if type(reset_nonce) is not bytes or len(reset_nonce) != 32:
-        raise ControlTraceValidationError("reset nonce must be exactly 32 bytes")
-    if not _is_git_object_id(hmc_implementation_git_sha):
-        raise ControlTraceValidationError(
-            "HMC implementation git SHA must be a lowercase full Git object ID"
-        )
-    for label, value in (
-        ("scenario identity", scenario_sha256),
-        ("plant run identity", plant_run_id),
-        ("observable topology identity", observable_topology_sha256),
-        ("control run identity", control_run_id),
-        ("authority epoch", authority_epoch),
-    ):
-        if not _is_sha256(value):
-            raise ControlTraceValidationError(f"{label} must be lowercase SHA-256 hex")
-    header: dict[str, Any] = {
-        "record_type": "CONTROL_TRACE_HEADER",
-        **_header_identity_values(contract),
-        "hmc_implementation_git_sha": hmc_implementation_git_sha,
-        "scenario_sha256": scenario_sha256,
-        "plant_run_id": plant_run_id,
-        "observable_topology_sha256": observable_topology_sha256,
-        "control_run_id": control_run_id,
-        "authority_epoch": authority_epoch,
-        "reset_nonce_hex": reset_nonce.hex(),
-        "null_control_chain_sha256": str(
-            contract.data["null_roots"]["control_chain"]["sha256"]
-        ),
-    }
-    header["control_trace_header_sha256"] = _self_digest(
-        header, "control_trace_header_sha256"
-    )
-    return header
-
-
-def _event_mapping(value: object) -> dict[str, Any]:
-    if type(value) is dict:
-        return json.loads(canonical_json_bytes(value))
-    to_mapping = getattr(value, "to_mapping", None)
-    if not callable(to_mapping):
-        raise TypeError("control events must be exact mappings or issued event objects")
-    mapping = to_mapping()
-    if type(mapping) is not dict:
-        raise TypeError("issued control event returned a non-mapping")
-    return json.loads(canonical_json_bytes(mapping))
-
-
-def _final_state_content(
-    *,
-    terminal_status: str,
-    final_sequence: int,
-    last_snapshot: str,
-    last_verification: str,
-    last_step: str,
-    last_plant: str,
-    terminal_receipt: str,
-    final_chain: str,
-) -> dict[str, Any]:
-    return {
-        "terminal_status": terminal_status,
-        "final_sequence": final_sequence,
-        "last_good_snapshot_sha256": last_snapshot,
-        "last_good_verification_receipt_sha256": last_verification,
-        "last_good_step_receipt_sha256": last_step,
-        "last_good_plant_receipt_digest": last_plant,
-        "terminal_failure_receipt_sha256": terminal_receipt,
-        "final_control_chain_sha256": final_chain,
-    }
-
-
-def serialize_control_trace(
-    *,
-    header: Mapping[str, Any],
-    events: Sequence[object],
-    contract: HMCContract,
-    terminal_status: str,
-) -> bytes:
-    """Close HMC events into canonical JSONL and validate the produced artifact."""
-    if type(header) is not dict:
-        raise TypeError("control trace header must be an exact mapping")
-    event_mappings = tuple(_event_mapping(event) for event in events)
-    if not event_mappings:
-        raise ControlTraceValidationError("control trace must contain events")
-    roots = contract.data["null_roots"]
-    snapshots = [
-        event["receipt"]
-        for event in event_mappings
-        if event.get("event_kind") == "SNAPSHOT_VERIFICATION"
-    ]
-    if not snapshots:
-        raise ControlTraceValidationError("control trace has no verified snapshot")
-    last_snapshot_receipt = snapshots[-1]
-    final_sequence = last_snapshot_receipt["sequence"]
-    last_snapshot = last_snapshot_receipt["snapshot_sha256"]
-    last_verification = last_snapshot_receipt["snapshot_verification_receipt_sha256"]
-    last_step = last_snapshot_receipt["completed_step_receipt_digest"]
-    last_plant = last_snapshot_receipt["completed_plant_receipt_digest"]
-    terminal_receipt = str(roots["terminal_receipt"]["sha256"])
-    if terminal_status == "TERMINAL_FAILURE":
-        last_event_receipt = event_mappings[-1].get("receipt", {})
-        terminal_receipt = last_event_receipt.get(
-            "terminal_failure_receipt_sha256", terminal_receipt
-        )
-        final_sequence = last_event_receipt.get("sequence", final_sequence)
-        last_snapshot = last_event_receipt.get(
-            "last_good_snapshot_sha256", last_snapshot
-        )
-        last_verification = last_event_receipt.get(
-            "last_good_verification_receipt_sha256", last_verification
-        )
-        last_step = last_event_receipt.get("last_good_step_receipt_sha256", last_step)
-    final_chain = event_mappings[-1]["control_chain_sha256"]
-    trace_contract = contract.data["control_trace"]
-    body_digest = _domain_digest(str(trace_contract["domains"]["body"]), event_mappings)
-    state = _final_state_content(
-        terminal_status=terminal_status,
-        final_sequence=final_sequence,
-        last_snapshot=last_snapshot,
-        last_verification=last_verification,
-        last_step=last_step,
-        last_plant=last_plant,
-        terminal_receipt=terminal_receipt,
-        final_chain=final_chain,
-    )
-    footer: dict[str, Any] = {
-        "record_type": "CONTROL_TRACE_FOOTER",
-        "control_trace_schema_sha256": contract.control_trace_schema_sha256,
-        "control_trace_header_sha256": header.get("control_trace_header_sha256"),
-        "control_run_id": header.get("control_run_id"),
-        "authority_epoch": header.get("authority_epoch"),
-        **state,
-        "event_count": len(event_mappings),
-        "control_trace_body_sha256": body_digest,
-        "final_state_sha256": _domain_digest(
-            str(trace_contract["domains"]["final_state"]), (state,)
-        ),
-    }
-    footer["control_trace_footer_sha256"] = _self_digest(
-        footer, "control_trace_footer_sha256"
-    )
-    rows = (dict(header), *event_mappings, footer)
-    encoded = b"".join(canonical_json_bytes(row) + b"\n" for row in rows)
-    validate_control_trace_bytes(encoded, contract=contract)
-    return encoded
-
-
-def _validate_header(header: object, contract: HMCContract) -> dict[str, Any]:
-    fields = tuple(contract.data["control_trace"]["header_fields"])
-    result = _exact_fields(header, fields, "control trace header")
-    if result["record_type"] != "CONTROL_TRACE_HEADER":
-        _fail("first record is not the control trace header")
-    if result["control_trace_header_sha256"] != _self_digest(
-        result, "control_trace_header_sha256"
-    ):
-        _fail("control trace header self digest is inconsistent")
-    for field, expected in _header_identity_values(contract).items():
-        if result[field] != expected:
-            _fail(f"header {field} is inconsistent with the HMC contract")
-    roots = contract.data["null_roots"]
-    if result["null_control_chain_sha256"] != roots["control_chain"]["sha256"]:
-        _fail("header null control-chain identity is inconsistent")
-    if not _is_git_object_id(result["hmc_implementation_git_sha"]):
-        _fail("header hmc_implementation_git_sha is not a lowercase full Git object ID")
-    for field in (
-        "scenario_sha256",
-        "plant_run_id",
-        "observable_topology_sha256",
-        "control_run_id",
-        "authority_epoch",
-    ):
-        if not _is_sha256(result[field]):
-            _fail(f"header {field} is not lowercase SHA-256 hex")
-    nonce = result["reset_nonce_hex"]
-    if type(nonce) is not str or len(nonce) != 64:
-        _fail("header reset nonce is malformed")
-    try:
-        nonce_bytes = bytes.fromhex(nonce)
-    except ValueError:
-        _fail("header reset nonce is malformed")
-    expected_run = hashlib.sha256(
-        b"aeolus-habitat-v2-hmc-run-v1"
-        + bytes.fromhex(result["scenario_sha256"])
-        + bytes.fromhex(result["hmc_contract_sha256"])
-        + bytes.fromhex(result["snapshot_schema_sha256"])
-        + bytes.fromhex(result["observable_topology_sha256"])
-        + nonce_bytes
-    ).hexdigest()
-    if result["control_run_id"] != expected_run:
-        _fail("header control run identity is not derived from reset inputs")
-    expected_epoch = hashlib.sha256(
-        b"aeolus-habitat-v2-hmc-epoch-v1" + bytes.fromhex(expected_run) + nonce_bytes
-    ).hexdigest()
-    if result["authority_epoch"] != expected_epoch:
-        _fail("header authority epoch is not derived from reset inputs")
-    return result
-
-
-def _validate_receipt(
-    event: dict[str, Any],
-    *,
-    header: dict[str, Any],
-    contract: HMCContract,
-) -> dict[str, Any]:
-    kind = event["event_kind"]
-    name = _RECEIPT_NAME_BY_KIND.get(kind)
-    if name is None:
-        _fail("control event kind is unsupported")
-    schema = contract.data["receipt_schemas"][name]
-    receipt = _exact_fields(
-        event["receipt"], tuple(schema["fields"]), f"{kind} receipt"
-    )
-    self_field = str(schema["self_digest_field"])
-    if not _is_sha256(receipt[self_field]) or receipt[self_field] != _self_digest(
-        receipt, self_field
-    ):
-        _fail(f"{kind} receipt self digest is inconsistent")
-    if event["receipt_sha256"] != receipt[self_field]:
-        _fail(f"{kind} event and receipt identities differ")
-    if receipt["receipt_schema_sha256"] != getattr(
-        contract, f"{name}_receipt_schema_sha256"
-    ):
-        _fail(f"{kind} receipt schema identity is inconsistent")
-    for field in (
-        "hmc_contract_sha256",
-        "observable_topology_sha256",
-        "control_run_id",
-        "authority_epoch",
-    ):
-        if receipt[field] != header[field]:
-            _fail(f"{kind} receipt {field} is inconsistent with the header")
-    if receipt["event_ordinal"] != event["event_ordinal"]:
-        _fail(f"{kind} receipt event ordinal is inconsistent")
-    if (
-        receipt["previous_control_chain_sha256"]
-        != event["previous_control_chain_sha256"]
-    ):
-        _fail(f"{kind} receipt control-chain predecessor is inconsistent")
-    return receipt
-
-
-def _validate_event_envelope(
-    event: object,
-    *,
-    ordinal: int,
-    previous_chain: str,
-    header: dict[str, Any],
-    contract: HMCContract,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    fields = tuple(contract.data["control_trace"]["event_fields"])
-    result = _exact_fields(event, fields, f"control event {ordinal}")
-    if result["record_type"] != "CONTROL_EVENT":
-        _fail(f"record {ordinal + 1} is not a control event")
-    if result["event_ordinal"] != ordinal:
-        _fail("control event ordinals are not continuous")
-    if result["previous_control_chain_sha256"] != previous_chain:
-        _fail("control-chain predecessor link is inconsistent")
-    receipt = _validate_receipt(result, header=header, contract=contract)
-    expected_chain = _chain_digest(
-        str(contract.data["control_trace"]["domains"]["chain"]),
-        previous_chain,
-        ordinal,
-        result["event_kind"],
-        result["receipt_sha256"],
-    )
-    if result["control_chain_sha256"] != expected_chain:
-        _fail("control-chain digest is inconsistent")
-    return result, receipt
-
-
-def _validate_lifecycle(
-    events: Sequence[dict[str, Any]],
-    receipts: Sequence[dict[str, Any]],
-    *,
-    contract: HMCContract,
-) -> None:
-    kinds = [event["event_kind"] for event in events]
-    if not kinds or kinds[0] != "SNAPSHOT_VERIFICATION":
-        _fail("control trace must begin with snapshot verification")
-    terminal_positions = [
-        index for index, kind in enumerate(kinds) if kind == "TERMINAL"
-    ]
-    if terminal_positions and terminal_positions != [len(kinds) - 1]:
-        _fail("terminal event must occur exactly once and last")
-    expected = "PROPOSAL"
-    for index, kind in enumerate(kinds[1:], start=1):
-        if kind == "TERMINAL":
-            break
-        if kind != expected:
-            _fail(f"lifecycle grammar is invalid at event {index}")
-        expected = {
-            "PROPOSAL": "ARBITRATION",
-            "ARBITRATION": "STEP",
-            "STEP": "SNAPSHOT_VERIFICATION",
-            "SNAPSHOT_VERIFICATION": "PROPOSAL",
-        }[kind]
-
-    roots = contract.data["null_roots"]
-    last_snapshot = receipts[0]
-    last_proposal: dict[str, Any] | None = None
-    last_arbitration: dict[str, Any] | None = None
-    last_step: dict[str, Any] | None = None
-    expected_sequence = 0
-    for event, receipt in zip(events, receipts, strict=True):
-        kind = event["event_kind"]
-        if kind == "SNAPSHOT_VERIFICATION":
-            if receipt["snapshot_schema_sha256"] != contract.snapshot_schema_sha256:
-                _fail("snapshot receipt schema identity is inconsistent")
-            if (
-                receipt["snapshot_verification_contract_sha256"]
-                != contract.snapshot_verification_contract_sha256
-            ):
-                _fail("snapshot verification contract identity is inconsistent")
-            if (
-                receipt["sequence"] != expected_sequence
-                or receipt["completed_step"] != expected_sequence
-            ):
-                _fail("snapshot sequence continuity is inconsistent")
-            if expected_sequence == 0:
-                if (
-                    receipt["completed_plant_receipt_digest"]
-                    != roots["plant_receipt"]["sha256"]
-                    or receipt["completed_step_receipt_digest"]
-                    != roots["step_receipt"]["sha256"]
-                    or receipt["previous_verification_receipt_digest"]
-                    != roots["verification_receipt"]["sha256"]
-                ):
-                    _fail("initial snapshot null-root continuity is inconsistent")
-            else:
-                if last_step is None or (
-                    receipt["completed_plant_receipt_digest"]
-                    != last_step["plant_receipt_digest"]
-                    or receipt["completed_step_receipt_digest"]
-                    != last_step["step_receipt_sha256"]
-                    or receipt["previous_verification_receipt_digest"]
-                    != last_snapshot["snapshot_verification_receipt_sha256"]
-                ):
-                    _fail("snapshot/plant/step continuity is inconsistent")
-            last_snapshot = receipt
-        elif kind == "PROPOSAL":
-            if (
-                receipt["sequence"] != expected_sequence
-                or receipt["requested_application_step"] != expected_sequence
-                or receipt["observation_snapshot_sha256"]
-                != last_snapshot["snapshot_sha256"]
-            ):
-                _fail("proposal causal reference is inconsistent")
-            last_proposal = receipt
-        elif kind == "ARBITRATION":
-            if last_proposal is None or (
-                receipt["sequence"] != expected_sequence
-                or receipt["decision_step"] != expected_sequence
-                or receipt["application_step"] != expected_sequence
-                or receipt["observation_snapshot_sha256"]
-                != last_snapshot["snapshot_sha256"]
-                or receipt["proposal_receipt_sha256"]
-                != last_proposal["proposal_receipt_sha256"]
-            ):
-                _fail("arbitration causal reference is inconsistent")
-            for field, expected_value in (
-                ("safety_policy_sha256", contract.safety_policy_sha256),
-                ("safe_action_catalogue_sha256", contract.safe_action_catalogue_sha256),
-                ("preflight_contract_sha256", contract.preflight_contract_sha256),
-            ):
-                if receipt[field] != expected_value:
-                    _fail(f"arbitration {field} is inconsistent")
-            last_arbitration = receipt
-        elif kind == "STEP":
-            if (
-                last_proposal is None
-                or last_arbitration is None
-                or (
-                    receipt["observation_sequence"] != expected_sequence
-                    or receipt["application_step"] != expected_sequence
-                    or receipt["proposal_receipt_sha256"]
-                    != last_proposal["proposal_receipt_sha256"]
-                    or receipt["arbitration_receipt_sha256"]
-                    != last_arbitration["arbitration_receipt_sha256"]
-                    or receipt["final_command_sha256"]
-                    != last_arbitration["final_command_sha256"]
-                    or receipt["returned_external_command_digest"]
-                    != last_arbitration["final_command_sha256"]
-                    or receipt["application_outcome"] != "APPLIED"
-                )
-            ):
-                _fail("step causal reference is inconsistent")
-            expected_previous_step = (
-                roots["step_receipt"]["sha256"]
-                if last_step is None
-                else last_step["step_receipt_sha256"]
-            )
-            if receipt["previous_step_receipt_digest"] != expected_previous_step:
-                _fail("step receipt predecessor is inconsistent")
-            if (
-                receipt["external_command_contract_sha256"]
-                != contract.external_command_contract_sha256
-            ):
-                _fail("step external command contract identity is inconsistent")
-            last_step = receipt
-            expected_sequence += 1
-        elif kind == "TERMINAL":
-            phase_for_expected = {
-                "PROPOSAL": "OBSERVED",
-                "ARBITRATION": "PROPOSED",
-                "STEP": "ARBITRATED",
-                "SNAPSHOT_VERIFICATION": "STEPPED",
-            }[expected]
-            if receipt["lifecycle_phase"] != phase_for_expected:
-                _fail("terminal lifecycle phase is inconsistent with its prefix")
-            if (
-                receipt["sequence"] != expected_sequence
-                or receipt["plant_state_committed"] is not False
-            ):
-                _fail("terminal sequence or commit semantics are inconsistent")
-            expected_step = (
-                roots["step_receipt"]["sha256"]
-                if last_step is None
-                else last_step["step_receipt_sha256"]
-            )
-            if (
-                receipt["last_good_snapshot_sha256"] != last_snapshot["snapshot_sha256"]
-                or receipt["last_good_verification_receipt_sha256"]
-                != last_snapshot["snapshot_verification_receipt_sha256"]
-                or receipt["last_good_step_receipt_sha256"] != expected_step
-            ):
-                _fail("terminal last-good references are inconsistent")
-
-
-def validate_control_trace_bytes(
-    data: bytes,
-    *,
-    contract: HMCContract,
-    expected_header: Mapping[str, Any] | None = None,
-) -> ControlTraceValidationResult:
-    """Parse and deterministically replay one complete canonical V1 JSONL artifact."""
-    if type(contract) is not HMCContract:
-        raise TypeError("control trace validation requires the exact HMCContract type")
-    if type(data) is not bytes or not data or not data.endswith(b"\n"):
-        raise ControlTraceValidationError(
-            "control trace must be complete newline-terminated bytes"
-        )
-    raw_lines = data.split(b"\n")
-    if raw_lines[-1] != b"" or any(not line for line in raw_lines[:-1]):
-        _fail("control trace contains empty or trailing records")
-    rows: list[dict[str, Any]] = []
-    for index, line in enumerate(raw_lines[:-1]):
-        try:
-            row = json.loads(line)
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ControlTraceValidationError(
-                f"control trace record {index} is not valid UTF-8 JSON"
-            ) from error
-        if type(row) is not dict or canonical_json_bytes(row) != line:
-            _fail(f"control trace record {index} is not canonical JSON")
-        rows.append(row)
-    if len(rows) < 3:
-        _fail("control trace is truncated")
-    if rows[-1].get("record_type") != "CONTROL_TRACE_FOOTER":
-        _fail("control trace is missing its final footer")
-    if any(row.get("record_type") == "CONTROL_TRACE_FOOTER" for row in rows[:-1]):
-        _fail("control trace contains a non-final or duplicate footer")
-    if any(row.get("record_type") == "CONTROL_TRACE_HEADER" for row in rows[1:]):
-        _fail("control trace contains a duplicate header")
-    header = _validate_header(rows[0], contract)
-    if expected_header is not None and dict(expected_header) != header:
-        _fail("control trace header does not match expected run metadata")
-    events: list[dict[str, Any]] = []
-    receipts: list[dict[str, Any]] = []
-    previous = header["null_control_chain_sha256"]
-    for ordinal, row in enumerate(rows[1:-1]):
-        event, receipt = _validate_event_envelope(
-            row,
-            ordinal=ordinal,
-            previous_chain=previous,
-            header=header,
-            contract=contract,
-        )
-        events.append(event)
-        receipts.append(receipt)
-        previous = event["control_chain_sha256"]
-    _validate_lifecycle(events, receipts, contract=contract)
-
-    footer_fields = tuple(contract.data["control_trace"]["footer_fields"])
-    footer = _exact_fields(rows[-1], footer_fields, "control trace footer")
-    if footer["control_trace_footer_sha256"] != _self_digest(
-        footer, "control_trace_footer_sha256"
-    ):
-        _fail("control trace footer self digest is inconsistent")
-    for field in (
-        "control_trace_schema_sha256",
-        "control_trace_header_sha256",
-        "control_run_id",
-        "authority_epoch",
-    ):
-        if footer[field] != header[field]:
-            _fail(f"footer {field} is inconsistent with the header")
-    if footer["event_count"] != len(events):
-        _fail("footer event count is inconsistent")
-    body_digest = _domain_digest(
-        str(contract.data["control_trace"]["domains"]["body"]), events
-    )
-    if footer["control_trace_body_sha256"] != body_digest:
-        _fail("control trace body digest is inconsistent")
-    if footer["final_control_chain_sha256"] != previous:
-        _fail("footer final control-chain digest is inconsistent")
-    terminal_status = footer["terminal_status"]
-    has_terminal = events[-1]["event_kind"] == "TERMINAL"
-    if terminal_status == "COMPLETED":
-        if has_terminal or events[-1]["event_kind"] != "SNAPSHOT_VERIFICATION":
-            _fail("COMPLETED trace must end at a verified snapshot")
-        final_receipt = receipts[-1]
-        expected_terminal = contract.data["null_roots"]["terminal_receipt"]["sha256"]
-        expected_values = {
-            "final_sequence": final_receipt["sequence"],
-            "last_good_snapshot_sha256": final_receipt["snapshot_sha256"],
-            "last_good_verification_receipt_sha256": final_receipt[
-                "snapshot_verification_receipt_sha256"
-            ],
-            "last_good_step_receipt_sha256": final_receipt[
-                "completed_step_receipt_digest"
-            ],
-            "last_good_plant_receipt_digest": final_receipt[
-                "completed_plant_receipt_digest"
-            ],
-            "terminal_failure_receipt_sha256": expected_terminal,
-        }
-    elif terminal_status == "TERMINAL_FAILURE":
-        if not has_terminal:
-            _fail("TERMINAL_FAILURE trace must end in a terminal event")
-        terminal = receipts[-1]
-        last_snapshot_receipt = next(
-            receipt
-            for event, receipt in reversed(tuple(zip(events, receipts, strict=True)))
-            if event["event_kind"] == "SNAPSHOT_VERIFICATION"
-        )
-        expected_values = {
-            "final_sequence": terminal["sequence"],
-            "last_good_snapshot_sha256": terminal["last_good_snapshot_sha256"],
-            "last_good_verification_receipt_sha256": terminal[
-                "last_good_verification_receipt_sha256"
-            ],
-            "last_good_step_receipt_sha256": terminal["last_good_step_receipt_sha256"],
-            "last_good_plant_receipt_digest": last_snapshot_receipt[
-                "completed_plant_receipt_digest"
-            ],
-            "terminal_failure_receipt_sha256": terminal[
-                "terminal_failure_receipt_sha256"
-            ],
-        }
-    else:
-        _fail("footer terminal status is unsupported")
-    for field, expected in expected_values.items():
-        if footer[field] != expected:
-            _fail(f"footer {field} is inconsistent with replayed state")
-    state = _final_state_content(
-        terminal_status=terminal_status,
-        final_sequence=footer["final_sequence"],
-        last_snapshot=footer["last_good_snapshot_sha256"],
-        last_verification=footer["last_good_verification_receipt_sha256"],
-        last_step=footer["last_good_step_receipt_sha256"],
-        last_plant=footer["last_good_plant_receipt_digest"],
-        terminal_receipt=footer["terminal_failure_receipt_sha256"],
-        final_chain=footer["final_control_chain_sha256"],
-    )
-    final_state = _domain_digest(
-        str(contract.data["control_trace"]["domains"]["final_state"]), (state,)
-    )
-    if footer["final_state_sha256"] != final_state:
-        _fail("footer final-state digest is inconsistent")
-    canonical = b"".join(canonical_json_bytes(row) + b"\n" for row in rows)
-    return ControlTraceValidationResult(
-        canonical_bytes=canonical,
-        header=json.loads(canonical_json_bytes(header)),
-        events=tuple(json.loads(canonical_json_bytes(event)) for event in events),
-        footer=json.loads(canonical_json_bytes(footer)),
-        terminal_status=terminal_status,
-        final_sequence=footer["final_sequence"],
-        final_control_chain_sha256=previous,
-        final_state_sha256=final_state,
-    )
-
-
 __all__ = (
-    "ControlTraceValidationError",
-    "ControlTraceValidationResult",
     "StepReceipt",
     "StepReceiptIssuanceError",
     "TerminalFailureReceipt",
     "TerminalReceiptIssuanceError",
-    "create_control_trace_header",
-    "serialize_control_trace",
-    "validate_control_trace_bytes",
 )
 
 
@@ -1108,7 +426,7 @@ def _trace_decode(data: bytes) -> dict[str, Any]:
         raise ControlTraceParseError("control trace root must be a JSON object")
     try:
         canonical = canonical_json_bytes(value)
-    except Exception as error:  # noqa: BLE001 - closed parser boundary
+    except Exception as error:
         raise ControlTraceParseError(
             "control trace contains non-finite JSON"
         ) from error
@@ -1532,13 +850,13 @@ def _trace_validate_header(
                 )
             else:
                 expected_value = getattr(contract, field, None)
-            if parsed[field] != expected_value:
-                # Run/epoch/topology are checked against Scenario below; contract-only
-                # fields must always match the closed contract.
-                if field not in {"control_run_id", "authority_epoch"}:
-                    raise ControlTraceParseError(
-                        f"header {field} identity is inconsistent"
-                    )
+            # Run/epoch/topology are checked against Scenario below; contract-only
+            # fields must always match the closed contract.
+            if parsed[field] != expected_value and field not in {
+                "control_run_id",
+                "authority_epoch",
+            }:
+                raise ControlTraceParseError(f"header {field} identity is inconsistent")
     _trace_validate_context(parsed, scenario, contract)
     return parsed, scenario, contract
 
@@ -1640,7 +958,7 @@ def _trace_validate_receipt(
 
             try:
                 command = validate_external_command(scenario, parsed["final_command"])
-            except Exception as error:  # noqa: BLE001 - parser boundary
+            except Exception as error:
                 raise ControlTraceParseError(
                     "arbitration final command is invalid"
                 ) from error
@@ -1782,6 +1100,71 @@ def _trace_validate_sequence(
             raise ControlTraceParseError("terminal event is not causally reachable")
 
 
+def _trace_validate_terminal_matrix(
+    receipt: dict[str, Any],
+    *,
+    footer: dict[str, Any],
+) -> None:
+    phase = receipt["lifecycle_phase"]
+    reason = receipt["reason_code"]
+    initial_reasons = {
+        "OPERATIONAL_MEASUREMENT_INVALID",
+        "HEALTH_REDUCTION_FAILED",
+        "SNAPSHOT_ISSUANCE_FAILED",
+    }
+    execution_reasons = {
+        "PHYSICS_EXECUTION_FAILED",
+        "COMMAND_DIGEST_MISMATCH",
+        "PLANT_RECEIPT_INVALID",
+        "OPERATIONAL_MEASUREMENT_INVALID",
+        "HEALTH_REDUCTION_FAILED",
+        "SNAPSHOT_ISSUANCE_FAILED",
+    }
+    evidence = (
+        receipt["proposal_receipt_sha256"],
+        receipt["arbitration_receipt_sha256"],
+        receipt["final_command_sha256"],
+        receipt["candidate_plant_receipt_digest"],
+    )
+    expected_step = footer["final_sequence"]
+    valid = False
+    if phase == "RESET":
+        valid = (
+            reason in initial_reasons
+            and receipt["sequence"] == 0
+            and receipt["application_step"] is None
+            and evidence == (None, None, None, None)
+        )
+    elif phase == "PROPOSED":
+        valid = (
+            reason == "SAFE_HOLD_INFEASIBLE"
+            and receipt["sequence"] == expected_step
+            and receipt["application_step"] == expected_step
+            and evidence[0] is not None
+            and evidence[1] is None
+            and evidence[2] is not None
+            and evidence[3] is None
+        )
+    elif phase == "ARBITRATED":
+        candidate = evidence[3]
+        candidate_valid = (
+            candidate is None
+            if reason == "PHYSICS_EXECUTION_FAILED"
+            else (True if reason == "PLANT_RECEIPT_INVALID" else candidate is not None)
+        )
+        valid = (
+            reason in execution_reasons
+            and receipt["sequence"] == expected_step
+            and receipt["application_step"] == expected_step
+            and all(value is not None for value in evidence[:3])
+            and candidate_valid
+        )
+    if not valid:
+        raise ControlTraceParseError(
+            "terminal phase, reason, or evidence combination is unsupported"
+        )
+
+
 def _trace_validate_causality(
     events: list[dict[str, Any]],
     *,
@@ -1889,6 +1272,7 @@ def _trace_validate_causality(
             latest_plant = receipt["plant_receipt_digest"]
             pending_step = receipt
         elif kind == "TERMINAL":
+            _trace_validate_terminal_matrix(receipt, footer=footer)
             if receipt["last_good_snapshot_sha256"] != latest_snapshot:
                 raise ControlTraceParseError(
                     "terminal last-good snapshot is inconsistent"
@@ -1908,10 +1292,6 @@ def _trace_validate_causality(
                 raise ControlTraceParseError(
                     "terminal arbitration linkage is inconsistent"
                 )
-            if expected_arb is None and receipt["final_command_sha256"] is not None:
-                raise ControlTraceParseError(
-                    "terminal final command linkage is inconsistent"
-                )
             if (
                 expected_arb is not None
                 and receipt["final_command_sha256"]
@@ -1919,16 +1299,6 @@ def _trace_validate_causality(
             ):
                 raise ControlTraceParseError(
                     "terminal final command is not linked to ARBITRATION"
-                )
-            if receipt["sequence"] != footer["final_sequence"]:
-                raise ControlTraceParseError("terminal sequence is inconsistent")
-            if receipt["application_step"] != (
-                None
-                if expected_arb is None and current_proposal is None
-                else footer["final_sequence"]
-            ):
-                raise ControlTraceParseError(
-                    "terminal application step is inconsistent"
                 )
             if (
                 footer["terminal_failure_receipt_sha256"]
@@ -2107,7 +1477,9 @@ def _trace_validate_authority_semantics(
             if receipt["attempt_class"] == "NONE":
                 issued = verifier.propose(None, current_verified_snapshot)
             elif receipt["attempt_class"] == "CANONICAL_PROPOSAL":
-                issued = verifier.propose(receipt["proposal"], current_verified_snapshot)
+                issued = verifier.propose(
+                    receipt["proposal"], current_verified_snapshot
+                )
             else:
                 issued = _trace_hydrate_rejected_proposal(verifier, event)
             current_verified_snapshot = None
@@ -2263,15 +1635,12 @@ def replay_control_trace(
     data: bytes, scenario: Scenario, contract: HMCContract
 ) -> ControlTraceReplayResult:
     """Validate then replay committed external commands from a whole trace."""
-    try:
-        trace = parse_control_trace(data, scenario, contract)
-    except ControlTraceError:
-        raise
+    trace = parse_control_trace(data, scenario, contract)
     from .physics import (
         advance_one_step_with_command,
+        initial_state,
         validate_external_command,
         validate_external_step_result,
-        initial_state,
     )
 
     state = initial_state(scenario)
@@ -2296,7 +1665,7 @@ def replay_control_trace(
                 raise ValueError("arbitration command digest mismatch")
             candidate = advance_one_step_with_command(scenario, state, command)
             validate_external_step_result(scenario, state, command, candidate)
-        except Exception as error:  # noqa: BLE001 - replay failure boundary
+        except Exception as error:
             raise ControlTraceReplayError(
                 "trace command or plant replay failed"
             ) from error
@@ -2333,15 +1702,15 @@ ControlTraceReplay = ControlTraceReplayResult
 __all__ += (
     "ControlTrace",
     "ControlTraceError",
+    "ControlTraceExportError",
     "ControlTraceIssuanceError",
     "ControlTraceParseError",
+    "ControlTraceReplay",
     "ControlTraceReplayError",
     "ControlTraceReplayResult",
-    "ControlTraceReplay",
     "ControlTraceValidationError",
-    "ControlTraceExportError",
-    "parse_control_trace",
-    "replay_control_trace",
     "_issue_control_trace",
     "_trace_state_mapping",
+    "parse_control_trace",
+    "replay_control_trace",
 )
