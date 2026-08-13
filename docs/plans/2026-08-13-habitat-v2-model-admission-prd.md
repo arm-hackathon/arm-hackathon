@@ -202,8 +202,9 @@ A green focused subset is not a green full suite. A historical receipt is not cu
 - [ ] Preserve terminal fail-safe on unexpected post-arbitration failure.
 - [ ] Implement or prove the full control-trace parser and deterministic replay validator.
 - [ ] Validate header, event order, predecessor chain, footer, terminal status, final state, and every referenced receipt.
-- [ ] Replay the complete proposal sequence from the same scenario, contract, nonce, and authority epoch, then compare canonical rows byte-for-byte.
-- [ ] Add adversarial rejection for copied/stale capability, wrong HMC, wrong epoch, wrong step, missing predecessor, reordered event, forged receipt, truncated trace, and final-state mismatch.
+- [ ] Validate the complete recorded proposal/arbitration sequence from the same scenario, contract, nonce, and authority epoch. Canonical proposals are self-contained; opaque rejected inputs remain commitment-bound by exact input digest and allowlisted reason because their payloads are deliberately not retained.
+- [ ] Independently replay every committed authoritative final command through the deterministic plant, validate each causal plant-receipt digest, and compare the final hidden plant-state identity.
+- [ ] Add adversarial rejection for copied/stale capability, wrong HMC, wrong epoch, wrong step, missing predecessor, reordered event, forged receipt, truncated trace, partial completed cycle, and final-state mismatch.
 - [ ] Prove a no-proposal safe hold repeats the last authoritative final command rather than partially achieved actuator state.
 - [ ] Run focused HMC tests.
 - [ ] Run the complete locked suite and installed-wheel smoke.
