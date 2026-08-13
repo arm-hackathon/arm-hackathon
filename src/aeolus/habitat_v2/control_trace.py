@@ -10,7 +10,7 @@ from typing import Any
 from .hmc_contract import HMCContract, canonical_json_bytes
 from .scenario import Scenario
 from .state import PlantState
-from .snapshot import ControlEvent, _FinalIssuedType, _chain_digest
+from .snapshot import ControlEvent, _FinalIssuedType
 
 _STEP_RECEIPT_ISSUANCE_TOKEN = object()
 _TERMINAL_RECEIPT_ISSUANCE_TOKEN = object()
@@ -65,10 +65,6 @@ class StepReceiptIssuanceError(ValueError):
 
 class TerminalReceiptIssuanceError(ValueError):
     """Raised when a closed terminal receipt cannot be issued."""
-
-
-class ControlTraceValidationError(ValueError):
-    """Raised when a control-trace artifact is not closed and replayable."""
 
 
 def _is_sha256(value: object) -> bool:
@@ -1718,6 +1714,7 @@ def _trace_validate_event(
     if parsed["receipt_sha256"] != receipt[self_field]:
         raise ControlTraceParseError("control event receipt and kind do not match")
     expected_chain = _chain_digest(
+        str(contract.data["control_trace"]["domains"]["chain"]),
         previous_chain,
         ordinal,
         parsed["event_kind"],
@@ -2076,6 +2073,7 @@ def _trace_validate_authority_semantics(
 
     verifier = HabitatManagementComputer.reset(scenario, contract, reset_nonce)
     current_snapshot_sha256: str | None = None
+    current_verified_snapshot = None
     for event in events:
         kind = event["event_kind"]
         receipt = event["receipt"]
@@ -2094,11 +2092,11 @@ def _trace_validate_authority_semantics(
                 )
             ):
                 raise ControlTraceParseError("snapshot semantics do not replay")
-            verifier.verify_snapshot(snapshot, verification)
+            current_verified_snapshot = verifier.verify_snapshot(snapshot, verification)
             current_snapshot_sha256 = snapshot.snapshot_sha256
             continue
         if kind == "PROPOSAL":
-            if current_snapshot_sha256 is None:
+            if current_snapshot_sha256 is None or current_verified_snapshot is None:
                 raise ControlTraceParseError("proposal replay lacks a current snapshot")
             _trace_validate_proposal_semantics(
                 receipt,
@@ -2107,11 +2105,12 @@ def _trace_validate_authority_semantics(
                 snapshot_sha256=current_snapshot_sha256,
             )
             if receipt["attempt_class"] == "NONE":
-                issued = verifier.propose(None)
+                issued = verifier.propose(None, current_verified_snapshot)
             elif receipt["attempt_class"] == "CANONICAL_PROPOSAL":
-                issued = verifier.propose(receipt["proposal"])
+                issued = verifier.propose(receipt["proposal"], current_verified_snapshot)
             else:
                 issued = _trace_hydrate_rejected_proposal(verifier, event)
+            current_verified_snapshot = None
             if not _trace_same_mapping(
                 issued.to_mapping(), receipt
             ) or not _trace_same_mapping(
