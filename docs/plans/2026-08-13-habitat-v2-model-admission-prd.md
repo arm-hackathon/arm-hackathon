@@ -9,6 +9,9 @@
 **Release mode:** parallel PRs with one later release decision
 **Current integration version:** `0.7.0`, unreleased
 **Publication rule:** draft PRs only until human review and comprehension gates pass
+**Evidence refresh:** 2026-08-13, after publishing corrected O1 and restacked H1 heads
+**Current code status:** O1 and H1 are published draft PRs; neither is approved, merged, tagged, released, deployed, or a learned-model qualification
+**Project-submission boundary:** an early hackathon entry is separate from GitHub merge/release status and does not freeze later repository work
 
 ## 1. Plain-language objective
 
@@ -133,14 +136,14 @@ Every stage must preserve these invariants:
 
 | Stage | Intended branch | Intended base | Review idea | Version impact |
 |---|---|---|---|---|
-| Tracker | `ben/habitat-v2-model-admission-prd` | `alex/ai-2` | This PRD and live evidence checklist | `none` |
-| O1 | `ben/habitat-v2-observability-restack` | `alex/ai-2` | Operational observability on corrected plant bytes | `minor`, consolidated release line |
-| H1 | `ben/habitat-v2-hmc-restack` | O1 | Deterministic HMC plus full control-trace replay | `minor`, consolidated release line |
+| Tracker | `ben/habitat-v2-model-admission-prd` | `alex/ai-2` | This PRD and live evidence checklist, draft PR #33 | `none` |
+| O1 | `ben/habitat-v2-observability-restack` | `alex/ai-2` | Operational observability on corrected plant bytes, draft PR #34 at `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0` | `minor`, consolidated release line |
+| H1 | `ben/habitat-v2-hmc-restack` | O1 | Deterministic HMC plus full control-trace replay, draft PR #35 at `0445af158edbbd7189dcbe7cad8600ca35deddb0` | `minor`, consolidated release line |
 | D1 | `ben/habitat-v2-forecast-data-foundation` | H1 | Model contract, corpus, splits, baselines, evaluator | `minor`, consolidated release line |
 | E1 | `ben/habitat-v2-forecast-experiment-freeze` | D1 | Frozen experiment and final-access protocol | `none` unless executable behaviour changes |
 | M1 | `ben/habitat-v2-forecast-candidate` | E1 | Bounded training, shadow evaluation, verdict | `minor`, consolidated release line |
 
-All code PRs remain draft until the immutable diff, evidence packet, one bounded independent review, and Ben comprehension gate are complete. No PR in this sequence authorises merge, tag, release, registry publication, deployment, or a hardware claim.
+All code PRs remain draft until the immutable diff, evidence packet, one bounded independent review, and Ben comprehension gate are complete. Draft publication may happen earlier so the exact candidate can receive CI and teammate review, but publication alone is not readiness or approval. No PR in this sequence authorises merge, tag, release, registry publication, deployment, or a hardware claim.
 
 ## 6. Evidence rules
 
@@ -184,34 +187,35 @@ A green focused subset is not a green full suite. A historical receipt is not cu
 - [x] Run focused observability tests.
 - [x] Run the complete locked suite and installed-wheel smoke.
 - [x] Freeze commit, diff hash, artifacts, and external bundle.
-- [ ] Publish the O1 draft PR after the bounded review and comprehension gates.
+- [x] Publish the corrected O1 draft PR with exact evidence and limitations.
 
-**Gate status:** implementation and verification complete; publication gated by R1.
+**Gate status:** published draft and verification complete. Independent review, Ben's comprehension gate, ready-for-review transition, merge and release remain pending.
 
-**Frozen evidence:** candidate `ed3fd5c949a382ec8ffdb060733990dd00803777` on base `ec8a6e07cddcd97915398e5a84d348b30d850c86`; binary diff SHA-256 `7dabde1bc1f8d6148918d4f2ac5e5ae242c13226459575a3cb53e37ca2b3b0ca`; focused tests 111/111; full locked suite 807/807; locked Ruff, compilation, lock, diff, build, external wheel install and Habitat V2 smoke passed. The canonical qualification packet was regenerated twice from final bytes and matched the documented cache byte-for-byte at SHA-256 `1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b`. Metrics were harmful concern coverage 6/6, healthy false concerns 0/1, eligible localisation 5/5, ambiguous abstention 1/1 and overclaims 0/6. Exact fault identification remains deliberately unclaimed. External freeze receipt: `C:/Users/Nxiss/AppData/Local/hermes/tmp/aeolus-observability-restack-ed3fd5c-receipt.json`.
+**Frozen evidence:** draft PR #34, <https://github.com/arm-hackathon/arm-hackathon/pull/34>, targets `alex/ai-2` at `ec8a6e07cddcd97915398e5a84d348b30d850c86`. Exact head `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0`, tree `aa28c9204afeeee48ea116360e4b710c7827d1d5`, three commits, 25 changed files and base-relative binary diff SHA-256 `eaf3f0d63b8055681324388dab17743da1f6063634fc1fa63f9aba9b0406b855`. Detached exact-head verification passed 810/810 full locked tests, 51/51 focused qualification-plus-packet tests, Ruff, focused formatting, compilation, lock validation and exact-range diff hygiene. The canonical packet is tracked at `docs/evidence/habitat-v2-operational-observability-qualification-packet.json`; its Git blob is `f232b9e4a54caaee1494779dbc113e88f23e55be`, and a tracked fail-closed producer plus CI byte-comparison gate reproduces SHA-256 `1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b`. Metrics are harmful concern coverage 6/6, healthy false concerns 0/1, eligible localisation 5/5, ambiguous abstention 1/1 and overclaims 0/6. Exact fault identification remains deliberately unclaimed. Isolated installed-wheel packet generation passed. Fresh GitHub Actions run `31718771048` passed the locked suite and installed-wheel smoke. The bounded implementation audit is author self-review, not independent approval. No physical, hardware, deployment or learned-model qualification is claimed.
 
 ### Gate H1: deterministic HMC convergence
 
-- [ ] Restack the minimal PR #31 HMC commits onto completed O1.
-- [ ] Reconcile the executable contract with final implementation.
-- [ ] Reparse supplied typed scenario objects through the closed plant schema at reset.
-- [ ] Preserve lifecycle `reset -> observe -> propose -> arbitrate -> step`.
-- [ ] Preserve instance, authority-epoch, and application-step capability binding.
-- [ ] Preserve complete-command validation and canonical physics preflight.
-- [ ] Preserve finite safe-action catalogue and explicit reason codes.
-- [ ] Preserve terminal fail-safe on unexpected post-arbitration failure.
-- [ ] Implement or prove the full control-trace parser and deterministic replay validator.
-- [ ] Validate header, event order, predecessor chain, footer, terminal status, final state, and every referenced receipt.
-- [ ] Validate the complete recorded proposal/arbitration sequence from the same scenario, contract, nonce, and authority epoch. Canonical proposals are self-contained; opaque rejected inputs remain commitment-bound by exact input digest and allowlisted reason because their payloads are deliberately not retained.
-- [ ] Independently replay every committed authoritative final command through the deterministic plant, validate each causal plant-receipt digest, and compare the final hidden plant-state identity.
-- [ ] Add adversarial rejection for copied/stale capability, wrong HMC, wrong epoch, wrong step, missing predecessor, reordered event, forged receipt, truncated trace, partial completed cycle, and final-state mismatch.
-- [ ] Prove a no-proposal safe hold repeats the last authoritative final command rather than partially achieved actuator state.
-- [ ] Run focused HMC tests.
-- [ ] Run the complete locked suite and installed-wheel smoke.
-- [ ] Freeze commit, diff hash, artifacts, and draft PR.
+- [x] Restack the minimal PR #31 HMC commits onto completed O1.
+- [x] Reconcile the executable contract with final implementation.
+- [x] Reparse supplied typed scenario objects through the closed plant schema at reset.
+- [x] Preserve lifecycle `reset -> observe -> propose -> arbitrate -> step`.
+- [x] Preserve instance, authority-epoch, and application-step capability binding.
+- [x] Preserve complete-command validation and canonical physics preflight.
+- [x] Preserve finite safe-action catalogue and explicit reason codes.
+- [x] Preserve terminal fail-safe on unexpected post-arbitration failure.
+- [x] Implement and prove the full control-trace parser and deterministic replay validator.
+- [x] Validate header, event order, predecessor chain, footer, terminal status, final state, and every referenced receipt.
+- [x] Validate the complete recorded proposal/arbitration sequence from the same scenario, contract, nonce, and authority epoch. Canonical proposals are self-contained; opaque rejected inputs remain commitment-bound by exact input digest and allowlisted reason because their payloads are deliberately not retained.
+- [x] Independently replay every committed authoritative final command through the deterministic plant, validate each causal plant-receipt digest, and compare the final hidden plant-state identity.
+- [x] Add adversarial rejection for copied/stale capability, wrong HMC, wrong epoch, wrong step, missing predecessor, reordered event, forged receipt, truncated trace, partial completed cycle, and final-state mismatch.
+- [x] Prove a no-proposal safe hold repeats the last authoritative final command rather than partially achieved actuator state.
+- [x] Run focused HMC tests.
+- [x] Run the complete locked suite and installed-wheel smoke.
+- [x] Freeze commit, diff hash, artifacts, and draft PR.
 
-**Gate status:** not started on completed O1.
-**Prior evidence:** draft PR #31 at `843a5c1485de841462cbb47e486c2185099b71a2`, 867-test CI pass and 78 focused HMC tests. Its public description is stale and does not close this gate.
+**Gate status:** published draft and implementation verification complete. Independent review, Ben's comprehension gate, ready-for-review transition, merge and release remain pending.
+
+**Frozen evidence:** draft PR #35, <https://github.com/arm-hackathon/arm-hackathon/pull/35>, is stacked on O1 exact parent `9685c8ebe772bed88e86d7eaa57ab605c7c90dc0`. Exact head `0445af158edbbd7189dcbe7cad8600ca35deddb0`, tree `a8399a89f8f014b64cde4e63a102e93cc97ced0a`, four HMC commits, 23 changed files and parent-relative binary diff SHA-256 `bc12831814175a0ea1e10924c21bbdfcece5ddf428aee986ad2ff1193fd33ede`. The HMC patch was content-preserved during restack: stable parent-relative patch diff SHA-256 `16bf395ac77fc5b6a7c70a9132d8e85d3d4980d1118fb695e33325f498a7acc1` matched before and after. Post-restack verification passed 919/919 full locked tests and 34/34 focused HMC-control-trace-plus-packet tests. Ruff over all stack-changed Python files, compilation, lock validation and exact-range diff hygiene passed. A `core.autocrlf=false` Git-archive build produced wheel SHA-256 `dd2b4ea43abaa123b8d1f1271469d72bef0e17d71c9e2a718c45a2e4f5595e86` and sdist SHA-256 `03535857b6c2b24a8d5e46a91f7714c6e601ab5bd225767d843f1fe4c31565f5`; `control_trace.py`, `hmc.py` and `qualification_packet.py` matched their submitted Git blobs in both artifacts. Isolated installed replay completed four committed steps, produced byte-identical repeated traces, and reproduced final state SHA-256 `9d8039a4e32a262947a9a3339de369284289466c4afec672944a5c56e5da42e6`. Fresh GitHub Actions run `31718773450` passed the locked suite and installed-wheel smoke. The author adversarial audit rejected all six fully rehashed authority forgeries at parse and replay, 12/12 checks, but is self-review rather than independent approval. No learned model, direct learned control, hardware, deployment, merge or release claim is made.
 
 ### Gate D1: Habitat V2 forecast data and evaluation foundation
 
@@ -371,16 +375,16 @@ Report separately:
 
 For each code candidate:
 
-- [ ] Freeze base SHA, head SHA, clean tree, changed files, binary diff, binary diff SHA-256, tests, artifacts, and publication state.
-- [ ] Run one bounded independent review against the accepted contract and exact bytes.
+- [x] Freeze base SHA, head SHA, clean tree, changed files, binary diff, binary diff SHA-256, tests, artifacts, and publication state for O1 and H1.
+- [ ] Run one bounded independent review against the accepted contract and exact bytes for each code candidate.
 - [ ] If rejected, retain the rejected receipt and permit one finding-specific correction with a new regression and targeted retest.
 - [ ] Teach Ben the changed behaviour and safety boundary.
 - [ ] Complete five diff-grounded comprehension questions covering purpose, data flow, invariant, edge/failure case, and trade-off.
-- [ ] Publish or update a draft PR with exact base/head, version impact, test commands, evidence links, limitations, and explicit non-claims.
-- [ ] Verify the posted PR body and checks.
-- [ ] Do not mark ready, merge, tag, release, or deploy without separate authorization.
+- [x] Publish or update draft PRs #34 and #35 with exact base/head, version impact, test commands, evidence links, limitations, and explicit non-claims.
+- [x] Verify the posted PR bodies, exact remote heads and fresh GitHub Actions checks for #34 and #35.
+- [x] Keep both PRs in draft state. Do not mark ready, merge, tag, release or deploy without separate authorization.
 
-**Gate status:** not started.
+**Gate status:** draft publication evidence complete for O1 and H1. Independent review, teaching, Ben's five-question comprehension gate, ready-for-review decision, merge and release remain pending. This tracker update does not satisfy those human gates.
 
 ## 8. Frozen experiment design constraints
 
