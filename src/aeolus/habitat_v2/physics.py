@@ -1202,8 +1202,8 @@ def _advance_one_step_canonical(
             key=lambda value: str(value["fault_id"]),
         )
         step_receipt["realised_loads"] = segment["loads"]
-        if external_command_digest is not None:
-            step_receipt["external_command_digest"] = external_command_digest
+    if external_command_digest is not None:
+        step_receipt["external_command_digest"] = external_command_digest
 
     return StepResult(
         state=next_state,
