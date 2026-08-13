@@ -173,20 +173,22 @@ A green focused subset is not a green full suite. A historical receipt is not cu
 
 ### Gate O1: operational observability convergence
 
-- [ ] Restack the minimal PR #30 feature/fix commits onto F0 without retaining obsolete merge topology.
-- [ ] Preserve the corrected external-command accounting boundary.
-- [ ] Resolve version and changelog lineage under repository release-train policy.
-- [ ] Rerun all observability qualification cases from final bytes.
-- [ ] Confirm harmful concern activation for every declared harmful fixture.
-- [ ] Confirm healthy false-concern count and denominator with explicit bad-is-positive polarity.
-- [ ] Confirm subsystem localisation and explicit `UNKNOWN` abstention semantics.
-- [ ] Revalidate earliest-divergence receipt and all aggregate hashes.
-- [ ] Run focused observability tests.
-- [ ] Run the complete locked suite and installed-wheel smoke.
-- [ ] Freeze commit, diff hash, artifacts, and draft PR.
+- [x] Restack the minimal PR #30 feature/fix commits onto F0 without retaining obsolete merge topology.
+- [x] Preserve the corrected external-command accounting boundary.
+- [x] Resolve version and changelog lineage under repository release-train policy.
+- [x] Rerun all observability qualification cases from final bytes.
+- [x] Confirm harmful concern activation for every declared harmful fixture.
+- [x] Confirm healthy false-concern count and denominator with explicit bad-is-positive polarity.
+- [x] Confirm subsystem localisation and explicit `UNKNOWN` abstention semantics.
+- [x] Revalidate earliest-divergence receipt and all aggregate hashes.
+- [x] Run focused observability tests.
+- [x] Run the complete locked suite and installed-wheel smoke.
+- [x] Freeze commit, diff hash, artifacts, and external bundle.
+- [ ] Publish the O1 draft PR after the bounded review and comprehension gates.
 
-**Gate status:** not started on corrected base.
-**Prior evidence:** draft PR #30 at `ce99b42e2631e3fb205fdf35ec6424671952af85`, 789-test CI pass. This is input evidence, not proof of the restacked candidate.
+**Gate status:** implementation and verification complete; publication gated by R1.
+
+**Frozen evidence:** candidate `ed3fd5c949a382ec8ffdb060733990dd00803777` on base `ec8a6e07cddcd97915398e5a84d348b30d850c86`; binary diff SHA-256 `7dabde1bc1f8d6148918d4f2ac5e5ae242c13226459575a3cb53e37ca2b3b0ca`; focused tests 111/111; full locked suite 807/807; locked Ruff, compilation, lock, diff, build, external wheel install and Habitat V2 smoke passed. The canonical qualification packet was regenerated twice from final bytes and matched the documented cache byte-for-byte at SHA-256 `1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b`. Metrics were harmful concern coverage 6/6, healthy false concerns 0/1, eligible localisation 5/5, ambiguous abstention 1/1 and overclaims 0/6. Exact fault identification remains deliberately unclaimed. External freeze receipt: `C:/Users/Nxiss/AppData/Local/hermes/tmp/aeolus-observability-restack-ed3fd5c-receipt.json`.
 
 ### Gate H1: deterministic HMC convergence
 
