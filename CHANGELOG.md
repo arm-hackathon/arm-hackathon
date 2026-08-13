@@ -16,6 +16,9 @@
   recovery/post-tail fixtures, an individual elevated healthy hard-negative
   boundary, and aggregate identities bound to ordered case/report grading and
   hard-negative manifests with explicit polarity and denominators.
+- Added a tracked, canonical qualification packet plus a fail-closed repository
+  builder and CI byte-comparison gate, closing the former local-cache-only
+  reproducibility gap without changing the frozen packet bytes or metrics.
 - Preserved V1–V5 simulation scenario/trace contracts; no learned model,
   training, corpus, viewer, Arm64 measurement, publication, or hardware claim
   is included.
