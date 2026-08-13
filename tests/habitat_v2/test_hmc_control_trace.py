@@ -36,8 +36,8 @@ def _complete_hmc(reset_nonce: bytes = b"t" * 32) -> tuple[Scenario, object]:
     hmc = HabitatManagementComputer.reset(scenario, _contract(), reset_nonce)
     for _ in range(int(scenario.data["steps"])):
         snapshot, verification = hmc.observe()
-        hmc.verify_snapshot(snapshot, verification)
-        hmc.propose(None)
+        verified_snapshot = hmc.verify_snapshot(snapshot, verification)
+        hmc.propose(None, verified_snapshot)
         hmc.arbitrate()
         hmc.step()
     return scenario, hmc
@@ -93,8 +93,8 @@ def test_premature_export_and_malformed_git_sha_are_rejected() -> None:
 def test_completed_steps_with_a_pending_proposal_cannot_export_as_completed() -> None:
     _, hmc = _complete_hmc()
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    hmc.propose(None)
+    verified_snapshot = hmc.verify_snapshot(snapshot, verification)
+    hmc.propose(None, verified_snapshot)
 
     with pytest.raises(ControlTraceIssuanceError, match="stable completed lifecycle"):
         hmc.export_control_trace("a" * 40)
@@ -115,8 +115,8 @@ def test_parser_rejects_a_rehashed_completed_trace_with_a_dangling_proposal() ->
 
     _, pending = _complete_hmc()
     snapshot, verification = pending.observe()
-    pending.verify_snapshot(snapshot, verification)
-    pending.propose(None)
+    verified_snapshot = pending.verify_snapshot(snapshot, verification)
+    pending.propose(None, verified_snapshot)
     valid["events"].append(pending.control_events[-1].to_mapping())  # type: ignore[union-attr]
     footer = valid["footer"]  # type: ignore[assignment]
     footer["event_count"] = len(valid["events"])  # type: ignore[arg-type,index]
@@ -151,8 +151,8 @@ def test_terminal_failure_control_trace_is_parseable_and_replays_committed_steps
     contract = _contract()
     hmc = HabitatManagementComputer.reset(scenario, contract, b"f" * 32)
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    hmc.propose(None)
+    verified_snapshot = hmc.verify_snapshot(snapshot, verification)
+    hmc.propose(None, verified_snapshot)
     hmc.arbitrate()
 
     def fail_physics(*_args: object, **_kwargs: object) -> object:
@@ -178,14 +178,14 @@ def test_terminal_trace_after_a_committed_cycle_replays_only_last_good_state(
     hmc = HabitatManagementComputer.reset(scenario, contract, b"g" * 32)
     for _ in range(2):
         snapshot, verification = hmc.observe()
-        hmc.verify_snapshot(snapshot, verification)
-        hmc.propose(None)
+        verified_snapshot = hmc.verify_snapshot(snapshot, verification)
+        hmc.propose(None, verified_snapshot)
         hmc.arbitrate()
         hmc.step()
 
     snapshot, verification = hmc.observe()
-    hmc.verify_snapshot(snapshot, verification)
-    hmc.propose(None)
+    verified_snapshot = hmc.verify_snapshot(snapshot, verification)
+    hmc.propose(None, verified_snapshot)
     hmc.arbitrate()
 
     def fail_physics(*_args: object, **_kwargs: object) -> object:
