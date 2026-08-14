@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
 
 from aeolus.habitat_v2.forecast.arm_optimization import (
@@ -39,6 +41,14 @@ def _arguments() -> argparse.Namespace:
     )
     parser.add_argument("--warmup-iterations", type=int, default=20)
     parser.add_argument("--measured-iterations", type=int, default=200)
+    parser.add_argument(
+        "--use-existing-candidate",
+        action="store_true",
+        help=(
+            "Benchmark the exact candidate and conversion receipt already present "
+            "instead of regenerating platform-dependent compressed bytes."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -47,14 +57,33 @@ def _write_canonical(path: Path, value: object) -> None:
     path.write_bytes(canonical_json_bytes(value))
 
 
+def _load_existing_conversion(candidate: Path, receipt_path: Path) -> dict[str, object]:
+    raw = receipt_path.read_bytes()
+    conversion = json.loads(raw)
+    if type(conversion) is not dict or raw != canonical_json_bytes(conversion):
+        raise ValueError("existing conversion receipt is not canonical JSON")
+    candidate_sha256 = hashlib.sha256(candidate.read_bytes()).hexdigest()
+    if (
+        conversion.get("source_model_sha256") != SOURCE_MODEL_SHA256
+        or conversion.get("candidate_model_sha256") != candidate_sha256
+    ):
+        raise ValueError("existing candidate identity differs from conversion receipt")
+    return conversion
+
+
 def main() -> int:
     arguments = _arguments()
-    conversion = optimise_ridge_fp32(
-        arguments.source,
-        arguments.candidate,
-        expected_source_sha256=SOURCE_MODEL_SHA256,
-    )
-    _write_canonical(arguments.conversion_receipt, conversion)
+    if arguments.use_existing_candidate:
+        conversion = _load_existing_conversion(
+            arguments.candidate, arguments.conversion_receipt
+        )
+    else:
+        conversion = optimise_ridge_fp32(
+            arguments.source,
+            arguments.candidate,
+            expected_source_sha256=SOURCE_MODEL_SHA256,
+        )
+        _write_canonical(arguments.conversion_receipt, conversion)
     benchmark = benchmark_fp64_vs_fp32(
         arguments.repo_root,
         arguments.source,
