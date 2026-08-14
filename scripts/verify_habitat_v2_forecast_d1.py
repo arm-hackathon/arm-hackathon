@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import hashlib
 import json
 import re
 import subprocess
 from pathlib import Path
+import tempfile
 from typing import Any
 
 from aeolus.habitat_v2.control_trace import parse_control_trace, replay_control_trace
@@ -18,6 +20,16 @@ from aeolus.habitat_v2.physics import (
 )
 from aeolus.habitat_v2.scenario import Scenario
 from aeolus.habitat_v2.telemetry import derive_observable_topology
+from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+from aeolus.habitat_v2.forecast.pipeline import (
+    generate_development_fixture,
+    validate_development_packet,
+)
+from aeolus.habitat_v2.forecast.projection import forecast_layout
+from aeolus.habitat_v2.forecast.timing import (
+    emit_baseline_gate_receipt,
+    emit_timing_receipt,
+)
 
 RELEASE_TIER = "DEVELOPMENT_FIXTURE_ONLY"
 FINAL_HMC_COMMIT_SHA = "79d6a718e0d44122a763bb72f9c8ed929f39fd23"
@@ -271,6 +283,63 @@ def verify_development_hmc(root: Path) -> dict[str, Any]:
     }
 
 
+def verify_development_packet_and_stop_receipts(root: Path) -> dict[str, Any]:
+    bundle = load_forecast_contracts(root)
+    layout = forecast_layout(bundle)
+    with tempfile.TemporaryDirectory(prefix="aeolus-forecast-d1-") as temporary:
+        output_root = Path(temporary)
+        first = generate_development_fixture(root, output_root, "packet-a")
+        second = generate_development_fixture(root, output_root, "packet-b")
+        if first["file_sha256"] != second["file_sha256"]:
+            raise ValueError("development packet generation is not byte-identical")
+        validation = validate_development_packet(output_root / "packet-a", bundle)
+
+    timing_evidence = {
+        "development_sample_count": validation["sample_count"],
+        "development_family_cluster_count": 1,
+        "train_family_cluster_count": 0,
+        "validation_family_cluster_count": 0,
+        "candidate_window_steps": 4,
+        "candidate_horizon_steps": 2,
+        "selection_performed": False,
+    }
+    baseline_evidence = {
+        "development_sample_count": validation["sample_count"],
+        "train_family_cluster_count": 0,
+        "validation_family_cluster_count": 0,
+        "fitted_baseline_count": 0,
+        "action_information_comparison_supported": False,
+        "reason": "development fixture is not training or validation evidence",
+    }
+    timing_receipt = emit_timing_receipt(
+        4,
+        2,
+        timing_evidence=timing_evidence,
+        input_manifest_sha256=layout.input_manifest_sha256,
+        target_manifest_sha256=layout.target_manifest_sha256,
+    )
+    baseline_receipt = emit_baseline_gate_receipt(
+        baseline_evidence=baseline_evidence,
+        input_manifest_sha256=layout.input_manifest_sha256,
+        target_manifest_sha256=layout.target_manifest_sha256,
+    )
+    if (
+        timing_receipt.outcome != "STOP_UNDERPOWERED"
+        or baseline_receipt.outcome != "STOP_UNDERPOWERED"
+    ):
+        raise ValueError("D1 stop receipt outcome drift")
+    return {
+        "byte_identical_generation_count": 2,
+        "closed_file_count": len(first["file_sha256"]),
+        "manifest_file_sha256": first["file_sha256"][
+            "development-fixture-only/manifest.json"
+        ],
+        "validation": validation,
+        "timing_receipt": asdict(timing_receipt),
+        "baseline_receipt": asdict(baseline_receipt),
+    }
+
+
 def verify_markdown_links(root: Path) -> int:
     tracked = subprocess.check_output(
         ["git", "ls-files", "*.md"],
@@ -313,6 +382,7 @@ def main() -> int:
         "gate_status": "STOP_UNDERPOWERED",
         "frozen_inputs": verify_frozen_inputs(root),
         "hmc_execution": verify_development_hmc(root),
+        "development_packet": verify_development_packet_and_stop_receipts(root),
         "markdown_missing_links": verify_markdown_links(root),
     }
     print(json.dumps(result, indent=2, sort_keys=True))
