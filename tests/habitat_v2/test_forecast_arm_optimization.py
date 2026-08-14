@@ -8,10 +8,22 @@ import subprocess
 import sys
 
 import numpy as np
+import pytest
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _load_cli_module():
+    import importlib.util
+
+    path = _repo_root() / "scripts/benchmark_habitat_v2_fp32.py"
+    spec = importlib.util.spec_from_file_location("benchmark_habitat_v2_fp32", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_fp32_optimisation_preserves_contract_and_runtime_precision(
@@ -177,3 +189,152 @@ def test_cli_benchmarks_exact_existing_candidate_without_rewriting_it(
     )
     assert candidate.read_bytes() == candidate_before
     assert conversion.read_bytes() == conversion_before
+
+
+def test_cli_returns_nonzero_and_writes_canonical_receipt_when_parity_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from aeolus.habitat_v2.forecast.corpus import canonical_json_bytes
+
+    module = _load_cli_module()
+    root = _repo_root()
+    artifact_root = root / "artifacts/demo-only/habitat-v2-forecast"
+    benchmark_path = tmp_path / "failed-benchmark.json"
+    failed = {"prediction_parity": {"passed": False}, "timing": {}}
+    monkeypatch.setattr(
+        module, "benchmark_fp64_vs_fp32", lambda *_args, **_kwargs: failed
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "benchmark_habitat_v2_fp32.py",
+            "--use-existing-candidate",
+            "--source",
+            str(artifact_root / "action-aware-ridge.npz"),
+            "--candidate",
+            str(artifact_root / "action-aware-ridge-fp32.npz"),
+            "--conversion-receipt",
+            str(artifact_root / "fp32-conversion-receipt.json"),
+            "--benchmark-receipt",
+            str(benchmark_path),
+        ],
+    )
+
+    assert module.main() == 1
+    stored = json.loads(benchmark_path.read_bytes())
+    assert stored["prediction_parity"]["passed"] is False
+    assert benchmark_path.read_bytes() == canonical_json_bytes(stored)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("noncanonical", "canonical JSON"),
+        ("unknown_field", "fields drift"),
+        ("wrong_source_sha", "semantics or model identity"),
+        ("wrong_candidate_sha", "semantics or model identity"),
+        ("wrong_candidate_size", "semantics or model identity"),
+        ("qualified", "semantics or model identity"),
+    ),
+)
+def test_existing_conversion_receipt_validation_is_fail_closed(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
+    from aeolus.habitat_v2.forecast.corpus import canonical_json_bytes
+
+    module = _load_cli_module()
+    root = _repo_root()
+    artifact_root = root / "artifacts/demo-only/habitat-v2-forecast"
+    source = artifact_root / "action-aware-ridge.npz"
+    candidate = artifact_root / "action-aware-ridge-fp32.npz"
+    receipt = json.loads((artifact_root / "fp32-conversion-receipt.json").read_bytes())
+    if mutation == "unknown_field":
+        receipt["unexpected"] = True
+    elif mutation == "wrong_source_sha":
+        receipt["source_model_sha256"] = "0" * 64
+    elif mutation == "wrong_candidate_sha":
+        receipt["candidate_model_sha256"] = "0" * 64
+    elif mutation == "wrong_candidate_size":
+        receipt["candidate_model_file_bytes"] += 1
+    elif mutation == "qualified":
+        receipt["qualified_model"] = True
+    receipt_path = tmp_path / "conversion.json"
+    raw = canonical_json_bytes(receipt)
+    if mutation == "noncanonical":
+        raw += b"\n"
+    receipt_path.write_bytes(raw)
+
+    with pytest.raises(ValueError, match=message):
+        module._load_existing_conversion(source, candidate, receipt_path)
+
+
+def test_existing_conversion_rejects_candidate_byte_mismatch(tmp_path: Path) -> None:
+    module = _load_cli_module()
+    root = _repo_root()
+    artifact_root = root / "artifacts/demo-only/habitat-v2-forecast"
+    candidate = tmp_path / "candidate.npz"
+    candidate.write_bytes(
+        (artifact_root / "action-aware-ridge-fp32.npz").read_bytes() + b"tamper"
+    )
+
+    with pytest.raises(ValueError, match="semantics or model identity"):
+        module._load_existing_conversion(
+            artifact_root / "action-aware-ridge.npz",
+            candidate,
+            artifact_root / "fp32-conversion-receipt.json",
+        )
+
+
+def test_repeated_benchmarks_emit_provenance_and_median_distribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_cli_module()
+    root = _repo_root()
+    artifact_root = root / "artifacts/demo-only/habitat-v2-forecast"
+    output = tmp_path / "series.json"
+    medians = iter(((900, 500), (1000, 400), (1100, 550)))
+
+    def benchmark(*_args: object, **_kwargs: object) -> dict[str, object]:
+        fp64, fp32 = next(medians)
+        return {
+            "prediction_parity": {"passed": True},
+            "timing": {
+                "fp64": {"median_ns": fp64},
+                "fp32": {"median_ns": fp32},
+                "median_speedup_fp64_over_fp32": fp64 / fp32,
+            },
+        }
+
+    monkeypatch.setattr(module, "benchmark_fp64_vs_fp32", benchmark)
+    monkeypatch.setenv("GITHUB_SHA", "a" * 40)
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "benchmark_habitat_v2_fp32.py",
+            "--use-existing-candidate",
+            "--source",
+            str(artifact_root / "action-aware-ridge.npz"),
+            "--candidate",
+            str(artifact_root / "action-aware-ridge-fp32.npz"),
+            "--conversion-receipt",
+            str(artifact_root / "fp32-conversion-receipt.json"),
+            "--benchmark-receipt",
+            str(output),
+            "--benchmark-repetitions",
+            "3",
+        ],
+    )
+
+    assert module.main() == 0
+    series = json.loads(output.read_bytes())
+    assert series["run_count"] == 3
+    assert series["all_prediction_parity_passed"] is True
+    assert series["median_distribution"]["fp64_median_ns_by_run"] == [900, 1000, 1100]
+    assert series["median_distribution"]["fp32_median_ns_by_run"] == [500, 400, 550]
+    assert series["median_distribution"]["fp64_median_of_run_medians_ns"] == 1000
+    assert series["provenance"]["github_sha"] == "a" * 40
+    assert series["provenance"]["github_run_id"] == "123"
+    assert len(series["provenance"]["conversion_receipt_sha256"]) == 64
