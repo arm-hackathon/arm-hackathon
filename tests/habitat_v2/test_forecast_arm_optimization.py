@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 
@@ -127,3 +130,50 @@ def test_fp32_candidate_and_static_receipt_are_exactly_reproducible(
     assert first_receipt == second_receipt
     assert committed_receipt.read_bytes() == canonical_json_bytes(first_receipt)
     assert json.loads(committed_receipt.read_bytes()) == first_receipt
+
+
+def test_cli_benchmarks_exact_existing_candidate_without_rewriting_it(
+    tmp_path: Path,
+) -> None:
+    root = _repo_root()
+    artifact_root = root / "artifacts/demo-only/habitat-v2-forecast"
+    candidate = artifact_root / "action-aware-ridge-fp32.npz"
+    conversion = artifact_root / "fp32-conversion-receipt.json"
+    candidate_before = candidate.read_bytes()
+    conversion_before = conversion.read_bytes()
+    benchmark = tmp_path / "benchmark.json"
+    environment = os.environ.copy()
+    existing_pythonpath = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(None, (str(root / "src"), existing_pythonpath))
+    )
+
+    subprocess.run(
+        (
+            sys.executable,
+            "scripts/benchmark_habitat_v2_fp32.py",
+            "--use-existing-candidate",
+            "--candidate",
+            str(candidate),
+            "--conversion-receipt",
+            str(conversion),
+            "--benchmark-receipt",
+            str(benchmark),
+            "--warmup-iterations",
+            "2",
+            "--measured-iterations",
+            "8",
+        ),
+        cwd=root,
+        env=environment,
+        check=True,
+    )
+
+    receipt = json.loads(benchmark.read_bytes())
+    assert receipt["prediction_parity"]["passed"] is True
+    assert (
+        receipt["models"]["fp32"]["sha256"]
+        == hashlib.sha256(candidate_before).hexdigest()
+    )
+    assert candidate.read_bytes() == candidate_before
+    assert conversion.read_bytes() == conversion_before
