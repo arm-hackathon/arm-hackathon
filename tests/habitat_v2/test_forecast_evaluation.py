@@ -218,6 +218,41 @@ def test_metrics_positive_harm_existing_harm_and_unsupported_ratios() -> None:
     assert result.metrics.false_positive_rate.supported is True
 
 
+@pytest.mark.parametrize("boundary", (-1.0, 1.0))
+def test_envelope_boundary_equality_is_harmful(boundary: float) -> None:
+    truth = np.zeros((2, 51), dtype=np.float32)
+    truth[0, 0] = boundary
+    prediction = np.zeros((2, 51), dtype=np.float32)
+    prediction[0, 0] = boundary
+
+    result = evaluate_bound(
+        (request("s", "eval-cluster", target=truth),),
+        lambda item: CandidateOutput(
+            item.sample_id,
+            "PREDICTION",
+            INPUT,
+            TARGET,
+            prediction,
+        ),
+    )
+
+    assert result.metrics.confusion.true_positive == 1
+
+
+def test_abstention_is_a_no_crossing_prediction() -> None:
+    truth = np.zeros((2, 51), dtype=np.float32)
+    truth[0, 0] = 2.0
+
+    result = evaluate_bound(
+        (request("s", "eval-cluster", target=truth),),
+        abstain,
+    )
+
+    assert result.metrics.confusion.false_negative == 1
+    assert result.metrics.confusion.true_negative == 101
+    assert result.metrics.coverage.value == 0.0
+
+
 def test_nonfinite_shape_domain_and_timeout_are_invalid_not_abstain() -> None:
     def bad_shape(req: CandidateQuery) -> CandidateOutput:
         return CandidateOutput(
