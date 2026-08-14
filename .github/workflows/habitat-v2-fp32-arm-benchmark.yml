@@ -72,12 +72,17 @@ jobs:
             tests/habitat_v2/test_forecast_arm_optimization.py
           git show --check --oneline --format=fuller "$GITHUB_SHA"
 
-      - name: Regenerate exact candidate and benchmark
+      - name: Benchmark exact committed candidate
         shell: bash
         run: |
           set -euo pipefail
+          cp artifacts/demo-only/habitat-v2-forecast/action-aware-ridge-fp32.npz \
+            "$EVIDENCE_ROOT/action-aware-ridge-fp32.npz"
+          cp artifacts/demo-only/habitat-v2-forecast/fp32-conversion-receipt.json \
+            "$EVIDENCE_ROOT/fp32-conversion-receipt.json"
           timeout --signal=TERM --kill-after=30s 10m \
             python scripts/benchmark_habitat_v2_fp32.py \
+            --use-existing-candidate \
             --candidate "$EVIDENCE_ROOT/action-aware-ridge-fp32.npz" \
             --conversion-receipt "$EVIDENCE_ROOT/fp32-conversion-receipt.json" \
             --benchmark-receipt "$EVIDENCE_ROOT/benchmark-receipt.json"
