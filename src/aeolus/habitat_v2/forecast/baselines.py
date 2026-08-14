@@ -6,8 +6,10 @@ complete proposed action.  It deliberately has no corpus or HMC dependency.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+import hashlib
+import hmac
 from typing import Final
 
 import numpy as np
@@ -92,6 +94,33 @@ class DirectRidgeModel:
         return _as_f32(
             value64.reshape(self.horizon_steps, TARGET_COUNT), "ridge prediction"
         )
+
+
+@dataclass(frozen=True, slots=True)
+class NestedInnerFold:
+    """One policy-bound inner whole-cluster partition inside an outer train set."""
+
+    index: int
+    train_cluster_ids: tuple[str, ...]
+    validation_cluster_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NestedOuterFold:
+    """One policy-bound outer whole-cluster test partition."""
+
+    index: int
+    train_cluster_ids: tuple[str, ...]
+    test_cluster_ids: tuple[str, ...]
+    inner_folds: tuple[NestedInnerFold, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NestedRidgeFoldPlan:
+    """Immutable D2 fold assignment, cryptographically bound to one policy."""
+
+    policy_sha256: str
+    outer_folds: tuple[NestedOuterFold, ...]
 
 
 def _readonly(value: np.ndarray) -> np.ndarray:
@@ -381,6 +410,135 @@ def _normalised_error(
     )
 
 
+def _policy_hmac_rank(*, key: bytes, domain: bytes, fields: tuple[str, ...]) -> bytes:
+    if any("\0" in field for field in fields):
+        raise BaselineError("nested-fold identity fields cannot contain NUL")
+    message = domain + b"\0" + b"\0".join(
+        field.encode("utf-8") for field in fields
+    )
+    return hmac.new(key, message, hashlib.sha256).digest()
+
+
+def build_nested_ridge_fold_plan(
+    *, policy: object, cluster_strata: Mapping[str, str]
+) -> NestedRidgeFoldPlan:
+    """Compile the ratified D2 5x4 stratified HMAC fold plan.
+
+    This is a planning operation only: it neither materializes a scenario nor
+    fits a model.  The caller must carry stratum metadata from the frozen D2
+    records; parsing a free-form cluster ID would create a second split policy.
+    """
+
+    from .qualification import QualificationPolicy, validate_ratified_policy_design
+
+    if type(policy) is not QualificationPolicy:
+        raise BaselineError("nested ridge folds require an exact qualification policy")
+    if policy.ratification_status != "APPROVED":
+        raise BaselineError("nested ridge folds require a ratified policy")
+    validate_ratified_policy_design(policy)
+    if not isinstance(cluster_strata, Mapping):
+        raise BaselineError("nested ridge cluster strata must be a mapping")
+
+    by_stratum: dict[str, list[str]] = {}
+    for cluster_id, stratum_id in cluster_strata.items():
+        if (
+            type(cluster_id) is not str
+            or not cluster_id
+            or type(stratum_id) is not str
+            or not stratum_id
+            or "\0" in cluster_id
+            or "\0" in stratum_id
+        ):
+            raise BaselineError("nested ridge cluster and stratum identities are invalid")
+        by_stratum.setdefault(stratum_id, []).append(cluster_id)
+
+    if len(cluster_strata) != 60 or len(by_stratum) != 12:
+        raise BaselineError("nested ridge folds require exactly 60 clusters in 12 strata")
+    if any(len(cluster_ids) != 5 for cluster_ids in by_stratum.values()):
+        raise BaselineError("nested ridge folds require exactly five clusters per stratum")
+
+    key = bytes.fromhex(policy.policy_sha256)
+    clusters_by_outer: list[list[str]] = [[] for _ in range(5)]
+    for stratum_id in sorted(by_stratum):
+        ranked = sorted(
+            by_stratum[stratum_id],
+            key=lambda cluster_id: (
+                _policy_hmac_rank(
+                    key=key,
+                    domain=b"aeolus-forecast-d2-outer-v1",
+                    fields=(stratum_id, cluster_id),
+                ),
+                cluster_id,
+            ),
+        )
+        for outer_index, cluster_id in enumerate(ranked):
+            clusters_by_outer[outer_index].append(cluster_id)
+
+    all_cluster_ids = frozenset(cluster_strata)
+    outer_folds: list[NestedOuterFold] = []
+    for outer_index, test_ids in enumerate(clusters_by_outer):
+        test_cluster_ids = tuple(sorted(test_ids))
+        test_set = frozenset(test_cluster_ids)
+        train_cluster_ids = tuple(sorted(all_cluster_ids - test_set))
+        if len(test_cluster_ids) != 12 or len(train_cluster_ids) != 48:
+            raise BaselineError("nested outer fold cardinality drifts")
+
+        validation_by_inner: list[list[str]] = [[] for _ in range(4)]
+        for stratum_id in sorted(by_stratum):
+            outer_training = sorted(
+                set(by_stratum[stratum_id]) - test_set
+            )
+            if len(outer_training) != 4:
+                raise BaselineError("nested outer stratum cardinality drifts")
+            ranked = sorted(
+                outer_training,
+                key=lambda cluster_id: (
+                    _policy_hmac_rank(
+                        key=key,
+                        domain=b"aeolus-forecast-d2-inner-v1",
+                        fields=(str(outer_index), stratum_id, cluster_id),
+                    ),
+                    cluster_id,
+                ),
+            )
+            for inner_index, cluster_id in enumerate(ranked):
+                validation_by_inner[inner_index].append(cluster_id)
+
+        inner_folds: list[NestedInnerFold] = []
+        for inner_index, validation_ids in enumerate(validation_by_inner):
+            validation_cluster_ids = tuple(sorted(validation_ids))
+            validation_set = frozenset(validation_cluster_ids)
+            inner_train_cluster_ids = tuple(sorted(set(train_cluster_ids) - validation_set))
+            if len(validation_cluster_ids) != 12 or len(inner_train_cluster_ids) != 36:
+                raise BaselineError("nested inner fold cardinality drifts")
+            if validation_set & test_set or set(inner_train_cluster_ids) & test_set:
+                raise BaselineError("nested ridge fold leakage")
+            inner_folds.append(
+                NestedInnerFold(
+                    index=inner_index,
+                    train_cluster_ids=inner_train_cluster_ids,
+                    validation_cluster_ids=validation_cluster_ids,
+                )
+            )
+
+        if frozenset().union(
+            *(set(inner.validation_cluster_ids) for inner in inner_folds)
+        ) != set(train_cluster_ids):
+            raise BaselineError("inner validation folds do not partition outer training")
+        outer_folds.append(
+            NestedOuterFold(
+                index=outer_index,
+                train_cluster_ids=train_cluster_ids,
+                test_cluster_ids=test_cluster_ids,
+                inner_folds=tuple(inner_folds),
+            )
+        )
+    return NestedRidgeFoldPlan(
+        policy_sha256=policy.policy_sha256,
+        outer_folds=tuple(outer_folds),
+    )
+
+
 def fit_direct_ridge(
     samples: Sequence[RidgeSample], *, horizon_steps: int, include_action: bool = True
 ) -> DirectRidgeModel:
@@ -451,6 +609,178 @@ def fit_direct_ridge(
         horizon_steps,
         INPUT_MANIFEST_SHA256,
         TARGET_MANIFEST_SHA256,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class NestedRidgeOuterResult:
+    """One outer-held-out model and its inner-only alpha-selection receipt."""
+
+    outer_fold_index: int
+    selected_alpha: float
+    alpha_validation_errors: tuple[tuple[float, float], ...]
+    train_cluster_ids: tuple[str, ...]
+    test_cluster_ids: tuple[str, ...]
+    model_training_cluster_ids: tuple[str, ...]
+    model: DirectRidgeModel
+
+
+@dataclass(frozen=True, slots=True)
+class NestedRidgeResult:
+    """D2 nested-CV models; intentionally does not choose one deployable model."""
+
+    fold_plan: NestedRidgeFoldPlan
+    outer_results: tuple[NestedRidgeOuterResult, ...]
+
+
+def _ridge_model_from_fit(
+    *,
+    mean: np.ndarray,
+    scale: np.ndarray,
+    target_mean: np.ndarray,
+    coefficient: np.ndarray,
+    alpha: float,
+    include_action: bool,
+    window_steps: int,
+    horizon_steps: int,
+) -> DirectRidgeModel:
+    for array in (mean, scale, target_mean, coefficient):
+        if not np.isfinite(array).all():
+            raise BaselineError("ridge fit is non-finite")
+        array.setflags(write=False)
+    return DirectRidgeModel(
+        alpha,
+        include_action,
+        mean,
+        scale,
+        target_mean,
+        coefficient,
+        window_steps,
+        horizon_steps,
+        INPUT_MANIFEST_SHA256,
+        TARGET_MANIFEST_SHA256,
+    )
+
+
+def fit_direct_ridge_nested(
+    samples: Sequence[RidgeSample],
+    *,
+    horizon_steps: int,
+    policy: object,
+    cluster_strata: Mapping[str, str],
+    include_action: bool = True,
+) -> NestedRidgeResult:
+    """Fit five outer models with alpha selected only by their inner folds.
+
+    This is a deterministic, local qualification primitive.  It cannot create
+    a corpus or open the policy's generation/training permissions, and it
+    deliberately returns no single refit-on-all-clusters model.
+    """
+
+    if (
+        horizon_steps not in HORIZON_CANDIDATES
+        or isinstance(samples, (str, bytes))
+    ):
+        raise BaselineError("nested ridge requires a supported horizon and samples")
+    items = tuple(samples)
+    for item in items:
+        _validate_sample(item, horizon_steps)
+    fold_plan = build_nested_ridge_fold_plan(
+        policy=policy,
+        cluster_strata=cluster_strata,
+    )
+    sample_ids = tuple(item.sample_id for item in items)
+    sample_clusters = tuple(item.family_cluster_id for item in items)
+    expected_clusters = frozenset(cluster_strata)
+    if (
+        len(items) < len(expected_clusters)
+        or len(set(sample_ids)) != len(sample_ids)
+        or frozenset(sample_clusters) != expected_clusters
+    ):
+        raise BaselineError(
+            "nested ridge samples must cover each and only every planned cluster"
+        )
+    windows = {item.history.numeric_f32.shape[0] for item in items}
+    if len(windows) != 1:
+        raise BaselineError("nested ridge cannot mix window bindings")
+    features = np.stack(
+        [
+            flatten_features(
+                item.history,
+                item.proposed_action_f32,
+                include_action=include_action,
+            )
+            for item in items
+        ]
+    ).astype(np.float64)
+    targets = np.stack(
+        [item.targets_f32.reshape(-1) for item in items]
+    ).astype(np.float64)
+    indices_by_cluster = {
+        cluster_id: np.flatnonzero(
+            np.asarray([item.family_cluster_id == cluster_id for item in items])
+        )
+        for cluster_id in expected_clusters
+    }
+
+    outer_results: list[NestedRidgeOuterResult] = []
+    for outer in fold_plan.outer_folds:
+        alpha_errors: list[tuple[float, float]] = []
+        for alpha in RIDGE_ALPHAS:
+            inner_errors: list[float] = []
+            for inner in outer.inner_folds:
+                train_indices = np.concatenate(
+                    [indices_by_cluster[cluster_id] for cluster_id in inner.train_cluster_ids]
+                )
+                mean, scale, target_mean, coefficient = _fit(
+                    features[train_indices], targets[train_indices], alpha
+                )
+                cluster_errors: list[float] = []
+                for cluster_id in inner.validation_cluster_ids:
+                    validation_indices = indices_by_cluster[cluster_id]
+                    prediction = (
+                        (features[validation_indices] - mean) / scale
+                    ) @ coefficient + target_mean
+                    cluster_errors.append(
+                        _normalised_error(
+                            prediction,
+                            targets[validation_indices],
+                            targets[train_indices],
+                        )
+                    )
+                inner_errors.append(float(np.mean(cluster_errors)))
+            alpha_errors.append((float(np.mean(inner_errors)), alpha))
+        _, selected_alpha = min(alpha_errors, key=lambda item: (item[0], item[1]))
+        outer_train_indices = np.concatenate(
+            [indices_by_cluster[cluster_id] for cluster_id in outer.train_cluster_ids]
+        )
+        mean, scale, target_mean, coefficient = _fit(
+            features[outer_train_indices], targets[outer_train_indices], selected_alpha
+        )
+        model = _ridge_model_from_fit(
+            mean=mean,
+            scale=scale,
+            target_mean=target_mean,
+            coefficient=coefficient,
+            alpha=selected_alpha,
+            include_action=include_action,
+            window_steps=next(iter(windows)),
+            horizon_steps=horizon_steps,
+        )
+        outer_results.append(
+            NestedRidgeOuterResult(
+                outer_fold_index=outer.index,
+                selected_alpha=selected_alpha,
+                alpha_validation_errors=tuple(alpha_errors),
+                train_cluster_ids=outer.train_cluster_ids,
+                test_cluster_ids=outer.test_cluster_ids,
+                model_training_cluster_ids=outer.train_cluster_ids,
+                model=model,
+            )
+        )
+    return NestedRidgeResult(
+        fold_plan=fold_plan,
+        outer_results=tuple(outer_results),
     )
 
 
