@@ -1,8 +1,8 @@
 # Habitat V2 forecast design: brief-alignment assessment
 
-**Status:** local review artifact; proposed, not team-approved or frozen
+**Status:** Alex's historical review artifact, now integrated as design input for the bounded D1 execution PRD
 
-**Local branch:** `alex/habitat-v2-forecast-design-review`
+**Original branch:** `alex/habitat-v2-forecast-design-review`
 
 **Review base:** `ec8a6e07cddcd97915398e5a84d348b30d850c86`
 
@@ -19,9 +19,11 @@ the team's behalf.
 - The active HMC branch was not modified.
 - No model training, corpus generation, baseline execution, UI work or direct
   control design was performed.
-- No commit was pushed and no pull request, merge, tag, release or deployment
-  was created.
-- The documents currently exist only in this local checkout.
+- At the original handoff, no pull request, merge, tag, release or deployment
+  was created. Alex subsequently pushed commit
+  `f21787771a3abd278625aacef2f2bad757b37523`.
+- The exact authored change is preserved in integration history. Current-state
+  corrections and implementation are separate follow-up work.
 
 ## Alignment summary
 
@@ -75,17 +77,19 @@ the team's behalf.
 - History length and forecast horizon are not yet numerical constants. The
   design deliberately makes them outputs of a predeclared timing pilot, so the
   final tensor dimensions cannot be instantiated until that receipt exists.
-- The HMC is still moving. Its final commit, tree, proposal capability,
-  contract hashes, receipt schemas, alarm manifest and package evidence remain
-  symbolic bindings.
-- The current HMC emergency safe-action catalogue is not a suitable normal
-  forecast-action catalogue. Four complete normal actions and their hashes are
-  still absent.
+- At the original design handoff, the HMC was still moving. The reviewed final
+  foundation is now `79d6a718e0d44122a763bb72f9c8ed929f39fd23`, tree
+  `91cea3b4c2334a4ece140bd1bf7144353f52ec0d`. D1 derives the remaining
+  manifests from those exact bytes.
+- The HMC emergency safe-action catalogue is not a suitable normal forecast-action
+  catalogue. At the original handoff, four complete normal actions and their
+  hashes were absent. D1 now freezes the four production-validated operating-mode
+  commands in `contracts/habitat_v2_forecast_action_catalogue_v1.json`.
 - The recommended scenario/profile roster has not been ratified or persisted
   as a separate canonical profile packet.
-- The proposed 287 alarm slots are exact for the inspected candidate and
-  topology only. The final contract must materialise every ordered alarm ID and
-  bind that list by hash.
+- The 287 alarm slots were reproduced against the reviewed final foundation and
+  materialised in `contracts/habitat_v2_forecast_alarm_manifest_v1.json`. The
+  exact ordered slot list is independently hashed.
 - The fixed eight-zone scope is intentionally narrow and does not generalise to
   arbitrary topology shapes.
 - The final split can hide exact realisations, seeds, traces and targets, but a
@@ -94,15 +98,15 @@ the team's behalf.
   realisation-blind**, unless the roster design changes.
 - No baseline evidence exists yet, so no comparator, admission margin or
   proceed/stop result has been selected.
-- No independent review or team approval has been recorded for this local
-  recommendation.
+- At the original handoff, no independent review or team approval had been
+  recorded for the recommendation.
 
 ## Verdict
 
 The review/design brief is satisfied as a local proposed contract.
 
-The next official data-foundation implementation is **blocked** until the final
-HMC bytes and a separate normal forecast-action catalogue are available. The
-canonical corpus additionally depends on a frozen scenario/profile packet and
-final-set custody arrangement. These are unresolved implementation bindings,
-not omissions hidden by this review.
+The final HMC bytes are now available. The bounded D1 implementation owns the
+normal forecast-action catalogue and executable data/evaluation foundation.
+The full canonical corpus still depends on the large scenario/profile packet
+and final-set custody arrangement. Those remain explicit later gates, not
+claims hidden by this review.
