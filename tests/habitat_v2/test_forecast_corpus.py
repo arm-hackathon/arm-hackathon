@@ -9,8 +9,20 @@ def _specification() -> dict[str, object]:
     return {
         "id_field": "family_cluster_id",
         "identity_domain": "aeolus-forecast-d1-family-cluster-v1",
-        "identity_fields": ["stratum", "generator_contract_sha256", "development_profile_sha256"],
-        "required_fields": ["schema_version", "release_tier", "family_cluster_id", "stratum", "generator_contract_sha256", "development_profile_sha256", "record_sha256"],
+        "identity_fields": [
+            "stratum",
+            "generator_contract_sha256",
+            "development_profile_sha256",
+        ],
+        "required_fields": [
+            "schema_version",
+            "release_tier",
+            "family_cluster_id",
+            "stratum",
+            "generator_contract_sha256",
+            "development_profile_sha256",
+            "record_sha256",
+        ],
         "schema_version": "aeolus_habitat_v2_forecast_family_cluster_v1",
     }
 
@@ -32,7 +44,10 @@ def _record() -> dict[str, object]:
 
 
 def test_canonical_jsonl_identity_and_self_hash_are_closed() -> None:
-    from aeolus.habitat_v2.forecast.corpus import canonical_jsonl_bytes, validate_jsonl_records
+    from aeolus.habitat_v2.forecast.corpus import (
+        canonical_jsonl_bytes,
+        validate_jsonl_records,
+    )
 
     record = _record()
     data = canonical_jsonl_bytes([record])
@@ -44,16 +59,28 @@ def test_canonical_jsonl_identity_and_self_hash_are_closed() -> None:
     "mutation",
     (
         lambda data: data.replace(b"{", b"{ ", 1),
-        lambda data: data.replace(b"\"stratum\"", b"\"stratum\":true,\"stratum\"", 1),
-        lambda data: data.replace(b"\"stratum\":\"constant-occupied\"", b"\"stratum\":\"constant-occupied\",\"unknown\":1", 1),
+        lambda data: data.replace(b'"stratum"', b'"stratum":true,"stratum"', 1),
+        lambda data: data.replace(
+            b'"stratum":"constant-occupied"',
+            b'"stratum":"constant-occupied","unknown":1',
+            1,
+        ),
         lambda data: data.rstrip(b"\n"),
     ),
 )
-def test_strict_jsonl_parser_rejects_noncanonical_duplicate_unknown_and_nonlf(mutation: object) -> None:
-    from aeolus.habitat_v2.forecast.corpus import CorpusValidationError, canonical_jsonl_bytes, validate_jsonl_records
+def test_strict_jsonl_parser_rejects_noncanonical_duplicate_unknown_and_nonlf(
+    mutation: object,
+) -> None:
+    from aeolus.habitat_v2.forecast.corpus import (
+        CorpusValidationError,
+        canonical_jsonl_bytes,
+        validate_jsonl_records,
+    )
 
     with pytest.raises(CorpusValidationError):
-        validate_jsonl_records(mutation(canonical_jsonl_bytes([_record()])), _specification())
+        validate_jsonl_records(
+            mutation(canonical_jsonl_bytes([_record()])), _specification()
+        )
 
 
 def test_record_rejects_bad_identity_self_hash_and_final_custody_field() -> None:
@@ -77,28 +104,84 @@ def test_cluster_ranking_is_deterministic_and_stable_identity_excludes_split() -
     before = record_identity(body, _specification())
     body["split_label"] = "TRAIN"
     assert record_identity(body, _specification()) == before
-    clusters = [{"family_cluster_id": "1" * 64, "stratum": "x"}, {"family_cluster_id": "2" * 64, "stratum": "x"}]
-    first = assign_cluster_splits(clusters, split_key=b"key", split_policy_sha256="3" * 64, split_key_id="test")
-    second = assign_cluster_splits(list(reversed(clusters)), split_key=b"key", split_policy_sha256="3" * 64, split_key_id="test")
-    assert sorted(first, key=lambda row: row["family_cluster_id"]) == sorted(second, key=lambda row: row["family_cluster_id"])
+    clusters = [
+        {"family_cluster_id": "1" * 64, "stratum": "x"},
+        {"family_cluster_id": "2" * 64, "stratum": "x"},
+    ]
+    first = assign_cluster_splits(
+        clusters, split_key=b"key", split_policy_sha256="3" * 64, split_key_id="test"
+    )
+    second = assign_cluster_splits(
+        list(reversed(clusters)),
+        split_key=b"key",
+        split_policy_sha256="3" * 64,
+        split_key_id="test",
+    )
+    assert sorted(first, key=lambda row: row["family_cluster_id"]) == sorted(
+        second, key=lambda row: row["family_cluster_id"]
+    )
 
 
 def test_lineage_rejects_sample_family_alias_and_fit_boundary() -> None:
-    from aeolus.habitat_v2.forecast.corpus import CorpusValidationError, iter_training_samples, validate_lineage
+    from aeolus.habitat_v2.forecast.corpus import (
+        CorpusValidationError,
+        iter_training_samples,
+        validate_lineage,
+    )
 
     cluster = "a" * 64
     tables = {
         "family_clusters": [{"family_cluster_id": cluster}],
-        "split_assignments": [{"family_cluster_id": cluster, "split_assignment_id": "split", "split_label": "TRAIN"}],
+        "split_assignments": [
+            {
+                "family_cluster_id": cluster,
+                "split_assignment_id": "split",
+                "split_label": "TRAIN",
+            }
+        ],
         "families": [{"family_id": "family", "family_cluster_id": cluster}],
-        "scenario_members": [{"scenario_member_id": "member", "family_id": "family", "plant_run_id": "plant"}],
-        "control_runs": [{"control_run_record_id": "run", "scenario_member_id": "member", "control_run_id": "hmc", "replay_witness_id": "witness"}],
-        "control_traces": [{"control_trace_record_id": "trace", "control_run_id": "hmc"}],
-        "replay_witnesses": [{"replay_witness_id": "witness", "control_run_id": "hmc", "control_trace_record_id": "trace"}],
-        "samples": [{"sample_id": "sample", "family_cluster_id": cluster, "family_id": "family", "scenario_member_id": "member", "control_run_record_id": "run", "split_assignment_id": "split", "split_label": "TRAIN", "replay_witness_id": "witness"}],
+        "scenario_members": [
+            {
+                "scenario_member_id": "member",
+                "family_id": "family",
+                "plant_run_id": "plant",
+            }
+        ],
+        "control_runs": [
+            {
+                "control_run_record_id": "run",
+                "scenario_member_id": "member",
+                "control_run_id": "hmc",
+                "replay_witness_id": "witness",
+            }
+        ],
+        "control_traces": [
+            {"control_trace_record_id": "trace", "control_run_id": "hmc"}
+        ],
+        "replay_witnesses": [
+            {
+                "replay_witness_id": "witness",
+                "control_run_id": "hmc",
+                "control_trace_record_id": "trace",
+            }
+        ],
+        "samples": [
+            {
+                "sample_id": "sample",
+                "family_cluster_id": cluster,
+                "family_id": "family",
+                "scenario_member_id": "member",
+                "control_run_record_id": "run",
+                "split_assignment_id": "split",
+                "split_label": "TRAIN",
+                "replay_witness_id": "witness",
+            }
+        ],
     }
     validate_lineage(tables)
-    assert iter_training_samples(tables["samples"], tables["split_assignments"]) == tuple(tables["samples"])
+    assert iter_training_samples(
+        tables["samples"], tables["split_assignments"]
+    ) == tuple(tables["samples"])
     tables["samples"][0]["family_id"] = "derived-alias"
     with pytest.raises(CorpusValidationError, match="lineage"):
         validate_lineage(tables)
