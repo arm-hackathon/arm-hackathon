@@ -9,6 +9,7 @@ from pathlib import Path
 import platform
 import time
 from typing import Final
+import zipfile
 
 import numpy as np
 
@@ -46,6 +47,24 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _deterministic_npz(values: dict[str, np.ndarray]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(
+        buffer,
+        mode="w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for name in sorted(values):
+            payload = io.BytesIO()
+            np.lib.format.write_array(payload, values[name], allow_pickle=False)
+            member = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            member.compress_type = zipfile.ZIP_DEFLATED
+            member.external_attr = 0o600 << 16
+            archive.writestr(member, payload.getvalue(), compresslevel=9)
+    return buffer.getvalue()
+
+
 def optimise_ridge_fp32(
     source: str | Path,
     destination: str | Path,
@@ -63,7 +82,9 @@ def optimise_ridge_fp32(
         raise ArmOptimizationError("source model is unreadable") from error
     source_sha256 = _sha256(source_raw)
     if source_sha256 != expected_source_sha256:
-        raise ArmOptimizationError("source model SHA-256 does not match the frozen input")
+        raise ArmOptimizationError(
+            "source model SHA-256 does not match the frozen input"
+        )
 
     try:
         with np.load(io.BytesIO(source_raw), allow_pickle=False) as archive:
@@ -93,9 +114,7 @@ def optimise_ridge_fp32(
     if candidate_raw_array_bytes * 2 != source_raw_array_bytes:
         raise ArmOptimizationError("FP32 candidate did not halve raw model-array bytes")
 
-    buffer = io.BytesIO()
-    np.savez_compressed(buffer, **values)
-    candidate_raw = buffer.getvalue()
+    candidate_raw = _deterministic_npz(values)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     destination_path.write_bytes(candidate_raw)
 

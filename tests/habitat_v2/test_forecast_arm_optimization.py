@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -88,8 +89,9 @@ def test_fp32_candidate_passes_live_drift_gate_and_emits_comparable_timings(
     assert receipt["workload"]["prediction_shape"] == [8, 51]
     assert receipt["models"]["fp64"]["precision"] == "float64"
     assert receipt["models"]["fp32"]["precision"] == "float32"
-    assert receipt["models"]["fp32"]["raw_array_bytes"] * 2 == (
-        receipt["models"]["fp64"]["raw_array_bytes"]
+    assert (
+        receipt["models"]["fp32"]["raw_array_bytes"] * 2
+        == (receipt["models"]["fp64"]["raw_array_bytes"])
     )
     assert receipt["timing"]["fp64"]["sample_count"] == 8
     assert receipt["timing"]["fp32"]["sample_count"] == 8
@@ -97,3 +99,31 @@ def test_fp32_candidate_passes_live_drift_gate_and_emits_comparable_timings(
     assert receipt["timing"]["fp32"]["median_ns"] > 0
     assert receipt["claims"]["actuator_authority"] is False
     assert receipt["claims"]["arm_specific_operator_optimisation"] is False
+
+
+def test_fp32_candidate_and_static_receipt_are_exactly_reproducible(
+    tmp_path: Path,
+) -> None:
+    from aeolus.habitat_v2.forecast.arm_optimization import optimise_ridge_fp32
+    from aeolus.habitat_v2.forecast.corpus import canonical_json_bytes
+
+    root = _repo_root()
+    artifact_root = root / "artifacts/demo-only/habitat-v2-forecast"
+    source = artifact_root / "action-aware-ridge.npz"
+    committed_candidate = artifact_root / "action-aware-ridge-fp32.npz"
+    committed_receipt = artifact_root / "fp32-conversion-receipt.json"
+    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+    first = tmp_path / "first.npz"
+    second = tmp_path / "second.npz"
+
+    first_receipt = optimise_ridge_fp32(
+        source, first, expected_source_sha256=source_sha256
+    )
+    second_receipt = optimise_ridge_fp32(
+        source, second, expected_source_sha256=source_sha256
+    )
+
+    assert first.read_bytes() == second.read_bytes() == committed_candidate.read_bytes()
+    assert first_receipt == second_receipt
+    assert committed_receipt.read_bytes() == canonical_json_bytes(first_receipt)
+    assert json.loads(committed_receipt.read_bytes()) == first_receipt
