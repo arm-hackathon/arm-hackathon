@@ -86,8 +86,20 @@ class DirectRidgeModel:
         )
         if feature.shape != self.feature_mean.shape:
             raise BaselineError("inference feature binding drift")
+        model_dtype = self.coef.dtype
+        if model_dtype not in (np.dtype(np.float32), np.dtype(np.float64)) or any(
+            array.dtype != model_dtype
+            for array in (
+                self.feature_mean,
+                self.feature_scale,
+                self.target_mean,
+                self.coef,
+            )
+        ):
+            raise BaselineError("ridge inference precision contract is invalid")
+        feature_for_model = feature.astype(model_dtype, copy=False)
         value64 = (
-            (feature.astype(np.float64) - self.feature_mean) / self.feature_scale
+            (feature_for_model - self.feature_mean) / self.feature_scale
         ) @ self.coef + self.target_mean
         return _as_f32(
             value64.reshape(self.horizon_steps, TARGET_COUNT), "ridge prediction"

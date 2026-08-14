@@ -43,6 +43,7 @@ FORECAST_ANCHOR_STEP: Final = 16
 FORECAST_WINDOW_STEPS: Final = 4
 FORECAST_HORIZON_STEPS: Final = 8
 _MODEL_SCHEMA: Final = "aeolus_habitat_v2_forecast_demo_model_v1"
+_MODEL_SCHEMA_FP32: Final = "aeolus_habitat_v2_forecast_demo_model_fp32_v1"
 _MODEL_FIELDS: Final = frozenset(
     {
         "schema_version",
@@ -179,7 +180,7 @@ def load_live_ridge_model(
             input_sha256 = str(value["input_manifest_sha256"].item())
             target_sha256 = str(value["target_manifest_sha256"].item())
             arrays = tuple(
-                np.asarray(value[name], dtype=np.float64).copy()
+                np.asarray(value[name]).copy()
                 for name in ("feature_mean", "feature_scale", "target_mean", "coef")
             )
     except LiveForecastError:
@@ -196,7 +197,7 @@ def load_live_ridge_model(
         194 + 167 * 5 + 4 + 4 + 287 * 4
     ) + ACTION_COUNT
     if (
-        schema_version != _MODEL_SCHEMA
+        schema_version not in {_MODEL_SCHEMA, _MODEL_SCHEMA_FP32}
         or release_tier != DEMO_RELEASE_TIER
         or not np.isfinite(alpha)
         or alpha <= 0.0
@@ -215,6 +216,13 @@ def load_live_ridge_model(
         or any(not np.isfinite(array).all() for array in arrays)
     ):
         raise LiveForecastError("live ridge artifact shape or contract identity is invalid")
+    expected_dtype = (
+        np.dtype(np.float32)
+        if schema_version == _MODEL_SCHEMA_FP32
+        else np.dtype(np.float64)
+    )
+    if any(array.dtype != expected_dtype for array in arrays):
+        raise LiveForecastError("live ridge artifact precision contract is invalid")
     for array in arrays:
         array.setflags(write=False)
     predictor = DirectRidgeModel(
@@ -231,7 +239,11 @@ def load_live_ridge_model(
     )
     return LiveForecastModel(
         predictor=predictor,
-        model_kind="action_aware_ridge",
+        model_kind=(
+            "action_aware_ridge_fp32"
+            if schema_version == _MODEL_SCHEMA_FP32
+            else "action_aware_ridge"
+        ),
         artifact_sha256=actual_sha256,
         actuator_authority=False,
     )
