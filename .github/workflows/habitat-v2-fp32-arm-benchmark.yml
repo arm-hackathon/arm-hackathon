@@ -49,11 +49,12 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install bounded runtime and static tools
+      - name: Install bounded runtime and test tools
         run: |
           python -m pip install --disable-pip-version-check --upgrade pip
           python -m pip install --disable-pip-version-check -e . \
             "numpy==2.4.6" \
+            "pytest==9.1.1" \
             "ruff==0.12.12"
 
       - name: Verify implementation
@@ -70,6 +71,7 @@ jobs:
             src/aeolus/habitat_v2/forecast/arm_optimization.py \
             scripts/benchmark_habitat_v2_fp32.py \
             tests/habitat_v2/test_forecast_arm_optimization.py
+          python -m pytest -q tests/habitat_v2/test_forecast_arm_optimization.py
           git show --check --oneline --format=fuller "$GITHUB_SHA"
 
       - name: Benchmark exact committed candidate
@@ -85,7 +87,8 @@ jobs:
             --use-existing-candidate \
             --candidate "$EVIDENCE_ROOT/action-aware-ridge-fp32.npz" \
             --conversion-receipt "$EVIDENCE_ROOT/fp32-conversion-receipt.json" \
-            --benchmark-receipt "$EVIDENCE_ROOT/benchmark-receipt.json"
+            --benchmark-receipt "$EVIDENCE_ROOT/benchmark-receipt.json" \
+            --benchmark-repetitions 3
           cmp \
             artifacts/demo-only/habitat-v2-forecast/action-aware-ridge-fp32.npz \
             "$EVIDENCE_ROOT/action-aware-ridge-fp32.npz"
@@ -112,4 +115,4 @@ jobs:
           name: habitat-v2-fp32-arm64-${{ github.run_id }}-${{ github.run_attempt }}
           path: out/habitat-v2-fp32-arm/evidence
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
