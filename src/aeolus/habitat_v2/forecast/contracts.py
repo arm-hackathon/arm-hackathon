@@ -69,22 +69,27 @@ def _pairs_no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _strict_json(path: Path) -> dict[str, Any]:
+def _strict_json_bytes(raw: bytes, *, label: str) -> dict[str, Any]:
     try:
-        raw = path.read_bytes()
         value = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=_pairs_no_duplicates,
             parse_constant=_reject_constant,
         )
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ForecastContractError(f"cannot parse frozen contract {path}") from error
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ForecastContractError(f"cannot parse frozen contract {label}") from error
     if type(value) is not dict:
-        raise ForecastContractError(
-            f"frozen contract {path.name} must be one JSON object"
-        )
-    _reject_bad_json(value, label=path.name)
+        raise ForecastContractError(f"frozen contract {label} must be one JSON object")
+    _reject_bad_json(value, label=label)
     return value
+
+
+def _strict_json(path: Path) -> dict[str, Any]:
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise ForecastContractError(f"cannot parse frozen contract {path}") from error
+    return _strict_json_bytes(raw, label=path.name)
 
 
 def _reject_bad_json(value: Any, *, label: str) -> None:

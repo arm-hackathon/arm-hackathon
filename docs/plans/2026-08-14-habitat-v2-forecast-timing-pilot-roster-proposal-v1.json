@@ -1,0 +1,563 @@
+{
+  "action_ids": [
+    "normal-occupied-v1",
+    "normal-eva_transition-v1",
+    "normal-contingency-v1",
+    "normal-dormant-v1"
+  ],
+  "canonical_corpus_exclusion": {
+    "derived_family_exclusion_required": true,
+    "forbid_exact_cluster_ids": [
+      "pilot-v1/occupied/low/balanced-initial-state",
+      "pilot-v1/occupied/low/thermal-air-processing-skew",
+      "pilot-v1/occupied/low/crew-metabolic-humidity-skew",
+      "pilot-v1/occupied/low/pressure-inventory-skew",
+      "pilot-v1/occupied/low/reduced-resource-inventory",
+      "pilot-v1/occupied/nominal/balanced-initial-state",
+      "pilot-v1/occupied/nominal/thermal-air-processing-skew",
+      "pilot-v1/occupied/nominal/crew-metabolic-humidity-skew",
+      "pilot-v1/occupied/nominal/pressure-inventory-skew",
+      "pilot-v1/occupied/nominal/reduced-resource-inventory",
+      "pilot-v1/occupied/high/balanced-initial-state",
+      "pilot-v1/occupied/high/thermal-air-processing-skew",
+      "pilot-v1/occupied/high/crew-metabolic-humidity-skew",
+      "pilot-v1/occupied/high/pressure-inventory-skew",
+      "pilot-v1/occupied/high/reduced-resource-inventory",
+      "pilot-v1/eva_transition/low/balanced-initial-state",
+      "pilot-v1/eva_transition/low/thermal-air-processing-skew",
+      "pilot-v1/eva_transition/low/crew-metabolic-humidity-skew",
+      "pilot-v1/eva_transition/low/pressure-inventory-skew",
+      "pilot-v1/eva_transition/low/reduced-resource-inventory",
+      "pilot-v1/eva_transition/nominal/balanced-initial-state",
+      "pilot-v1/eva_transition/nominal/thermal-air-processing-skew",
+      "pilot-v1/eva_transition/nominal/crew-metabolic-humidity-skew",
+      "pilot-v1/eva_transition/nominal/pressure-inventory-skew",
+      "pilot-v1/eva_transition/nominal/reduced-resource-inventory",
+      "pilot-v1/eva_transition/high/balanced-initial-state",
+      "pilot-v1/eva_transition/high/thermal-air-processing-skew",
+      "pilot-v1/eva_transition/high/crew-metabolic-humidity-skew",
+      "pilot-v1/eva_transition/high/pressure-inventory-skew",
+      "pilot-v1/eva_transition/high/reduced-resource-inventory",
+      "pilot-v1/contingency/low/balanced-initial-state",
+      "pilot-v1/contingency/low/thermal-air-processing-skew",
+      "pilot-v1/contingency/low/crew-metabolic-humidity-skew",
+      "pilot-v1/contingency/low/pressure-inventory-skew",
+      "pilot-v1/contingency/low/reduced-resource-inventory",
+      "pilot-v1/contingency/nominal/balanced-initial-state",
+      "pilot-v1/contingency/nominal/thermal-air-processing-skew",
+      "pilot-v1/contingency/nominal/crew-metabolic-humidity-skew",
+      "pilot-v1/contingency/nominal/pressure-inventory-skew",
+      "pilot-v1/contingency/nominal/reduced-resource-inventory",
+      "pilot-v1/contingency/high/balanced-initial-state",
+      "pilot-v1/contingency/high/thermal-air-processing-skew",
+      "pilot-v1/contingency/high/crew-metabolic-humidity-skew",
+      "pilot-v1/contingency/high/pressure-inventory-skew",
+      "pilot-v1/contingency/high/reduced-resource-inventory",
+      "pilot-v1/dormant/low/balanced-initial-state",
+      "pilot-v1/dormant/low/thermal-air-processing-skew",
+      "pilot-v1/dormant/low/crew-metabolic-humidity-skew",
+      "pilot-v1/dormant/low/pressure-inventory-skew",
+      "pilot-v1/dormant/low/reduced-resource-inventory",
+      "pilot-v1/dormant/nominal/balanced-initial-state",
+      "pilot-v1/dormant/nominal/thermal-air-processing-skew",
+      "pilot-v1/dormant/nominal/crew-metabolic-humidity-skew",
+      "pilot-v1/dormant/nominal/pressure-inventory-skew",
+      "pilot-v1/dormant/nominal/reduced-resource-inventory",
+      "pilot-v1/dormant/high/balanced-initial-state",
+      "pilot-v1/dormant/high/thermal-air-processing-skew",
+      "pilot-v1/dormant/high/crew-metabolic-humidity-skew",
+      "pilot-v1/dormant/high/pressure-inventory-skew",
+      "pilot-v1/dormant/high/reduced-resource-inventory"
+    ],
+    "forbid_namespace_prefix": "pilot-v1/"
+  },
+  "clusters": [
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/low/balanced-initial-state",
+      "load_regime": "LOW",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/low/thermal-air-processing-skew",
+      "load_regime": "LOW",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/low/crew-metabolic-humidity-skew",
+      "load_regime": "LOW",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/low/pressure-inventory-skew",
+      "load_regime": "LOW",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/low/reduced-resource-inventory",
+      "load_regime": "LOW",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/nominal/balanced-initial-state",
+      "load_regime": "NOMINAL",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/nominal/thermal-air-processing-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/nominal/crew-metabolic-humidity-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/nominal/pressure-inventory-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/nominal/reduced-resource-inventory",
+      "load_regime": "NOMINAL",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/high/balanced-initial-state",
+      "load_regime": "HIGH",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/high/thermal-air-processing-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/high/crew-metabolic-humidity-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/high/pressure-inventory-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/occupied/high/reduced-resource-inventory",
+      "load_regime": "HIGH",
+      "operating_mode": "occupied",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/low/balanced-initial-state",
+      "load_regime": "LOW",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/low/thermal-air-processing-skew",
+      "load_regime": "LOW",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/low/crew-metabolic-humidity-skew",
+      "load_regime": "LOW",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/low/pressure-inventory-skew",
+      "load_regime": "LOW",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/low/reduced-resource-inventory",
+      "load_regime": "LOW",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/nominal/balanced-initial-state",
+      "load_regime": "NOMINAL",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/nominal/thermal-air-processing-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/nominal/crew-metabolic-humidity-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/nominal/pressure-inventory-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/nominal/reduced-resource-inventory",
+      "load_regime": "NOMINAL",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/high/balanced-initial-state",
+      "load_regime": "HIGH",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/high/thermal-air-processing-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/high/crew-metabolic-humidity-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/high/pressure-inventory-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/eva_transition/high/reduced-resource-inventory",
+      "load_regime": "HIGH",
+      "operating_mode": "eva_transition",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/low/balanced-initial-state",
+      "load_regime": "LOW",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/low/thermal-air-processing-skew",
+      "load_regime": "LOW",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/low/crew-metabolic-humidity-skew",
+      "load_regime": "LOW",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/low/pressure-inventory-skew",
+      "load_regime": "LOW",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/low/reduced-resource-inventory",
+      "load_regime": "LOW",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/nominal/balanced-initial-state",
+      "load_regime": "NOMINAL",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/nominal/thermal-air-processing-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/nominal/crew-metabolic-humidity-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/nominal/pressure-inventory-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/nominal/reduced-resource-inventory",
+      "load_regime": "NOMINAL",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/high/balanced-initial-state",
+      "load_regime": "HIGH",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/high/thermal-air-processing-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/high/crew-metabolic-humidity-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/high/pressure-inventory-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/contingency/high/reduced-resource-inventory",
+      "load_regime": "HIGH",
+      "operating_mode": "contingency",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/low/balanced-initial-state",
+      "load_regime": "LOW",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/low/thermal-air-processing-skew",
+      "load_regime": "LOW",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/low/crew-metabolic-humidity-skew",
+      "load_regime": "LOW",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/low/pressure-inventory-skew",
+      "load_regime": "LOW",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/low/reduced-resource-inventory",
+      "load_regime": "LOW",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/nominal/balanced-initial-state",
+      "load_regime": "NOMINAL",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/nominal/thermal-air-processing-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/nominal/crew-metabolic-humidity-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/nominal/pressure-inventory-skew",
+      "load_regime": "NOMINAL",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/nominal/reduced-resource-inventory",
+      "load_regime": "NOMINAL",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "reduced-resource-inventory"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/high/balanced-initial-state",
+      "load_regime": "HIGH",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "balanced-initial-state"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/high/thermal-air-processing-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "thermal-air-processing-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/high/crew-metabolic-humidity-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "crew-metabolic-humidity-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/high/pressure-inventory-skew",
+      "load_regime": "HIGH",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "pressure-inventory-skew"
+    },
+    {
+      "canonical_corpus_eligible": false,
+      "cluster_id": "pilot-v1/dormant/high/reduced-resource-inventory",
+      "load_regime": "HIGH",
+      "operating_mode": "dormant",
+      "semantic_profile_role": "reduced-resource-inventory"
+    }
+  ],
+  "d1_candidate_sha": "c01dec538a73ce7baaf1ee460fff4ab5f3bbfda3",
+  "namespace": "pilot-v1",
+  "proposal_sha256": "9514a25548d95047f3e707d1f2b27c76c3b09378653ecd270cdc9ae2845b06d1",
+  "ratification_status": "APPROVED",
+  "schema_version": "aeolus_habitat_v2_forecast_timing_pilot_roster_proposal_v1",
+  "shape": {
+    "anchor_completed_steps": [
+      16,
+      40,
+      64
+    ],
+    "cluster_count": 60,
+    "history_candidates": [
+      4,
+      8,
+      16
+    ],
+    "horizon_candidates": [
+      2,
+      4,
+      8
+    ],
+    "load_regimes": [
+      "LOW",
+      "NOMINAL",
+      "HIGH"
+    ],
+    "operating_modes": [
+      "occupied",
+      "eva_transition",
+      "contingency",
+      "dormant"
+    ],
+    "persistent_treatment_interval": [
+      25,
+      73
+    ],
+    "scenario_steps": 72,
+    "semantic_profile_roles": [
+      "balanced-initial-state",
+      "thermal-air-processing-skew",
+      "crew-metabolic-humidity-skew",
+      "pressure-inventory-skew",
+      "reduced-resource-inventory"
+    ],
+    "transient_treatment_interval": [
+      25,
+      49
+    ],
+    "treatment_onset_completed_step": 25
+  },
+  "treatment_roles": [
+    "HEALTHY",
+    "FAN_DEGRADATION",
+    "BRANCH_BLOCKAGE",
+    "DAMPER_JAM",
+    "SCRUBBER_CAPTURE_DEGRADATION",
+    "CONDENSER_REMOVAL_DEGRADATION",
+    "COOLING_DELIVERY_DEGRADATION",
+    "OXYGEN_DELIVERY_DEGRADATION",
+    "PRIMARY_ENVIRONMENTAL_SENSOR_BIAS",
+    "SECONDARY_ENVIRONMENTAL_SENSOR_STUCK",
+    "RESOURCE_FEEDBACK_BIAS",
+    "BRANCH_AIRFLOW_FEEDBACK_STUCK",
+    "COMPOUND_PHYSICAL_OBSERVATION"
+  ],
+  "unresolved_before_ratification": []
+}

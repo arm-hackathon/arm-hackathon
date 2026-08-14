@@ -487,7 +487,7 @@ def _validate_envelope(
 
 
 def _harmful(values: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
-    return (values < lower) | (values > upper)
+    return (values <= lower) | (values >= upper)
 
 
 def evaluate(
@@ -662,10 +662,14 @@ def evaluate(
         normalized, selective = RatioMetric(None, False), RatioMetric(None, False)
     tp = fp = tn = fn = existing = 0
     anchor_harm = _harmful(anchor, lower[0], upper[0])
-    for request, output in predicted:
-        truth_harm, pred_harm = (
-            _harmful(truth_by_sample[request.sample_id], lower, upper),
-            _harmful(output.prediction_f32, lower, upper),
+    for request, output in zip(items, outputs, strict=True):
+        if output.status not in {"PREDICTION", "ABSTAIN"}:
+            continue
+        truth_harm = _harmful(truth_by_sample[request.sample_id], lower, upper)
+        pred_harm = (
+            _harmful(output.prediction_f32, lower, upper)
+            if output.status == "PREDICTION"
+            else np.zeros(shape, dtype=bool)
         )
         valid = np.broadcast_to(~anchor_harm, shape)
         existing += int(np.broadcast_to(anchor_harm, shape).sum())
