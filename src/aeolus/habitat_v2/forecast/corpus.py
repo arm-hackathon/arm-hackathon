@@ -35,6 +35,21 @@ _NUMERIC_FIELDS = frozenset(
         "window_steps",
     }
 )
+_INTEGER_SEQUENCE_FIELDS = frozenset({"history_steps", "target_steps"})
+_FLOAT_SEQUENCE_FIELDS = frozenset(
+    {"history_completed_times_s", "target_completed_times_s", "target_truth"}
+)
+_TENSOR_FIELDS = frozenset(
+    {
+        "history_numeric",
+        "history_availability",
+        "history_mode_one_hot",
+        "history_health_one_hot",
+        "history_alarm_lifecycle_one_hot",
+        "history_final_command",
+        "proposed_action",
+    }
+)
 
 
 class CorpusValidationError(ValueError):
@@ -92,7 +107,9 @@ def _walk_json(value: Any, *, label: str = "record") -> None:
             if type(key) is not str:
                 raise CorpusValidationError(f"{label} has a non-string key")
             if key in FORBIDDEN_FIELDS:
-                raise CorpusValidationError(f"{label} contains forbidden final-custody field {key}")
+                raise CorpusValidationError(
+                    f"{label} contains forbidden final-custody field {key}"
+                )
             _walk_json(nested, label=f"{label}.{key}")
     elif type(value) is list:
         for index, nested in enumerate(value):
@@ -101,7 +118,9 @@ def _walk_json(value: Any, *, label: str = "record") -> None:
         raise CorpusValidationError(f"{label} contains a non-finite number")
 
 
-def _exact_fields(value: Mapping[str, Any], expected: Sequence[str], label: str) -> None:
+def _exact_fields(
+    value: Mapping[str, Any], expected: Sequence[str], label: str
+) -> None:
     actual, closed = set(value), set(expected)
     if actual != closed:
         raise CorpusValidationError(
@@ -113,7 +132,104 @@ def _check_numeric_positions(value: Mapping[str, Any], label: str) -> None:
     for field in _NUMERIC_FIELDS & set(value):
         number = value[field]
         if type(number) is not int or number < 0:
-            raise CorpusValidationError(f"{label}.{field} must be a non-boolean non-negative integer")
+            raise CorpusValidationError(
+                f"{label}.{field} must be a non-boolean non-negative integer"
+            )
+
+
+def _numeric_tree(value: Any, *, label: str, integer: bool = False) -> None:
+    if type(value) is list:
+        if not value:
+            raise CorpusValidationError(f"{label} must not be empty")
+        for index, nested in enumerate(value):
+            _numeric_tree(nested, label=f"{label}[{index}]", integer=integer)
+        return
+    if integer:
+        if type(value) is not int or value < 0:
+            raise CorpusValidationError(
+                f"{label} must contain non-boolean non-negative integers"
+            )
+        return
+    if type(value) not in {int, float} or not math.isfinite(float(value)):
+        raise CorpusValidationError(f"{label} must contain finite non-boolean numbers")
+
+
+def _hash_fields(value: Mapping[str, Any], *, label: str) -> None:
+    for field, item in value.items():
+        if field == "sha256" or field.endswith("_sha256") or field.endswith("_digest"):
+            _require_sha256(item, f"{label}.{field}")
+
+
+def _closed_nested(
+    value: Any,
+    contract: Mapping[str, Any],
+    *,
+    label: str,
+) -> Mapping[str, Any]:
+    if type(value) is not dict:
+        raise CorpusValidationError(f"{label} must be an object")
+    required = contract.get("required_fields")
+    if not isinstance(required, (list, tuple)):
+        raise CorpusValidationError(f"{label} contract is malformed")
+    _exact_fields(value, required, label)
+    _check_numeric_positions(value, label)
+    _hash_fields(value, label=label)
+    return value
+
+
+def _validate_nested_contracts(
+    record: Mapping[str, Any],
+    nested_contracts: Mapping[str, Any] | None,
+) -> None:
+    for field in _INTEGER_SEQUENCE_FIELDS & set(record):
+        _numeric_tree(record[field], label=f"record.{field}", integer=True)
+    for field in _FLOAT_SEQUENCE_FIELDS & set(record):
+        _numeric_tree(record[field], label=f"record.{field}")
+
+    if nested_contracts is None:
+        return
+    if not isinstance(nested_contracts, Mapping):
+        raise CorpusValidationError("nested record contract is malformed")
+
+    if "input_tensors" in record:
+        contract = nested_contracts.get("input_tensors")
+        if not isinstance(contract, Mapping):
+            raise CorpusValidationError("input tensor contract is missing")
+        tensors = _closed_nested(
+            record["input_tensors"], contract, label="record.input_tensors"
+        )
+        for field in _TENSOR_FIELDS:
+            _numeric_tree(tensors[field], label=f"record.input_tensors.{field}")
+
+    if "evaluator_only_provenance" in record:
+        contract = nested_contracts.get("evaluator_only_provenance")
+        if not isinstance(contract, Mapping):
+            raise CorpusValidationError("evaluator provenance contract is missing")
+        provenance = _closed_nested(
+            record["evaluator_only_provenance"],
+            contract,
+            label="record.evaluator_only_provenance",
+        )
+        if provenance["arbitration_disposition"] not in {
+            "ACCEPTED",
+            "MODIFIED",
+            "REJECTED",
+        }:
+            raise CorpusValidationError("evaluator provenance disposition is invalid")
+
+    for field, contract_name in (
+        ("step_witnesses", "step_witness"),
+        ("table_artifacts", "table_artifact"),
+        ("trace_artifacts", "trace_artifact"),
+    ):
+        if field not in record:
+            continue
+        rows = record[field]
+        contract = nested_contracts.get(contract_name)
+        if type(rows) is not list or not isinstance(contract, Mapping):
+            raise CorpusValidationError(f"record.{field} contract is malformed")
+        for index, row in enumerate(rows):
+            _closed_nested(row, contract, label=f"record.{field}[{index}]")
 
 
 def _strict_json_object(raw: bytes, *, label: str) -> dict[str, Any]:
@@ -143,13 +259,19 @@ def record_identity(record: Mapping[str, Any], specification: Mapping[str, Any])
     fields = specification.get("identity_fields")
     domain = specification.get("identity_domain")
     if not isinstance(fields, (list, tuple)) or type(domain) is not str or not domain:
-        raise CorpusValidationError("record specification has no closed identity contract")
-    if len(fields) != len(set(fields)) or any(type(field) is not str for field in fields):
+        raise CorpusValidationError(
+            "record specification has no closed identity contract"
+        )
+    if len(fields) != len(set(fields)) or any(
+        type(field) is not str for field in fields
+    ):
         raise CorpusValidationError("record identity fields are malformed")
     if any(field not in record for field in fields):
         raise CorpusValidationError("record is missing an identity field")
     body = {field: record[field] for field in fields}
-    return hashlib.sha256(domain.encode("utf-8") + b"\0" + canonical_json_bytes(body)).hexdigest()
+    return hashlib.sha256(
+        domain.encode("utf-8") + b"\0" + canonical_json_bytes(body)
+    ).hexdigest()
 
 
 def record_self_hash(record: Mapping[str, Any], field: str = "record_sha256") -> str:
@@ -167,14 +289,21 @@ def parse_canonical_jsonl(data: bytes) -> list[dict[str, Any]]:
     lines = data.splitlines(keepends=True)
     if any(not line.endswith(b"\n") or line.endswith(b"\r\n") for line in lines):
         raise CorpusValidationError("JSONL requires exactly LF line endings")
-    records = [_strict_json_object(line[:-1], label=f"JSONL row {index}") for index, line in enumerate(lines)]
+    records = [
+        _strict_json_object(line[:-1], label=f"JSONL row {index}")
+        for index, line in enumerate(lines)
+    ]
     if canonical_jsonl_bytes(records) != data:
         raise CorpusValidationError("JSONL bytes are not canonical")
     return records
 
 
 def validate_record(
-    record: Mapping[str, Any], specification: Mapping[str, Any], *, self_hash_field: str = "record_sha256"
+    record: Mapping[str, Any],
+    specification: Mapping[str, Any],
+    *,
+    self_hash_field: str = "record_sha256",
+    nested_contracts: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if type(record) is not dict:
         raise CorpusValidationError("record must be an object")
@@ -185,29 +314,66 @@ def validate_record(
     _exact_fields(record, required, "record")
     _walk_json(record)
     _check_numeric_positions(record, "record")
+    _hash_fields(record, label="record")
+    _validate_nested_contracts(record, nested_contracts)
     if record.get("release_tier") != RELEASE_TIER:
-        raise CorpusValidationError("record release tier is not development-fixture-only")
+        raise CorpusValidationError(
+            "record release tier is not development-fixture-only"
+        )
     if record.get("schema_version") != schema_version:
         raise CorpusValidationError("record schema version is not closed")
+    enums = specification.get("enums", {})
+    if not isinstance(enums, Mapping):
+        raise CorpusValidationError("record enum contract is malformed")
+    for field, allowed in enums.items():
+        if not isinstance(allowed, (list, tuple)) or record.get(field) not in allowed:
+            raise CorpusValidationError(f"record.{field} is outside its closed enum")
+    persisted = specification.get("d1_persisted_value", {})
+    if not isinstance(persisted, Mapping):
+        raise CorpusValidationError("record persisted-value contract is malformed")
+    for field, expected in persisted.items():
+        if record.get(field) != expected:
+            raise CorpusValidationError(f"record.{field} is not the frozen D1 value")
     if self_hash_field == "record_sha256":
         id_field = specification.get("id_field")
-        if type(id_field) is not str or record.get(id_field) != record_identity(record, specification):
-            raise CorpusValidationError("record stable identity drifts from identity body")
-    if not _is_sha256(record.get(self_hash_field)) or record[self_hash_field] != record_self_hash(record, self_hash_field):
+        if type(id_field) is not str or record.get(id_field) != record_identity(
+            record, specification
+        ):
+            raise CorpusValidationError(
+                "record stable identity drifts from identity body"
+            )
+    if not _is_sha256(record.get(self_hash_field)) or record[
+        self_hash_field
+    ] != record_self_hash(record, self_hash_field):
         raise CorpusValidationError("record self hash is invalid")
     return dict(record)
 
 
-def validate_jsonl_records(data: bytes, specification: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [validate_record(row, specification) for row in parse_canonical_jsonl(data)]
+def validate_jsonl_records(
+    data: bytes,
+    specification: Mapping[str, Any],
+    *,
+    nested_contracts: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        validate_record(row, specification, nested_contracts=nested_contracts)
+        for row in parse_canonical_jsonl(data)
+    ]
 
 
-def deterministic_rank_hmac(*, split_key: bytes, stratum: str, family_cluster_id: str) -> str:
+def deterministic_rank_hmac(
+    *, split_key: bytes, stratum: str, family_cluster_id: str
+) -> str:
     if type(split_key) is not bytes or not split_key:
         raise CorpusValidationError("split key must be non-empty bytes")
     if type(stratum) is not str or not stratum or not _is_sha256(family_cluster_id):
         raise CorpusValidationError("split rank identity is malformed")
-    payload = b"aeolus-forecast-d1-split-rank-v1\0" + stratum.encode("utf-8") + b"\0" + family_cluster_id.encode("ascii")
+    payload = (
+        b"aeolus-forecast-d1-split-rank-v1\0"
+        + stratum.encode("utf-8")
+        + b"\0"
+        + family_cluster_id.encode("ascii")
+    )
     return hmac.new(split_key, payload, hashlib.sha256).hexdigest()
 
 
@@ -227,7 +393,12 @@ def assign_cluster_splits(
     ranked: list[tuple[str, str]] = []
     for cluster in clusters:
         cluster_id, stratum = cluster.get("family_cluster_id"), cluster.get("stratum")
-        if not _is_sha256(cluster_id) or type(stratum) is not str or not stratum or cluster_id in seen:
+        if (
+            not _is_sha256(cluster_id)
+            or type(stratum) is not str
+            or not stratum
+            or cluster_id in seen
+        ):
             raise CorpusValidationError("cluster split unit is malformed or duplicated")
         seen.add(cluster_id)
         ranked.append((stratum, cluster_id))
@@ -243,31 +414,55 @@ def assign_cluster_splits(
             ),
         )
         for index, cluster_id in enumerate(ordered):
-            rank = deterministic_rank_hmac(split_key=split_key, stratum=stratum, family_cluster_id=cluster_id)
-            label = "DEVELOPMENT" if development_only else ("TRAIN" if index * 5 < len(ordered) * 3 else "VALIDATION" if index * 5 < len(ordered) * 4 else "FINAL")
+            rank = deterministic_rank_hmac(
+                split_key=split_key, stratum=stratum, family_cluster_id=cluster_id
+            )
+            label = (
+                "DEVELOPMENT"
+                if development_only
+                else (
+                    "TRAIN"
+                    if index * 5 < len(ordered) * 3
+                    else "VALIDATION"
+                    if index * 5 < len(ordered) * 4
+                    else "FINAL"
+                )
+            )
             body = {
                 "family_cluster_id": cluster_id,
                 "split_policy_sha256": split_policy_sha256,
                 "split_label": label,
                 "rank_hmac_sha256": rank,
             }
-            result.append({
-                "family_cluster_id": cluster_id,
-                "stratum": stratum,
-                "split_label": label,
-                "split_policy_sha256": split_policy_sha256,
-                "split_key_id": split_key_id,
-                "rank_hmac_sha256": rank,
-                "split_assignment_id": hashlib.sha256(
-                    b"aeolus-forecast-d1-split-assignment-v1\0" + canonical_json_bytes(body)
-                ).hexdigest(),
-            })
+            result.append(
+                {
+                    "family_cluster_id": cluster_id,
+                    "stratum": stratum,
+                    "split_label": label,
+                    "split_policy_sha256": split_policy_sha256,
+                    "split_key_id": split_key_id,
+                    "rank_hmac_sha256": rank,
+                    "split_assignment_id": hashlib.sha256(
+                        b"aeolus-forecast-d1-split-assignment-v1\0"
+                        + canonical_json_bytes(body)
+                    ).hexdigest(),
+                }
+            )
     return result
 
 
 def validate_lineage(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> None:
     """Reject cluster/family/run/witness/sample overlap or semantic aliases."""
-    required = {"family_clusters", "families", "scenario_members", "split_assignments", "control_runs", "control_traces", "replay_witnesses", "samples"}
+    required = {
+        "family_clusters",
+        "families",
+        "scenario_members",
+        "split_assignments",
+        "control_runs",
+        "control_traces",
+        "replay_witnesses",
+        "samples",
+    }
     if set(tables) != required:
         raise CorpusValidationError("lineage requires exactly the eight JSONL tables")
     cluster_rows = tables["family_clusters"]
@@ -275,15 +470,21 @@ def validate_lineage(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> None:
     if len(clusters) != len(cluster_rows):
         raise CorpusValidationError("duplicate family cluster identity")
     assignments = {row["family_cluster_id"]: row for row in tables["split_assignments"]}
-    if len(assignments) != len(tables["split_assignments"]) or set(assignments) != set(clusters):
-        raise CorpusValidationError("split assignment is not one-to-one with family clusters")
+    if len(assignments) != len(tables["split_assignments"]) or set(assignments) != set(
+        clusters
+    ):
+        raise CorpusValidationError(
+            "split assignment is not one-to-one with family clusters"
+        )
     families = {row["family_id"]: row for row in tables["families"]}
     if len(families) != len(tables["families"]):
         raise CorpusValidationError("duplicate family identity")
     for family in families.values():
         if family["family_cluster_id"] not in clusters:
             raise CorpusValidationError("family references unknown cluster")
-    scenario_members = {row["scenario_member_id"]: row for row in tables["scenario_members"]}
+    scenario_members = {
+        row["scenario_member_id"]: row for row in tables["scenario_members"]
+    }
     if len(scenario_members) != len(tables["scenario_members"]):
         raise CorpusValidationError("duplicate scenario member identity")
     plant_runs: set[str] = set()
@@ -294,22 +495,36 @@ def validate_lineage(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> None:
     control_runs = {row["control_run_record_id"]: row for row in tables["control_runs"]}
     hmc_runs: set[str] = set()
     for run in control_runs.values():
-        if run["scenario_member_id"] not in scenario_members or run["control_run_id"] in hmc_runs:
+        if (
+            run["scenario_member_id"] not in scenario_members
+            or run["control_run_id"] in hmc_runs
+        ):
             raise CorpusValidationError("scenario/HMC-run semantic alias")
         hmc_runs.add(run["control_run_id"])
     traces = {row["control_trace_record_id"]: row for row in tables["control_traces"]}
     witnesses = {row["replay_witness_id"]: row for row in tables["replay_witnesses"]}
     samples = {row["sample_id"]: row for row in tables["samples"]}
-    if len(traces) != len(tables["control_traces"]) or len(witnesses) != len(tables["replay_witnesses"]) or len(samples) != len(tables["samples"]):
+    if (
+        len(traces) != len(tables["control_traces"])
+        or len(witnesses) != len(tables["replay_witnesses"])
+        or len(samples) != len(tables["samples"])
+    ):
         raise CorpusValidationError("duplicate trace, witness, or sample identity")
     trace_runs: set[str] = set()
     for trace in traces.values():
-        if trace["control_run_id"] not in hmc_runs or trace["control_run_id"] in trace_runs:
+        if (
+            trace["control_run_id"] not in hmc_runs
+            or trace["control_run_id"] in trace_runs
+        ):
             raise CorpusValidationError("control trace semantic alias")
         trace_runs.add(trace["control_run_id"])
     witness_runs: set[str] = set()
     for witness in witnesses.values():
-        if witness["control_run_id"] not in hmc_runs or witness["control_trace_record_id"] not in traces or witness["control_run_id"] in witness_runs:
+        if (
+            witness["control_run_id"] not in hmc_runs
+            or witness["control_trace_record_id"] not in traces
+            or witness["control_run_id"] in witness_runs
+        ):
             raise CorpusValidationError("replay witness semantic alias")
         witness_runs.add(witness["control_run_id"])
     for sample in samples.values():
@@ -319,20 +534,34 @@ def validate_lineage(tables: Mapping[str, Sequence[Mapping[str, Any]]]) -> None:
         assignment = assignments.get(sample["family_cluster_id"])
         if not family or not member or not run or not assignment:
             raise CorpusValidationError("sample lineage is incomplete")
-        if family["family_cluster_id"] != sample["family_cluster_id"] or member["family_id"] != sample["family_id"] or run["scenario_member_id"] != sample["scenario_member_id"]:
+        if (
+            family["family_cluster_id"] != sample["family_cluster_id"]
+            or member["family_id"] != sample["family_id"]
+            or run["scenario_member_id"] != sample["scenario_member_id"]
+        ):
             raise CorpusValidationError("sample lineage aliases a different family/run")
-        if sample["split_assignment_id"] != assignment["split_assignment_id"] or sample["split_label"] != assignment["split_label"]:
+        if (
+            sample["split_assignment_id"] != assignment["split_assignment_id"]
+            or sample["split_label"] != assignment["split_label"]
+        ):
             raise CorpusValidationError("sample split does not inherit cluster split")
-        if sample["replay_witness_id"] not in witnesses or run["replay_witness_id"] != sample["replay_witness_id"]:
+        if (
+            sample["replay_witness_id"] not in witnesses
+            or run["replay_witness_id"] != sample["replay_witness_id"]
+        ):
             raise CorpusValidationError("sample replay witness lineage drifts")
 
 
-def iter_training_samples(samples: Sequence[Mapping[str, Any]], split_assignments: Sequence[Mapping[str, Any]]) -> tuple[Mapping[str, Any], ...]:
+def iter_training_samples(
+    samples: Sequence[Mapping[str, Any]], split_assignments: Sequence[Mapping[str, Any]]
+) -> tuple[Mapping[str, Any], ...]:
     assignment = {row["split_assignment_id"]: row for row in split_assignments}
     result: list[Mapping[str, Any]] = []
     for sample in samples:
         split = assignment.get(sample.get("split_assignment_id"))
-        if split is None or split.get("family_cluster_id") != sample.get("family_cluster_id"):
+        if split is None or split.get("family_cluster_id") != sample.get(
+            "family_cluster_id"
+        ):
             raise CorpusValidationError("fit sample has unbound cluster split")
         if sample.get("split_label") != split.get("split_label"):
             raise CorpusValidationError("fit sample split label drift")
@@ -345,6 +574,11 @@ def validate_relative_packet_path(value: Any) -> str:
     if type(value) is not str or not value.startswith(PATH_PREFIX):
         raise CorpusValidationError("packet path must begin development-fixture-only/")
     path = PurePosixPath(value)
-    if path.is_absolute() or ".." in path.parts or "\\" in value or value == PATH_PREFIX:
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or "\\" in value
+        or value == PATH_PREFIX
+    ):
         raise CorpusValidationError("packet path is unsafe")
     return value
