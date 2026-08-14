@@ -1,0 +1,1738 @@
+{
+  "alarm_manifest_sha256": "f27db07c4b7d15a09ec625855d3131bb21734d8725ccb9644a78b982921d9aec",
+  "alarm_slots": [
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/air_processing_bay/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/air_processing_bay"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/air_processing_bay/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/air_processing_bay"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/airlock_suitport/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/airlock_suitport"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/airlock_suitport/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/airlock_suitport"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/common_galley/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/common_galley"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/common_galley/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/common_galley"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/crew_quarters_a/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/crew_quarters_a"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/crew_quarters_a/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/crew_quarters_a"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/crew_quarters_b/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/crew_quarters_b"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/crew_quarters_b/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/crew_quarters_b"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/equipment_power_bay/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/equipment_power_bay"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/equipment_power_bay/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/equipment_power_bay"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/hygiene_medical/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/hygiene_medical"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/hygiene_medical/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/hygiene_medical"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/laboratory/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "cooling_delivery_w/laboratory"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/cooling_delivery_w/laboratory/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/laboratory"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/air_processing_bay_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/air_processing_bay_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/air_processing_bay_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/air_processing_bay_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/airlock_suitport_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/airlock_suitport_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/airlock_suitport_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/airlock_suitport_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/common_galley_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/common_galley_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/common_galley_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/common_galley_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/crew_quarters_a_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/crew_quarters_a_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/crew_quarters_a_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/crew_quarters_a_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/crew_quarters_b_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/crew_quarters_b_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/crew_quarters_b_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/crew_quarters_b_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/equipment_power_bay_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/equipment_power_bay_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/equipment_power_bay_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/equipment_power_bay_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/hygiene_medical_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/hygiene_medical_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/hygiene_medical_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/hygiene_medical_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/laboratory_supply_damper/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "damper_position_by_id/laboratory_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/damper_position_by_id/laboratory_supply_damper/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/laboratory_supply_damper"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/fan_speed_fraction/primary_supply_fan/warning",
+      "family": "actuator_tracking_failure",
+      "severity": "WARNING",
+      "target": "fan_speed_fraction/primary_supply_fan"
+    },
+    {
+      "alarm_id": "actuator_tracking_failure/fan_speed_fraction/primary_supply_fan/critical",
+      "family": "actuator_tracking_failure",
+      "severity": "CRITICAL",
+      "target": "fan_speed_fraction/primary_supply_fan"
+    },
+    {
+      "alarm_id": "high_co2/air_processing_bay/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "high_co2/air_processing_bay/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "high_co2/airlock_suitport/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "high_co2/airlock_suitport/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "high_co2/common_galley/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "high_co2/common_galley/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "high_co2/crew_quarters_a/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "high_co2/crew_quarters_a/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "high_co2/crew_quarters_b/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "high_co2/crew_quarters_b/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "high_co2/equipment_power_bay/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "high_co2/equipment_power_bay/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "high_co2/hygiene_medical/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "high_co2/hygiene_medical/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "high_co2/laboratory/warning",
+      "family": "high_co2",
+      "severity": "WARNING",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "high_co2/laboratory/critical",
+      "family": "high_co2",
+      "severity": "CRITICAL",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "high_humidity/air_processing_bay/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "high_humidity/air_processing_bay/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "high_humidity/airlock_suitport/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "high_humidity/airlock_suitport/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "high_humidity/common_galley/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "high_humidity/common_galley/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "high_humidity/crew_quarters_a/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "high_humidity/crew_quarters_a/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "high_humidity/crew_quarters_b/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "high_humidity/crew_quarters_b/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "high_humidity/equipment_power_bay/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "high_humidity/equipment_power_bay/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "high_humidity/hygiene_medical/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "high_humidity/hygiene_medical/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "high_humidity/laboratory/warning",
+      "family": "high_humidity",
+      "severity": "WARNING",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "high_humidity/laboratory/critical",
+      "family": "high_humidity",
+      "severity": "CRITICAL",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "high_temperature/air_processing_bay/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "high_temperature/air_processing_bay/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "high_temperature/airlock_suitport/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "high_temperature/airlock_suitport/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "high_temperature/common_galley/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "high_temperature/common_galley/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "high_temperature/crew_quarters_a/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "high_temperature/crew_quarters_a/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "high_temperature/crew_quarters_b/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "high_temperature/crew_quarters_b/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "high_temperature/equipment_power_bay/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "high_temperature/equipment_power_bay/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "high_temperature/hygiene_medical/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "high_temperature/hygiene_medical/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "high_temperature/laboratory/warning",
+      "family": "high_temperature",
+      "severity": "WARNING",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "high_temperature/laboratory/critical",
+      "family": "high_temperature",
+      "severity": "CRITICAL",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "low_battery_gauge/battery_state_of_charge/warning",
+      "family": "low_battery_gauge",
+      "severity": "WARNING",
+      "target": "battery_state_of_charge"
+    },
+    {
+      "alarm_id": "low_battery_gauge/battery_state_of_charge/critical",
+      "family": "low_battery_gauge",
+      "severity": "CRITICAL",
+      "target": "battery_state_of_charge"
+    },
+    {
+      "alarm_id": "low_oxygen/air_processing_bay/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "low_oxygen/air_processing_bay/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "low_oxygen/airlock_suitport/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "low_oxygen/airlock_suitport/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "low_oxygen/common_galley/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "low_oxygen/common_galley/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "low_oxygen/crew_quarters_a/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "low_oxygen/crew_quarters_a/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "low_oxygen/crew_quarters_b/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "low_oxygen/crew_quarters_b/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "low_oxygen/equipment_power_bay/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "low_oxygen/equipment_power_bay/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "low_oxygen/hygiene_medical/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "low_oxygen/hygiene_medical/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "low_oxygen/laboratory/warning",
+      "family": "low_oxygen",
+      "severity": "WARNING",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "low_oxygen/laboratory/critical",
+      "family": "low_oxygen",
+      "severity": "CRITICAL",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "low_oxygen_store_gauge/oxygen_store_fraction/warning",
+      "family": "low_oxygen_store_gauge",
+      "severity": "WARNING",
+      "target": "oxygen_store_fraction"
+    },
+    {
+      "alarm_id": "low_oxygen_store_gauge/oxygen_store_fraction/critical",
+      "family": "low_oxygen_store_gauge",
+      "severity": "CRITICAL",
+      "target": "oxygen_store_fraction"
+    },
+    {
+      "alarm_id": "low_sorbent_gauge/sorbent_remaining_fraction/warning",
+      "family": "low_sorbent_gauge",
+      "severity": "WARNING",
+      "target": "sorbent_remaining_fraction"
+    },
+    {
+      "alarm_id": "low_sorbent_gauge/sorbent_remaining_fraction/critical",
+      "family": "low_sorbent_gauge",
+      "severity": "CRITICAL",
+      "target": "sorbent_remaining_fraction"
+    },
+    {
+      "alarm_id": "low_temperature/air_processing_bay/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "low_temperature/air_processing_bay/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay"
+    },
+    {
+      "alarm_id": "low_temperature/airlock_suitport/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "low_temperature/airlock_suitport/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport"
+    },
+    {
+      "alarm_id": "low_temperature/common_galley/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "low_temperature/common_galley/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "common_galley"
+    },
+    {
+      "alarm_id": "low_temperature/crew_quarters_a/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "low_temperature/crew_quarters_a/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a"
+    },
+    {
+      "alarm_id": "low_temperature/crew_quarters_b/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "low_temperature/crew_quarters_b/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b"
+    },
+    {
+      "alarm_id": "low_temperature/equipment_power_bay/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "low_temperature/equipment_power_bay/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay"
+    },
+    {
+      "alarm_id": "low_temperature/hygiene_medical/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "low_temperature/hygiene_medical/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical"
+    },
+    {
+      "alarm_id": "low_temperature/laboratory/warning",
+      "family": "low_temperature",
+      "severity": "WARNING",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "low_temperature/laboratory/critical",
+      "family": "low_temperature",
+      "severity": "CRITICAL",
+      "target": "laboratory"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "air_processing_bay/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "air_processing_bay/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "air_processing_bay/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "air_processing_bay/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "air_processing_bay/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/air_processing_bay/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "airlock_suitport/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "airlock_suitport/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "airlock_suitport/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "airlock_suitport/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "airlock_suitport/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/airlock_suitport/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "common_galley/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "common_galley/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "common_galley/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "common_galley/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "common_galley/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "common_galley/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "common_galley/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "common_galley/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "common_galley/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/common_galley/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "common_galley/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_a/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_a/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_a/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_a/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_a/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_a/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_b/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_b/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_b/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_b/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "crew_quarters_b/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/crew_quarters_b/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "equipment_power_bay/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "equipment_power_bay/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "equipment_power_bay/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "equipment_power_bay/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "equipment_power_bay/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/equipment_power_bay/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "hygiene_medical/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "hygiene_medical/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "hygiene_medical/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "hygiene_medical/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "hygiene_medical/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/hygiene_medical/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/co2_ppm/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "laboratory/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/co2_ppm/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "laboratory/co2_ppm"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/o2_mole_fraction/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "laboratory/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/o2_mole_fraction/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "laboratory/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/pressure_pa/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "laboratory/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/pressure_pa/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "laboratory/pressure_pa"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/relative_humidity/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "laboratory/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/relative_humidity/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "laboratory/relative_humidity"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/temperature_k/warning",
+      "family": "sensor_disagreement",
+      "severity": "WARNING",
+      "target": "laboratory/temperature_k"
+    },
+    {
+      "alarm_id": "sensor_disagreement/laboratory/temperature_k/critical",
+      "family": "sensor_disagreement",
+      "severity": "CRITICAL",
+      "target": "laboratory/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/air_processing_bay/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/air_processing_bay/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/air_processing_bay/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/air_processing_bay/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/air_processing_bay/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "air_processing_bay/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/airlock_suitport/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/airlock_suitport/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/airlock_suitport/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/airlock_suitport/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/airlock_suitport/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "airlock_suitport/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/battery_state_of_charge/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "battery_state_of_charge"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/air_processing_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/air_processing_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/airlock_suitport/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/airlock_suitport"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/common_galley/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/common_galley"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/crew_quarters_a/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/crew_quarters_a"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/crew_quarters_b/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/crew_quarters_b"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/equipment_power_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/equipment_power_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/hygiene_medical/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/hygiene_medical"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_airflow_m3_s/laboratory/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_airflow_m3_s/laboratory"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/air_processing_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/air_processing_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/airlock_suitport/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/airlock_suitport"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/common_galley/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/common_galley"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/crew_quarters_a/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/crew_quarters_a"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/crew_quarters_b/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/crew_quarters_b"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/equipment_power_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/equipment_power_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/hygiene_medical/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/hygiene_medical"
+    },
+    {
+      "alarm_id": "telemetry_unknown/branch_differential_pressure_pa/laboratory/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "branch_differential_pressure_pa/laboratory"
+    },
+    {
+      "alarm_id": "telemetry_unknown/common_galley/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "common_galley/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/common_galley/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "common_galley/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/common_galley/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "common_galley/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/common_galley/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "common_galley/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/common_galley/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "common_galley/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/condenser_removal_rate_mol_s/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "condenser_removal_rate_mol_s"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/air_processing_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/air_processing_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/airlock_suitport/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/airlock_suitport"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/common_galley/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/common_galley"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/crew_quarters_a/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/crew_quarters_a"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/crew_quarters_b/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/crew_quarters_b"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/equipment_power_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/equipment_power_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/hygiene_medical/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/hygiene_medical"
+    },
+    {
+      "alarm_id": "telemetry_unknown/cooling_delivery_w/laboratory/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "cooling_delivery_w/laboratory"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_a/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_a/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_a/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_a/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_a/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_a/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_b/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_b/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_b/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_b/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/crew_quarters_b/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "crew_quarters_b/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/air_processing_bay_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/air_processing_bay_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/airlock_suitport_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/airlock_suitport_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/common_galley_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/common_galley_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/crew_quarters_a_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/crew_quarters_a_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/crew_quarters_b_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/crew_quarters_b_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/equipment_power_bay_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/equipment_power_bay_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/hygiene_medical_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/hygiene_medical_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/damper_position_by_id/laboratory_supply_damper/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "damper_position_by_id/laboratory_supply_damper"
+    },
+    {
+      "alarm_id": "telemetry_unknown/equipment_power_bay/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/equipment_power_bay/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/equipment_power_bay/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/equipment_power_bay/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/equipment_power_bay/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "equipment_power_bay/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/fan_dc_bus_current_a/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "fan_dc_bus_current_a"
+    },
+    {
+      "alarm_id": "telemetry_unknown/fan_speed_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "fan_speed_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/hygiene_medical/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/hygiene_medical/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/hygiene_medical/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/hygiene_medical/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/hygiene_medical/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "hygiene_medical/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/laboratory/co2_ppm/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "laboratory/co2_ppm"
+    },
+    {
+      "alarm_id": "telemetry_unknown/laboratory/o2_mole_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "laboratory/o2_mole_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/laboratory/pressure_pa/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "laboratory/pressure_pa"
+    },
+    {
+      "alarm_id": "telemetry_unknown/laboratory/relative_humidity/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "laboratory/relative_humidity"
+    },
+    {
+      "alarm_id": "telemetry_unknown/laboratory/temperature_k/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "laboratory/temperature_k"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/air_processing_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/air_processing_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/airlock_suitport/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/airlock_suitport"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/common_galley/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/common_galley"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/crew_quarters_a/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/crew_quarters_a"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/crew_quarters_b/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/crew_quarters_b"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/equipment_power_bay/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/equipment_power_bay"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/hygiene_medical/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/hygiene_medical"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_delivery_mol_s/laboratory/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_delivery_mol_s/laboratory"
+    },
+    {
+      "alarm_id": "telemetry_unknown/oxygen_store_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "oxygen_store_fraction"
+    },
+    {
+      "alarm_id": "telemetry_unknown/scrubber_capture_rate_mol_s/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "scrubber_capture_rate_mol_s"
+    },
+    {
+      "alarm_id": "telemetry_unknown/sorbent_remaining_fraction/critical",
+      "family": "telemetry_unknown",
+      "severity": "CRITICAL",
+      "target": "sorbent_remaining_fraction"
+    }
+  ],
+  "alarm_slots_sha256": "075114456c8a7176c82ebbd0688115ba62d1ec3f835935239c16751410ca971b",
+  "health_policy_sha256": "db0352334caf512dd4f85cf2903012cf9756ccb0d7d8aa2146c28848f2087713",
+  "lifecycle_order": [
+    "ABSENT",
+    "RAISED",
+    "ACTIVE",
+    "CLEARED"
+  ],
+  "observable_topology_sha256": "b0246a9dc8f847c3236068c8e1eeeddb31809a680e6133eaf038ea197d6e10e6",
+  "release_tier": "DEVELOPMENT_FIXTURE_ONLY",
+  "schema_version": "aeolus_habitat_v2_forecast_alarm_manifest_v1"
+}

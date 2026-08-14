@@ -1,0 +1,393 @@
+{
+  "canonical_serialization": {
+    "encoding": "UTF-8",
+    "final_lf_required": true,
+    "json_allow_nan": false,
+    "json_ensure_ascii": false,
+    "json_separators": [
+      ",",
+      ":"
+    ],
+    "json_sort_keys": true,
+    "jsonl_line_ending": "LF"
+  },
+  "development_publication_boundary": {
+    "final_set_access": "REJECT",
+    "forbidden_exact_fields": [
+      "custodian_id",
+      "custody_receipt",
+      "final_release_manifest",
+      "final_score_receipt",
+      "final_prediction_sha256"
+    ],
+    "persisted_split_label": "DEVELOPMENT",
+    "required_cli_result_field": "release_tier",
+    "required_path_prefix": "development-fixture-only/",
+    "required_release_tier": "DEVELOPMENT_FIXTURE_ONLY"
+  },
+  "identity_framing": {
+    "algorithm": "SHA-256",
+    "bytes": "utf8(identity_domain) || 0x00 || canonical_json(identity_body)",
+    "identity_body_rule": "closed object containing exactly identity_fields from the record"
+  },
+  "manifest_self_hash_rule": {
+    "algorithm": "SHA-256",
+    "bytes": "canonical_json(manifest with exactly manifest_sha256 omitted)",
+    "field": "manifest_sha256",
+    "no_other_field_may_be_omitted": true
+  },
+  "nested_contracts": {
+    "evaluator_only_provenance": {
+      "required_fields": [
+        "proposal_receipt_sha256",
+        "requested_command_sha256",
+        "arbitration_receipt_sha256",
+        "arbitration_disposition",
+        "final_command_sha256",
+        "anchor_step_receipt_sha256",
+        "plant_receipt_digest"
+      ]
+    },
+    "input_tensors": {
+      "required_fields": [
+        "history_numeric",
+        "history_availability",
+        "history_mode_one_hot",
+        "history_health_one_hot",
+        "history_alarm_lifecycle_one_hot",
+        "history_final_command",
+        "proposed_action"
+      ]
+    },
+    "step_witness": {
+      "required_fields": [
+        "application_step",
+        "final_command_sha256",
+        "hmc_plant_receipt_digest",
+        "shadow_plant_receipt_digest",
+        "shadow_state_sha256"
+      ]
+    },
+    "table_artifact": {
+      "required_fields": [
+        "relative_path",
+        "row_count",
+        "byte_length",
+        "sha256"
+      ]
+    },
+    "trace_artifact": {
+      "required_fields": [
+        "control_trace_record_id",
+        "relative_path",
+        "byte_length",
+        "sha256"
+      ]
+    }
+  },
+  "record_contract_sha256": "04fa1a8bad2220a6d800fd7ddbeb94646b044ef6f1c7005c45a8cae3f26bd3c7",
+  "record_self_hash_rule": {
+    "algorithm": "SHA-256",
+    "bytes": "canonical_json(record with exactly record_sha256 omitted)",
+    "field": "record_sha256",
+    "no_other_field_may_be_omitted": true
+  },
+  "records": {
+    "control_runs": {
+      "enums": {
+        "arbitration_disposition": [
+          "ACCEPTED",
+          "MODIFIED",
+          "REJECTED"
+        ],
+        "terminal_status": [
+          "COMPLETED"
+        ]
+      },
+      "id_field": "control_run_record_id",
+      "identity_domain": "aeolus-forecast-d1-control-run-record-v1",
+      "identity_fields": [
+        "scenario_member_id",
+        "action_id",
+        "anchor_completed_step",
+        "nonce_commitment_sha256",
+        "control_run_id",
+        "hmc_binding_sha256"
+      ],
+      "path": "development-fixture-only/control_runs.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "control_run_record_id",
+        "scenario_member_id",
+        "split_assignment_id",
+        "action_id",
+        "action_command_sha256",
+        "anchor_completed_step",
+        "nonce_commitment_sha256",
+        "control_run_id",
+        "authority_epoch",
+        "hmc_binding_sha256",
+        "hmc_contract_sha256",
+        "observable_topology_sha256",
+        "terminal_status",
+        "control_trace_record_id",
+        "replay_witness_id",
+        "proposal_receipt_sha256",
+        "arbitration_receipt_sha256",
+        "arbitration_disposition",
+        "final_command_sha256",
+        "anchor_step_receipt_sha256",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_control_run_record_v1"
+    },
+    "control_traces": {
+      "id_field": "control_trace_record_id",
+      "identity_domain": "aeolus-forecast-d1-control-trace-record-v1",
+      "identity_fields": [
+        "control_run_id",
+        "control_trace_sha256",
+        "control_trace_footer_sha256"
+      ],
+      "path": "development-fixture-only/control_traces.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "control_trace_record_id",
+        "control_run_id",
+        "relative_trace_path",
+        "byte_length",
+        "control_trace_sha256",
+        "control_trace_footer_sha256",
+        "final_state_sha256",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_control_trace_record_v1"
+    },
+    "families": {
+      "enums": {
+        "family_role": [
+          "HEALTHY",
+          "TREATMENT"
+        ]
+      },
+      "id_field": "family_id",
+      "identity_domain": "aeolus-forecast-d1-family-v1",
+      "identity_fields": [
+        "family_cluster_id",
+        "family_role",
+        "treatment_kind"
+      ],
+      "path": "development-fixture-only/families.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "family_id",
+        "family_cluster_id",
+        "family_role",
+        "treatment_kind",
+        "scenario_member_ids",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_family_v1"
+    },
+    "family_clusters": {
+      "id_field": "family_cluster_id",
+      "identity_domain": "aeolus-forecast-d1-family-cluster-v1",
+      "identity_fields": [
+        "stratum",
+        "generator_contract_sha256",
+        "development_profile_sha256"
+      ],
+      "path": "development-fixture-only/family_clusters.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "family_cluster_id",
+        "stratum",
+        "generator_contract_sha256",
+        "development_profile_sha256",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_family_cluster_v1"
+    },
+    "manifest": {
+      "d1_persisted_value": {
+        "final_set_present": false,
+        "gate_status": "STOP_UNDERPOWERED",
+        "packet_root": "development-fixture-only",
+        "sealed": true,
+        "selection_allowed": false
+      },
+      "id_field": null,
+      "identity_domain": null,
+      "identity_fields": [],
+      "path": "development-fixture-only/manifest.json",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "record_contract_sha256",
+        "hmc_binding_sha256",
+        "alarm_manifest_sha256",
+        "action_catalogue_sha256",
+        "development_profile_sha256",
+        "scenario_sha256",
+        "window_steps",
+        "horizon_steps",
+        "table_artifacts",
+        "trace_artifacts",
+        "packet_root",
+        "gate_status",
+        "selection_allowed",
+        "final_set_present",
+        "sealed",
+        "manifest_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_development_manifest_v1",
+      "self_hash_field": "manifest_sha256"
+    },
+    "replay_witnesses": {
+      "id_field": "replay_witness_id",
+      "identity_domain": "aeolus-forecast-d1-replay-witness-v1",
+      "identity_fields": [
+        "control_trace_record_id",
+        "step_witnesses_sha256",
+        "final_state_sha256"
+      ],
+      "path": "development-fixture-only/replay_witnesses.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "replay_witness_id",
+        "control_run_id",
+        "control_trace_record_id",
+        "transition_count",
+        "step_witnesses",
+        "step_witnesses_sha256",
+        "final_state_sha256",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_replay_witness_v1"
+    },
+    "samples": {
+      "d1_persisted_value": {
+        "split_label": "DEVELOPMENT"
+      },
+      "id_field": "sample_id",
+      "identity_domain": "aeolus-forecast-d1-sample-v1",
+      "identity_fields": [
+        "family_cluster_id",
+        "family_id",
+        "scenario_member_id",
+        "control_run_record_id",
+        "action_id",
+        "anchor_completed_step",
+        "window_steps",
+        "horizon_steps",
+        "input_contract_sha256",
+        "target_contract_sha256"
+      ],
+      "path": "development-fixture-only/samples.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "sample_id",
+        "family_cluster_id",
+        "family_id",
+        "scenario_member_id",
+        "split_assignment_id",
+        "split_label",
+        "control_run_record_id",
+        "replay_witness_id",
+        "action_id",
+        "action_command_sha256",
+        "anchor_snapshot_sha256",
+        "anchor_completed_step",
+        "window_steps",
+        "horizon_steps",
+        "history_steps",
+        "target_steps",
+        "history_completed_times_s",
+        "target_completed_times_s",
+        "input_contract_sha256",
+        "target_contract_sha256",
+        "input_tensors",
+        "target_truth",
+        "evaluator_only_provenance",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_sample_v1"
+    },
+    "scenario_members": {
+      "id_field": "scenario_member_id",
+      "identity_domain": "aeolus-forecast-d1-scenario-member-v1",
+      "identity_fields": [
+        "family_id",
+        "scenario_sha256",
+        "plant_run_id",
+        "profile_manifest_sha256"
+      ],
+      "path": "development-fixture-only/scenario_members.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "scenario_member_id",
+        "family_id",
+        "scenario_path",
+        "scenario_sha256",
+        "plant_run_id",
+        "profile_manifest_sha256",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_scenario_member_v1"
+    },
+    "split_assignments": {
+      "d1_persisted_value": {
+        "split_label": "DEVELOPMENT"
+      },
+      "enums": {
+        "split_label": [
+          "DEVELOPMENT",
+          "TRAIN",
+          "VALIDATION",
+          "FINAL"
+        ]
+      },
+      "id_field": "split_assignment_id",
+      "identity_domain": "aeolus-forecast-d1-split-assignment-v1",
+      "identity_fields": [
+        "family_cluster_id",
+        "split_policy_sha256",
+        "split_label",
+        "rank_hmac_sha256"
+      ],
+      "path": "development-fixture-only/split_assignments.jsonl",
+      "required_fields": [
+        "schema_version",
+        "release_tier",
+        "split_assignment_id",
+        "family_cluster_id",
+        "stratum",
+        "split_label",
+        "split_policy_sha256",
+        "split_key_id",
+        "rank_hmac_sha256",
+        "record_sha256"
+      ],
+      "schema_version": "aeolus_habitat_v2_forecast_split_assignment_v1"
+    }
+  },
+  "release_tier": "DEVELOPMENT_FIXTURE_ONLY",
+  "schema_version": "aeolus_habitat_v2_forecast_development_records_v1",
+  "strictness": {
+    "booleans_in_numeric_positions": "REJECT",
+    "duplicate_json_keys": "REJECT",
+    "identity_mismatch": "REJECT",
+    "missing_fields": "REJECT",
+    "non_finite_numbers": "REJECT",
+    "noncanonical_bytes": "REJECT",
+    "self_hash_mismatch": "REJECT",
+    "unknown_fields": "REJECT"
+  }
+}
