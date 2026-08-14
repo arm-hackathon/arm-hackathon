@@ -1,14 +1,16 @@
 # Habitat V2 forecast data/evaluation design
 
-**Status:** proposed local implementation contract; non-normative and not team-frozen
+**Status:** Alex's historical proposed contract, now integrated as design input for the bounded D1 execution PRD
 
 **Design base:** `ec8a6e07cddcd97915398e5a84d348b30d850c86`
 
 **Observed candidate:** `ed3fd5c949a382ec8ffdb060733990dd00803777`
 
-**Moving HMC candidates inspected:** `6fd307317d7b8ccdb78ba2cf21f5bed3ffd084b5`, `0445af158edbbd7189dcbe7cad8600ca35deddb0`, `50d515a50480ba91a95ff8c8e3c6b65534d39665`
+**Historical HMC candidates inspected:** `6fd307317d7b8ccdb78ba2cf21f5bed3ffd084b5`, `0445af158edbbd7189dcbe7cad8600ca35deddb0`, `50d515a50480ba91a95ff8c8e3c6b65534d39665`
 
-**HMC status:** moving; all `${FINAL_HMC_*}` values below are unresolved bindings
+**Current HMC status:** final reviewed foundation `79d6a718e0d44122a763bb72f9c8ed929f39fd23`, tree `91cea3b4c2334a4ece140bd1bf7144353f52ec0d`. The bounded D1 execution PRD resolves the available `${FINAL_HMC_*}` bindings through production parsers and Git object bytes.
+
+**Execution PRD:** [Habitat V2 Forecast D1 Execution PRD](2026-08-14-habitat-v2-forecast-d1-execution-prd.md)
 
 **Scope:** data and evaluation foundation only
 
@@ -40,7 +42,7 @@ The review used a separate checkout and inspected the following read-only.
 - `src/aeolus/habitat_v2/qualification.py`
 - observability qualification scenarios, evidence and tests
 
-### Moving HMC candidates
+### Historical HMC candidates inspected before final integration
 
 - `contracts/habitat_v2_hmc_v1.json`
 - `src/aeolus/habitat_v2/hmc_contract.py`
@@ -54,7 +56,8 @@ The review used a separate checkout and inspected the following read-only.
 
 The older `6fd3073...` HMC restack was used to enumerate provisional fields.
 The later HMC trace-authority remediation was inspected to identify API and
-identity changes, but no moving head is treated as final.
+identity changes. The subsequent D1 execution work binds this design to the
+reviewed final foundation identified above.
 
 ### Historical reusable patterns
 
@@ -1003,8 +1006,8 @@ The recommended design is decision-complete for review: it defines what the
 data/evaluation implementation must do and how evidence-dependent values are
 selected.
 
-The official data-foundation implementation is **blocked** until the final HMC
-bytes and a separate normal forecast-action catalogue exist. Canonical corpus
-generation additionally requires the scenario/profile packet and custody
-arrangement. No learned-model architecture selection or training is authorised
-by this document.
+The final HMC bytes are now available and the bounded D1 implementation defines
+a separately hashed normal forecast-action catalogue. Full canonical corpus
+generation still requires the large scenario/profile packet and final-set
+custody arrangement. No learned-model architecture selection or training is
+authorised by this document.

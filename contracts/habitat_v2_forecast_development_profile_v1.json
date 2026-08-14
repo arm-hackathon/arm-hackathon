@@ -1,0 +1,50 @@
+{
+  "allowed_top_level_differences": [
+    {
+      "field": "name",
+      "fixture_value": "habitat-v2-forecast-development-occupied-v1",
+      "rule": "exact_replacement",
+      "source_value": "habitat-v2-actuator-feedback-eight-zone"
+    },
+    {
+      "field": "steps",
+      "fixture_value": 24,
+      "rule": "exact_replacement",
+      "source_value": 4
+    },
+    {
+      "field": "fault_profiles",
+      "fixture_value": [],
+      "rule": "replace_with_empty_list",
+      "source_value_sha256": "d58f10a5053439207195cf6d13940271cb5accf02842502798262e644b13d4b9"
+    },
+    {
+      "field": "timeline",
+      "fixture_end_step": 24,
+      "fixture_operating_mode": "occupied",
+      "fixture_start_step": 0,
+      "fixture_value_sha256": "a82060ea5ae06a88b31e28a3db641e3e84263ab71d4ccec2ebe8235400504e93",
+      "rule": "single_occupied_interval_copied_from_source_segment_0_with_end_step_extended",
+      "source_segment_index": 0,
+      "source_value_sha256": "bd378b69c8506c3ae61d279a9d11576d7cda06c778841797bce34d20da2c0d76"
+    }
+  ],
+  "fixture_scenario_path": "scenarios/habitat_v2_forecast_development.json",
+  "fixture_scenario_sha256": "d321f86acddbdc3fb73df47f03367fc7acab0c8cfb6dbd66096d30bef5c0e3e8",
+  "profile_manifest_sha256": "e6748b21735b3fce668ffccc0b820ebf4df5ab61d204bffb540b3b4e612e3fed",
+  "release_tier": "DEVELOPMENT_FIXTURE_ONLY",
+  "schema_version": "aeolus_habitat_v2_forecast_development_profile_v1",
+  "source_scenario_path": "scenarios/habitat_v2_actuator_feedback.json",
+  "source_scenario_sha256": "a9ee8eecdb4a952ef95347edcabb7dad614280eb496877cc9cddf8a5c9f77de7",
+  "unchanged_top_level_fields": [
+    "actuator_feedback",
+    "air_network",
+    "dt_seconds",
+    "equipment",
+    "initial_utility",
+    "schema_version",
+    "sensor_model",
+    "zones"
+  ],
+  "unchanged_top_level_values_sha256": "afb0382aeb2d24f96110658d6fc629cdf0d7f6fda6aeba5214b2fa76704756bc"
+}
