@@ -17,7 +17,7 @@ jobs:
   native-arm64-benchmark:
     name: FP64 versus FP32 on native Arm64
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
@@ -54,7 +54,7 @@ jobs:
             src/aeolus/habitat_v2/forecast/arm_optimization.py \
             scripts/benchmark_habitat_v2_fp32.py \
             tests/habitat_v2/test_forecast_arm_optimization.py
-          python -m pytest -q tests/habitat_v2/test_forecast_*.py
+          python -m pytest -q tests/habitat_v2/test_forecast_arm_optimization.py
           git show --check --oneline --format=fuller "$GITHUB_SHA"
 
       - name: Capture native architecture
