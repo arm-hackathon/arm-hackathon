@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -268,6 +269,93 @@ def _execute_and_stage_pair(
     }
 
 
+def _load_validated_staged_pair(
+    destination: Path,
+    design: Any,
+) -> dict[str, Any]:
+    """Validate and describe one existing pair before a campaign resume."""
+    from .contracts import canonical_json_bytes
+    from .pilot import APPROVED_PROFILE_ACTION_SHA256, APPROVED_ROSTER_SHA256, PilotDesign
+    from .pilot_custody import PAIR_MANIFEST_SCHEMA, validate_pilot_pair
+
+    if type(design) is not PilotDesign or not destination.is_dir():
+        raise PilotCampaignError("resume packet has an invalid destination or design")
+    required_files = {"manifest.json", "records.jsonl", "training.npz"}
+    if {item.name for item in destination.iterdir()} != required_files:
+        raise PilotCampaignError("resume packet has unexpected or missing files")
+    try:
+        raw_records = (destination / "records.jsonl").read_bytes()
+        records = [json.loads(line) for line in raw_records.splitlines()]
+        validate_pilot_pair(design, records)
+        canonical_records = b"".join(
+            canonical_json_bytes(record) + b"\n" for record in records
+        )
+        if raw_records != canonical_records:
+            raise PilotCampaignError("resume packet records are not canonical")
+        manifest_path = destination / "manifest.json"
+        raw_manifest = manifest_path.read_bytes()
+        manifest = json.loads(raw_manifest)
+        declared_manifest_sha256 = manifest.pop("manifest_sha256")
+        if (
+            raw_manifest != canonical_json_bytes({**manifest, "manifest_sha256": declared_manifest_sha256})
+            or declared_manifest_sha256 != hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
+            or manifest
+            != {
+                "schema_version": PAIR_MANIFEST_SCHEMA,
+                "pair_id": destination.name,
+                "record_count": 5,
+                "records_sha256": hashlib.sha256(raw_records).hexdigest(),
+                "roster_sha256": APPROVED_ROSTER_SHA256,
+                "profile_action_sha256": APPROVED_PROFILE_ACTION_SHA256,
+            }
+        ):
+            raise PilotCampaignError("resume packet manifest integrity drifts")
+        training_path = destination / "training.npz"
+        raw_training = training_path.read_bytes()
+        with np.load(training_path, allow_pickle=False) as packet:
+            required_arrays = {
+                "schema_version",
+                "pair_id",
+                "continuation_ids",
+                "cluster_ids",
+                "action_ids",
+                "action_present",
+                "history_numeric_f32",
+                "proposed_action_f32",
+                "targets_f32",
+            }
+            if (
+                set(packet.files) != required_arrays
+                or str(packet["schema_version"].item())
+                != "aeolus_habitat_v2_forecast_training_pair_v1"
+                or str(packet["pair_id"].item()) != destination.name
+                or packet["history_numeric_f32"].shape != (5, 16, 194)
+                or packet["proposed_action_f32"].shape != (5, 27)
+                or packet["targets_f32"].shape != (5, 8, 51)
+                or packet["action_present"].shape != (5,)
+                or not np.isfinite(packet["history_numeric_f32"]).all()
+                or not np.isfinite(packet["proposed_action_f32"]).all()
+                or not np.isfinite(packet["targets_f32"]).all()
+                or packet["continuation_ids"].tolist()
+                != [record["continuation_id"] for record in records]
+                or packet["cluster_ids"].tolist()
+                != [record["cluster_id"] for record in records]
+                or packet["action_ids"].tolist()
+                != [record["action_id"] for record in records]
+            ):
+                raise PilotCampaignError("resume packet training tensor integrity drifts")
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        if isinstance(error, PilotCampaignError):
+            raise
+        raise PilotCampaignError("resume packet cannot be validated") from error
+    return {
+        "pair_id": destination.name,
+        "manifest_sha256": declared_manifest_sha256,
+        "training_packet_sha256": hashlib.sha256(raw_training).hexdigest(),
+        "training_packet_byte_length": len(raw_training),
+    }
+
+
 def run_pilot_campaign(
     repo_root: str | Path,
     design: Any,
@@ -277,6 +365,7 @@ def run_pilot_campaign(
     output_root: str | Path,
     pair_limit: int | None = None,
     worker_count: int = 1,
+    resume: bool = False,
 ) -> dict[str, Any]:
     """Execute the bounded pilot campaign under a passing preflight receipt.
 
@@ -310,10 +399,10 @@ def run_pilot_campaign(
         raise PilotCampaignError("pair limit must be a positive integer")
     if type(worker_count) is not int or worker_count < 1:
         raise PilotCampaignError("worker count must be a positive integer")
+    if type(resume) is not bool:
+        raise PilotCampaignError("resume flag must be a boolean")
     root = Path(repo_root).resolve()
     target = Path(output_root).resolve()
-    if target.exists():
-        raise PilotCampaignError("campaign destination already exists")
 
     def pair_groups():
         continuations = iter(iter_pilot_continuations(design))
@@ -326,15 +415,39 @@ def run_pilot_campaign(
                 raise PilotCampaignError("pilot plan ends with a partial pair")
             yield group
 
-    groups = pair_groups()
+    groups = tuple(pair_groups())
     if pair_limit is not None:
-        groups = islice(groups, pair_limit)
-    payloads = ((str(root), str(target), group) for group in groups)
+        groups = groups[:pair_limit]
+    expected_pair_ids = {group[0].pair_id for group in groups}
+    existing_by_id: dict[str, dict[str, Any]] = {}
+    if target.exists():
+        if not resume:
+            raise PilotCampaignError("campaign destination already exists")
+        if (target / "campaign-manifest.json").exists():
+            raise PilotCampaignError("cannot resume a campaign with a final manifest")
+        for entry in target.iterdir():
+            if not entry.is_dir():
+                raise PilotCampaignError("resume destination has an unexpected root file")
+            packet = _load_validated_staged_pair(entry, design)
+            pair_id = packet["pair_id"]
+            if pair_id not in expected_pair_ids or pair_id in existing_by_id:
+                raise PilotCampaignError("resume destination contains an unexpected pair")
+            existing_by_id[pair_id] = packet
+    elif resume:
+        raise PilotCampaignError("resume destination does not exist")
+
+    missing_groups = [group for group in groups if group[0].pair_id not in existing_by_id]
+    payloads = ((str(root), str(target), group) for group in missing_groups)
     if worker_count == 1:
-        pair_manifests = [_execute_and_stage_pair(payload) for payload in payloads]
+        new_pair_manifests = [_execute_and_stage_pair(payload) for payload in payloads]
     else:
         with ProcessPoolExecutor(max_workers=worker_count) as executor:
-            pair_manifests = list(executor.map(_execute_and_stage_pair, payloads))
+            new_pair_manifests = list(executor.map(_execute_and_stage_pair, payloads))
+    all_pair_manifests = {
+        **existing_by_id,
+        **{item["pair_id"]: item for item in new_pair_manifests},
+    }
+    pair_manifests = [all_pair_manifests[group[0].pair_id] for group in groups]
 
     width = 1 + len(design.action_ids)
     pairs_completed = len(pair_manifests)
