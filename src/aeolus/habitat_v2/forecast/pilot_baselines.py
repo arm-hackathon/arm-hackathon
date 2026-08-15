@@ -132,17 +132,18 @@ def compact_target_history(
     history_numeric_f32: np.ndarray,
     layout: ForecastLayout,
     *,
-    source_available_f32: np.ndarray,
+    operational_available_bool: np.ndarray,
 ) -> np.ndarray:
     """Return causal 51-target estimates from a finite public numeric history.
 
-    Environmental estimates use the arithmetic mean of the two public sensor
-    heads. Airflow and resource estimates use their public operational feedback
-    channels. No target truth, future field, receipt, ID or authority outcome is
-    read here.
+    Environmental estimates average both available public heads, use the sole
+    remaining head when one is unavailable, and reject a row where neither
+    source is available. Airflow and resource estimates require their exact
+    public operational-feedback source. No target truth, future field, receipt,
+    ID or authority outcome is read here.
     """
     history = np.asarray(history_numeric_f32)
-    available = np.asarray(source_available_f32)
+    available = np.asarray(operational_available_bool)
     if (
         history.ndim != 2
         or history.shape[0] not in (4, 8, 16)
@@ -151,19 +152,26 @@ def compact_target_history(
         or not np.isfinite(history).all()
     ):
         raise PilotBaselineError("numeric history must be finite float32[W,194]")
-    if (
-        available.shape != (history.shape[0], TARGET_COUNT)
-        or available.dtype != np.bool_
-        or not available.all()
-    ):
-        raise PilotBaselineError("compact history requires all target-source availability evidence")
+    if available.shape != (history.shape[0], 167) or available.dtype != np.bool_:
+        raise PilotBaselineError(
+            "compact history requires bool[W,167] operational availability evidence"
+        )
 
     output = np.empty((history.shape[0], TARGET_COUNT), dtype=np.float32)
     for target_index, (first, second) in enumerate(_target_source_columns(layout)):
-        output[:, target_index] = (
-            history[:, first]
-            if second is None
-            else (history[:, first] + history[:, second]) / np.float32(2.0)
+        first_available = available[:, first]
+        if second is None:
+            if not first_available.all():
+                raise PilotBaselineError("target source availability is incomplete")
+            output[:, target_index] = history[:, first]
+            continue
+        second_available = available[:, second]
+        if not np.logical_or(first_available, second_available).all():
+            raise PilotBaselineError("target source availability is incomplete")
+        output[:, target_index] = np.where(
+            np.logical_and(first_available, second_available),
+            (history[:, first] + history[:, second]) / np.float32(2.0),
+            np.where(first_available, history[:, first], history[:, second]),
         )
     if not np.isfinite(output).all():
         raise PilotBaselineError("compact target history is non-finite")
@@ -176,7 +184,7 @@ def packet_examples(
     continuation_ids: np.ndarray,
     cluster_ids: np.ndarray,
     action_present: np.ndarray,
-    source_available_f32: np.ndarray,
+    operational_available_bool: np.ndarray,
     history_numeric_f32: np.ndarray,
     proposed_action_f32: np.ndarray,
     targets_f32: np.ndarray,
@@ -190,7 +198,7 @@ def packet_examples(
     identifiers = np.asarray(continuation_ids)
     clusters = np.asarray(cluster_ids)
     present = np.asarray(action_present)
-    available = np.asarray(source_available_f32)
+    available = np.asarray(operational_available_bool)
     histories = np.asarray(history_numeric_f32)
     actions = np.asarray(proposed_action_f32)
     targets = np.asarray(targets_f32)
@@ -199,9 +207,8 @@ def packet_examples(
         or clusters.shape != (5,)
         or present.shape != (5,)
         or present.dtype != np.bool_
-        or available.shape != (5, 16, TARGET_COUNT)
+        or available.shape != (5, 16, 167)
         or available.dtype != np.bool_
-        or not available.all()
         or histories.shape != (5, 16, NUMERIC_FEATURE_COUNT)
         or actions.shape != (5, 27)
         or targets.shape != (5, 8, TARGET_COUNT)
@@ -226,7 +233,7 @@ def packet_examples(
         history = compact_target_history(
             histories[index, -window_steps:],
             layout,
-            source_available_f32=available[index, -window_steps:],
+            operational_available_bool=available[index, -window_steps:],
         )
         examples.append(
             PilotExample(
