@@ -24,7 +24,7 @@ def test_compact_history_uses_only_causal_target_estimators() -> None:
     result = compact_target_history(
         numeric,
         layout,
-        source_available_f32=np.ones((4, 51), dtype=np.bool_),
+        operational_available_bool=np.ones((4, 167), dtype=np.bool_),
     )
 
     assert result.dtype == np.float32
@@ -64,7 +64,7 @@ def test_compact_history_rejects_unbound_or_nonfinite_numeric_history(
         compact_target_history(
             history,
             layout,
-            source_available_f32=np.ones((4, 51), dtype=np.bool_),
+            operational_available_bool=np.ones((4, 167), dtype=np.bool_),
         )
 
 
@@ -81,7 +81,35 @@ def test_compact_history_requires_proven_source_availability() -> None:
         compact_target_history(
             np.zeros((4, 194), dtype=np.float32),
             layout,
-            source_available_f32=np.zeros((4, 51), dtype=np.bool_),
+            operational_available_bool=np.zeros((4, 167), dtype=np.bool_),
+        )
+
+
+
+def test_compact_history_uses_available_sensor_head_and_rejects_no_head() -> None:
+    from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+    from aeolus.habitat_v2.forecast.pilot_baselines import (
+        PilotBaselineError,
+        compact_target_history,
+    )
+    from aeolus.habitat_v2.forecast.projection import forecast_layout
+
+    layout = forecast_layout(load_forecast_contracts(ROOT))
+    numeric = np.zeros((4, 194), dtype=np.float32)
+    numeric[:, 0] = 10.0
+    numeric[:, 40] = 14.0
+    available = np.ones((4, 167), dtype=np.bool_)
+    available[:, 0] = False
+
+    result = compact_target_history(
+        numeric, layout, operational_available_bool=available
+    )
+    assert np.array_equal(result[:, 0], np.full(4, 14.0, dtype=np.float32))
+
+    available[:, 40] = False
+    with pytest.raises(PilotBaselineError, match="availability"):
+        compact_target_history(
+            numeric, layout, operational_available_bool=available
         )
 
 
@@ -101,7 +129,7 @@ def test_packet_examples_slice_maximum_tensors_without_physics_rerun() -> None:
         continuation_ids=np.asarray([f"sample-{index}" for index in range(5)]),
         cluster_ids=np.asarray(["cluster-a"] * 5),
         action_present=np.asarray([False, True, True, True, True]),
-        source_available_f32=np.ones((5, 16, 51), dtype=np.bool_),
+        operational_available_bool=np.ones((5, 16, 167), dtype=np.bool_),
         history_numeric_f32=histories,
         proposed_action_f32=actions,
         targets_f32=targets,
