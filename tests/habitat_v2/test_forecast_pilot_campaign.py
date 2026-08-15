@@ -126,6 +126,45 @@ def test_run_pilot_pair_executes_control_once_and_binds_evidence(tmp_path: Path)
     assert manifest["record_count"] == 5
 
 
+def test_pair_training_packet_persists_compact_trainable_tensors(tmp_path: Path) -> None:
+    import numpy as np
+
+    from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+    from aeolus.habitat_v2.forecast.pilot import (
+        iter_pilot_continuations,
+        load_approved_pilot_design,
+    )
+    from aeolus.habitat_v2.forecast.pilot_campaign import (
+        run_pilot_pair,
+        stage_pair_training_packet,
+    )
+
+    design = load_approved_pilot_design(ROOT)
+    contracts = load_forecast_contracts(ROOT)
+    continuations = iter_pilot_continuations(design)
+    evidence = run_pilot_pair(
+        ROOT,
+        design,
+        contracts,
+        tuple(next(continuations) for _ in range(5)),
+    )
+
+    packet = stage_pair_training_packet(
+        tmp_path / "training.npz", evidence.records, evidence.views
+    )
+
+    assert packet["sample_count"] == 5
+    assert len(packet["sha256"]) == 64
+    with np.load(packet["path"], allow_pickle=False) as saved:
+        assert saved["history_numeric_f32"].shape == (5, 16, 194)
+        assert saved["targets_f32"].shape == (5, 8, 51)
+        assert saved["proposed_action_f32"].shape == (5, 27)
+        assert saved["action_present"].tolist() == [False, True, True, True, True]
+        assert set(saved["cluster_ids"].tolist()) == {evidence.records[0]["cluster_id"]}
+        assert np.isfinite(saved["history_numeric_f32"]).all()
+        assert np.isfinite(saved["targets_f32"]).all()
+
+
 
 def _synthetic_pass_preflight():
     from aeolus.habitat_v2.forecast.pilot import PilotResourcePreflight
@@ -193,8 +232,10 @@ def test_campaign_executes_bounded_pairs_and_writes_manifest(tmp_path: Path) -> 
         preflight=_synthetic_pass_preflight(),
         output_root=tmp_path / "campaign",
         pair_limit=1,
+        worker_count=2,
     )
 
+    assert manifest["worker_count"] == 2
     assert manifest["pairs_completed"] == 1
     assert manifest["hmc_runs_executed"] == 5
     assert manifest["planned_hmc_runs"] == 23_400
@@ -203,3 +244,5 @@ def test_campaign_executes_bounded_pairs_and_writes_manifest(tmp_path: Path) -> 
     assert len(pair_dirs) == 1
     assert (pair_dirs[0] / "records.jsonl").exists()
     assert (pair_dirs[0] / "manifest.json").exists()
+    assert (pair_dirs[0] / "training.npz").exists()
+    assert len(manifest["pair_manifests"][0]["training_packet_sha256"]) == 64
