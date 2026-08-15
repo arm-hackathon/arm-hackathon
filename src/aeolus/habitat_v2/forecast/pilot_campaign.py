@@ -10,6 +10,7 @@ module performs no generation campaign by itself.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -161,6 +162,111 @@ def run_pilot_pair(
     )
 
 
+def stage_pair_training_packet(
+    destination: str | Path,
+    records: tuple[dict[str, Any], ...],
+    views: tuple[tuple[RunView, ...], ...],
+) -> dict[str, Any]:
+    """Persist one compact, trainable maximum-context packet for a matched pair."""
+    path = Path(destination)
+    if path.suffix != ".npz" or not path.parent.is_dir() or path.exists():
+        raise PilotCampaignError("training packet destination must be a new .npz")
+    if len(records) != 5 or len(views) != len(records):
+        raise PilotCampaignError("training packet requires one complete matched pair")
+
+    maximum_views: list[RunView] = []
+    for item in views:
+        selected = [
+            view
+            for view in item
+            if view.window_steps == 16 and view.horizon_steps == 8
+        ]
+        if len(selected) != 1:
+            raise PilotCampaignError("pair lacks an exact maximum training view")
+        maximum_views.append(selected[0])
+
+    histories = np.stack(
+        [view.history.numeric_f32 for view in maximum_views], axis=0
+    ).astype(np.float32, copy=False)
+    targets = np.stack([view.targets_f32 for view in maximum_views], axis=0).astype(
+        np.float32, copy=False
+    )
+    action_present = np.asarray(
+        [view.action_f32 is not None for view in maximum_views], dtype=np.bool_
+    )
+    actions = np.stack(
+        [
+            view.action_f32
+            if view.action_f32 is not None
+            else np.zeros(27, dtype=np.float32)
+            for view in maximum_views
+        ],
+        axis=0,
+    ).astype(np.float32, copy=False)
+    if (
+        histories.shape != (5, 16, 194)
+        or targets.shape != (5, 8, 51)
+        or actions.shape != (5, 27)
+        or not np.isfinite(histories).all()
+        or not np.isfinite(targets).all()
+        or not np.isfinite(actions).all()
+    ):
+        raise PilotCampaignError("training tensors drift from the frozen layout")
+
+    try:
+        with path.open("xb") as stream:
+            np.savez_compressed(
+                stream,
+                schema_version=np.asarray(
+                    "aeolus_habitat_v2_forecast_training_pair_v1"
+                ),
+                pair_id=np.asarray(records[0]["pair_id"]),
+                continuation_ids=np.asarray(
+                    [record["continuation_id"] for record in records]
+                ),
+                cluster_ids=np.asarray([record["cluster_id"] for record in records]),
+                action_ids=np.asarray([record["action_id"] for record in records]),
+                action_present=action_present,
+                history_numeric_f32=histories,
+                proposed_action_f32=actions,
+                targets_f32=targets,
+            )
+    except OSError as error:
+        raise PilotCampaignError("training packet cannot be written") from error
+    raw = path.read_bytes()
+    return {
+        "path": path,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "byte_length": len(raw),
+        "sample_count": len(records),
+    }
+
+
+def _execute_and_stage_pair(
+    payload: tuple[str, str, tuple[PilotContinuation, ...]],
+) -> dict[str, Any]:
+    """Execute one isolated pair worker and write only its own packet directory."""
+    from .contracts import load_forecast_contracts
+    from .pilot import load_approved_pilot_design
+    from .pilot_custody import stage_pair_packet
+
+    root_text, target_text, group = payload
+    root = Path(root_text)
+    target = Path(target_text)
+    design = load_approved_pilot_design(root)
+    evidence = run_pilot_pair(root, design, load_forecast_contracts(root), group)
+    pair_dir = target / evidence.pair_id
+    pair_manifest = stage_pair_packet(pair_dir, design, evidence.records)
+    training_packet = stage_pair_training_packet(
+        pair_dir / "training.npz", evidence.records, evidence.views
+    )
+    return {
+        "pair_id": evidence.pair_id,
+        "manifest_sha256": pair_manifest["manifest_sha256"],
+        "training_packet_sha256": training_packet["sha256"],
+        "training_packet_byte_length": training_packet["byte_length"],
+    }
+
 
 def run_pilot_campaign(
     repo_root: str | Path,
@@ -170,6 +276,7 @@ def run_pilot_campaign(
     preflight: Any,
     output_root: str | Path,
     pair_limit: int | None = None,
+    worker_count: int = 1,
 ) -> dict[str, Any]:
     """Execute the bounded pilot campaign under a passing preflight receipt.
 
@@ -177,7 +284,7 @@ def run_pilot_campaign(
     proves an independently pinned PASS).  This function opens no authority by
     itself; it executes the frozen plan exactly as benchmarked.
     """
-    from hashlib import sha256
+    from concurrent.futures import ProcessPoolExecutor
     from itertools import islice
 
     from .contracts import canonical_json_bytes
@@ -188,7 +295,6 @@ def run_pilot_campaign(
         PilotResourcePreflight,
         iter_pilot_continuations,
     )
-    from .pilot_custody import stage_pair_packet
 
     if type(design) is not PilotDesign or type(contracts) is not ForecastContracts:
         raise PilotCampaignError("campaign requires exact plan and contracts")
@@ -202,35 +308,37 @@ def run_pilot_campaign(
         )
     if pair_limit is not None and (type(pair_limit) is not int or pair_limit < 1):
         raise PilotCampaignError("pair limit must be a positive integer")
+    if type(worker_count) is not int or worker_count < 1:
+        raise PilotCampaignError("worker count must be a positive integer")
     root = Path(repo_root).resolve()
-    target = Path(output_root)
+    target = Path(output_root).resolve()
     if target.exists():
         raise PilotCampaignError("campaign destination already exists")
 
-    continuations = iter(iter_pilot_continuations(design))
+    def pair_groups():
+        continuations = iter(iter_pilot_continuations(design))
+        width = 1 + len(design.action_ids)
+        while True:
+            group = tuple(islice(continuations, width))
+            if not group:
+                return
+            if len(group) != width:
+                raise PilotCampaignError("pilot plan ends with a partial pair")
+            yield group
+
+    groups = pair_groups()
+    if pair_limit is not None:
+        groups = islice(groups, pair_limit)
+    payloads = ((str(root), str(target), group) for group in groups)
+    if worker_count == 1:
+        pair_manifests = [_execute_and_stage_pair(payload) for payload in payloads]
+    else:
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            pair_manifests = list(executor.map(_execute_and_stage_pair, payloads))
+
     width = 1 + len(design.action_ids)
-    pairs_completed = 0
-    runs_executed = 0
-    pair_manifests: list[dict[str, Any]] = []
-    while True:
-        group = tuple(islice(continuations, width))
-        if not group:
-            break
-        if len(group) != width:
-            raise PilotCampaignError("pilot plan ends with a partial pair")
-        evidence = run_pilot_pair(root, design, contracts, group)
-        pair_dir = target / evidence.pair_id
-        pair_manifest = stage_pair_packet(pair_dir, design, evidence.records)
-        pair_manifests.append(
-            {
-                "pair_id": evidence.pair_id,
-                "manifest_sha256": pair_manifest["manifest_sha256"],
-            }
-        )
-        pairs_completed += 1
-        runs_executed += width
-        if pair_limit is not None and pairs_completed >= pair_limit:
-            break
+    pairs_completed = len(pair_manifests)
+    runs_executed = pairs_completed * width
 
     manifest: dict[str, Any] = {
         "schema_version": "aeolus_habitat_v2_forecast_pilot_campaign_manifest_v1",
@@ -238,11 +346,12 @@ def run_pilot_campaign(
         "profile_action_sha256": APPROVED_PROFILE_ACTION_SHA256,
         "preflight_sha256": preflight.preflight_sha256,
         "planned_hmc_runs": preflight.planned_hmc_runs,
+        "worker_count": worker_count,
         "pairs_completed": pairs_completed,
         "hmc_runs_executed": runs_executed,
         "pair_manifests": pair_manifests,
     }
-    manifest["campaign_manifest_sha256"] = sha256(
+    manifest["campaign_manifest_sha256"] = hashlib.sha256(
         canonical_json_bytes(manifest)
     ).hexdigest()
     (target / "campaign-manifest.json").write_bytes(canonical_json_bytes(manifest))
