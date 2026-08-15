@@ -246,3 +246,46 @@ def test_campaign_executes_bounded_pairs_and_writes_manifest(tmp_path: Path) -> 
     assert (pair_dirs[0] / "manifest.json").exists()
     assert (pair_dirs[0] / "training.npz").exists()
     assert len(manifest["pair_manifests"][0]["training_packet_sha256"]) == 64
+
+
+def test_campaign_resume_reuses_validated_packet_and_executes_only_missing_pair(
+    tmp_path: Path,
+) -> None:
+    from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+    from aeolus.habitat_v2.forecast.pilot import load_approved_pilot_design
+    from aeolus.habitat_v2.forecast.pilot_campaign import run_pilot_campaign
+
+    design = load_approved_pilot_design(ROOT)
+    contracts = load_forecast_contracts(ROOT)
+    output_root = tmp_path / "campaign"
+    run_pilot_campaign(
+        ROOT,
+        design,
+        contracts,
+        preflight=_synthetic_pass_preflight(),
+        output_root=output_root,
+        pair_limit=1,
+    )
+    # Mimic an interrupted campaign: completed atomic pair packet, no final manifest.
+    (output_root / "campaign-manifest.json").unlink()
+    original_pair = next(entry for entry in output_root.iterdir() if entry.is_dir())
+    original_manifest_bytes = (original_pair / "manifest.json").read_bytes()
+
+    manifest = run_pilot_campaign(
+        ROOT,
+        design,
+        contracts,
+        preflight=_synthetic_pass_preflight(),
+        output_root=output_root,
+        pair_limit=2,
+        resume=True,
+    )
+
+    pair_dirs = sorted(entry for entry in output_root.iterdir() if entry.is_dir())
+    assert len(pair_dirs) == 2
+    assert (original_pair / "manifest.json").read_bytes() == original_manifest_bytes
+    assert manifest["pairs_completed"] == 2
+    assert manifest["hmc_runs_executed"] == 10
+    assert {item["pair_id"] for item in manifest["pair_manifests"]} == {
+        pair.name for pair in pair_dirs
+    }
