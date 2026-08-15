@@ -1,0 +1,14 @@
+{
+  "amendment_sha256": "51cee40504de1fe6686f27f544d3fa7b9b9c8c2af67cf8376ca77b8840e81982",
+  "authorization": {"approved_by": "Ben", "authorization_scope": "Fresh v2 resource preflight and, only on PASS, sibling pilot generation.", "generation_authorized_if_all_gates_pass": true},
+  "frozen_foundation": {"hmc_is_sole_actuator_authority": true, "pilot_roster_sha256": "9514a25548d95047f3e707d1f2b27c76c3b09378653ecd270cdc9ae2845b06d1", "policy_bytes_sha256": "170f8aeaaf8fb938eecb32106c365bab673133f04515e6fada9b6d4a8d07457b", "policy_path": "docs/plans/2026-08-14-habitat-v2-forecast-statistical-policy-proposal-v1.json", "profile_action_sha256": "535cde8c397b115d5dd0b46c257462527f1e3eedfa3fb8560f02e45520854141"},
+  "locked_out": ["baseline_fit", "baseline_metrics", "timing_selection", "final_set_access", "validation_access", "learned_model_training", "model_artifact", "qualification_claim", "publication"],
+  "new_dataset": {"new_required_array": {"dtype": "bool", "name": "operational_available_bool", "shape": [5, 16, 167]}, "output_path": "out/habitat-v2-forecast-pilot-v2", "planned_hmc_runs": 23400, "training_packet_schema_version": "aeolus_habitat_v2_forecast_training_pair_v2", "worker_count": 8},
+  "post_generation_gate": "Complete custody and manifest validation, then create a separate immutable evaluation/experiment freeze before any real-data baseline access.",
+  "preflight_gate": {"benchmark_hmc_runs": 2, "failure_action": "REFUSE_BEFORE_GENERATION_WITHOUT_SCIENTIFIC_OUTCOME", "must_be_fresh_for_v2_source": true, "required_checks": ["v2_packet_schema_and_mask", "replay_validation", "peak_rss", "artifact_projection", "free_disk_reserve"], "required_verdict": "PASS"},
+  "resource_ceilings": {"campaign_artifact_bytes": 34359738368, "free_disk_reserve_bytes": 21474836480, "machine_hours": 48, "peak_rss_bytes": 4294967296},
+  "schema_version": "aeolus_habitat_v2_forecast_pilot_v2_generation_amendment_v1",
+  "scope": "Generate a new sibling Habitat V2 forecast pilot dataset with availability-aware v2 training packets.",
+  "source": {"commit": "325df1725770c95c19e8b84e15d8b5a262f9fefa", "source_blobs": {"pilot_baselines.py": "7d274bd29bcc8341abaa8a5132df6ce5a0b53df23da0c95c5ef2c562d61f1f04", "pilot_campaign.py": "df40a683a9cf8951f9c331f26b039c71eab069e873a9b74040608c7b60d82e9b", "pilot_custody.py": "0a061264348d9a90090d6ac5d4b2f2c3a187eb9586f3b54253ce556d7e69f245", "pilot_execution.py": "7980b13c998c48c5ca1aa717da3eb46da59511de2b8238fd67331848f72ea6bb"}},
+  "supersession": {"overwrite_prior_dataset": false, "prior_campaign_manifest_bytes_sha256": "7c35a2da3a9f902c2994b8b29332f8fafed40b81c49204c3546a75d2b3f76659", "prior_dataset_path": "out/habitat-v2-forecast-pilot-v1", "prior_dataset_status": "PRESERVED_VALID_V1_NOT_ELIGIBLE_FOR_AVAILABILITY_AWARE_QUALIFIED_FITTING"}
+}
