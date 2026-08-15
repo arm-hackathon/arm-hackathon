@@ -352,6 +352,7 @@ def _execute_lifecycle(
             anchor = {
                 "application_step": application_step,
                 "proposal_receipt": proposal_mapping,
+                "proposed_command": action.command.to_mapping(),
                 "final_command_sha256": arbitration.final_command_sha256,
                 "plant_receipt_digest": step_receipt.plant_receipt_digest,
                 "requested_command_sha256": action.command_sha256,
