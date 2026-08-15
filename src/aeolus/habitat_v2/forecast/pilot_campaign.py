@@ -189,6 +189,10 @@ def stage_pair_training_packet(
     histories = np.stack(
         [view.history.numeric_f32 for view in maximum_views], axis=0
     ).astype(np.float32, copy=False)
+    availability = np.stack(
+        [view.history.status_f32[:, :, 0] == 1.0 for view in maximum_views],
+        axis=0,
+    )
     targets = np.stack([view.targets_f32 for view in maximum_views], axis=0).astype(
         np.float32, copy=False
     )
@@ -206,6 +210,8 @@ def stage_pair_training_packet(
     ).astype(np.float32, copy=False)
     if (
         histories.shape != (5, 16, 194)
+        or availability.shape != (5, 16, 167)
+        or availability.dtype != np.bool_
         or targets.shape != (5, 8, 51)
         or actions.shape != (5, 27)
         or not np.isfinite(histories).all()
@@ -219,7 +225,7 @@ def stage_pair_training_packet(
             np.savez_compressed(
                 stream,
                 schema_version=np.asarray(
-                    "aeolus_habitat_v2_forecast_training_pair_v1"
+                    "aeolus_habitat_v2_forecast_training_pair_v2"
                 ),
                 pair_id=np.asarray(records[0]["pair_id"]),
                 continuation_ids=np.asarray(
@@ -229,6 +235,7 @@ def stage_pair_training_packet(
                 action_ids=np.asarray([record["action_id"] for record in records]),
                 action_present=action_present,
                 history_numeric_f32=histories,
+                operational_available_bool=availability,
                 proposed_action_f32=actions,
                 targets_f32=targets,
             )
@@ -321,15 +328,18 @@ def _load_validated_staged_pair(
                 "action_ids",
                 "action_present",
                 "history_numeric_f32",
+                "operational_available_bool",
                 "proposed_action_f32",
                 "targets_f32",
             }
             if (
                 set(packet.files) != required_arrays
                 or str(packet["schema_version"].item())
-                != "aeolus_habitat_v2_forecast_training_pair_v1"
+                != "aeolus_habitat_v2_forecast_training_pair_v2"
                 or str(packet["pair_id"].item()) != destination.name
                 or packet["history_numeric_f32"].shape != (5, 16, 194)
+                or packet["operational_available_bool"].shape != (5, 16, 167)
+                or packet["operational_available_bool"].dtype != np.bool_
                 or packet["proposed_action_f32"].shape != (5, 27)
                 or packet["targets_f32"].shape != (5, 8, 51)
                 or packet["action_present"].shape != (5,)

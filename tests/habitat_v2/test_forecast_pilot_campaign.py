@@ -156,7 +156,25 @@ def test_pair_training_packet_persists_compact_trainable_tensors(tmp_path: Path)
     assert packet["sample_count"] == 5
     assert len(packet["sha256"]) == 64
     with np.load(packet["path"], allow_pickle=False) as saved:
+        assert saved["schema_version"].item() == "aeolus_habitat_v2_forecast_training_pair_v2"
         assert saved["history_numeric_f32"].shape == (5, 16, 194)
+        assert saved["operational_available_bool"].shape == (5, 16, 167)
+        assert saved["operational_available_bool"].dtype == np.bool_
+        assert np.array_equal(
+            saved["operational_available_bool"],
+            np.stack(
+                [
+                    next(
+                        view
+                        for view in run_views
+                        if view.window_steps == 16 and view.horizon_steps == 8
+                    ).history.status_f32[:, :, 0]
+                    == 1.0
+                    for run_views in evidence.views
+                ],
+                axis=0,
+            ),
+        )
         assert saved["targets_f32"].shape == (5, 8, 51)
         assert saved["proposed_action_f32"].shape == (5, 27)
         assert saved["action_present"].tolist() == [False, True, True, True, True]
