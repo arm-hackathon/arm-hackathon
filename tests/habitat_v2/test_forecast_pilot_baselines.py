@@ -21,7 +21,11 @@ def test_compact_history_uses_only_causal_target_estimators() -> None:
     numeric[:, 130] = (1.0, 2.0, 3.0, 4.0)
     numeric[:, 164] = (0.1, 0.2, 0.3, 0.4)
 
-    result = compact_target_history(numeric, layout)
+    result = compact_target_history(
+        numeric,
+        layout,
+        source_available_f32=np.ones((4, 51), dtype=np.bool_),
+    )
 
     assert result.dtype == np.float32
     assert result.shape == (4, 51)
@@ -57,7 +61,28 @@ def test_compact_history_rejects_unbound_or_nonfinite_numeric_history(
 
     layout = forecast_layout(load_forecast_contracts(ROOT))
     with pytest.raises(PilotBaselineError):
-        compact_target_history(history, layout)
+        compact_target_history(
+            history,
+            layout,
+            source_available_f32=np.ones((4, 51), dtype=np.bool_),
+        )
+
+
+def test_compact_history_requires_proven_source_availability() -> None:
+    from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+    from aeolus.habitat_v2.forecast.pilot_baselines import (
+        PilotBaselineError,
+        compact_target_history,
+    )
+    from aeolus.habitat_v2.forecast.projection import forecast_layout
+
+    layout = forecast_layout(load_forecast_contracts(ROOT))
+    with pytest.raises(PilotBaselineError, match="availability"):
+        compact_target_history(
+            np.zeros((4, 194), dtype=np.float32),
+            layout,
+            source_available_f32=np.zeros((4, 51), dtype=np.bool_),
+        )
 
 
 def test_packet_examples_slice_maximum_tensors_without_physics_rerun() -> None:
@@ -76,6 +101,7 @@ def test_packet_examples_slice_maximum_tensors_without_physics_rerun() -> None:
         continuation_ids=np.asarray([f"sample-{index}" for index in range(5)]),
         cluster_ids=np.asarray(["cluster-a"] * 5),
         action_present=np.asarray([False, True, True, True, True]),
+        source_available_f32=np.ones((5, 16, 51), dtype=np.bool_),
         history_numeric_f32=histories,
         proposed_action_f32=actions,
         targets_f32=targets,
@@ -92,6 +118,21 @@ def test_packet_examples_slice_maximum_tensors_without_physics_rerun() -> None:
     assert np.all(examples[0].history_f32[:, 0] == 12.0)
     assert np.array_equal(examples[4].action_f32, actions[4])
     assert np.array_equal(examples[3].targets_f32, targets[3, :2])
+
+
+def test_archive_loader_refuses_packets_without_availability_evidence() -> None:
+    from aeolus.habitat_v2.forecast.pilot_baselines import (
+        PilotBaselineError,
+        load_validated_pilot_dataset,
+    )
+
+    with pytest.raises(PilotBaselineError, match="availability evidence"):
+        load_validated_pilot_dataset(
+            ROOT,
+            ROOT / "out/habitat-v2-forecast-pilot-v1",
+            window_steps=4,
+            horizon_steps=2,
+        )
 
 
 def test_compact_ridge_features_blind_actions_and_fit_a_known_relation() -> None:

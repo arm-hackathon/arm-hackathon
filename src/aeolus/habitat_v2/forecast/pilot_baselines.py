@@ -8,8 +8,6 @@ module consumes only the completed, custody-validated pilot packet tensors.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import hashlib
-import json
 from pathlib import Path
 from typing import Final
 
@@ -20,6 +18,12 @@ from .projection import ForecastLayout
 
 TARGET_COUNT: Final = 51
 NUMERIC_FEATURE_COUNT: Final = 194
+PILOT_INPUT_MANIFEST_SHA256: Final = (
+    "379c8607c929b716f0bffb7343fefdab384bdfb35a8a9ccfcdd55c8dc60f377f"
+)
+PILOT_TARGET_MANIFEST_SHA256: Final = (
+    "93f064cabd78758c9b0dd665510acfa101f03da6f717764d506bc3624eec283e"
+)
 _ENVIRONMENT_FIELDS: Final = frozenset(
     {
         "temperature_k",
@@ -71,8 +75,15 @@ def _readonly_f32(value: np.ndarray) -> np.ndarray:
 
 
 def _target_source_columns(layout: ForecastLayout) -> tuple[tuple[int, int | None], ...]:
-    if type(layout) is not ForecastLayout:
-        raise PilotBaselineError("compact history requires the exact forecast layout")
+    if (
+        type(layout) is not ForecastLayout
+        or (
+            layout.input_manifest_sha256,
+            layout.target_manifest_sha256,
+        )
+        != (PILOT_INPUT_MANIFEST_SHA256, PILOT_TARGET_MANIFEST_SHA256)
+    ):
+        raise PilotBaselineError("compact history requires the exact frozen forecast layout")
     operational = layout.operational_descriptors
     targets = layout.target_descriptors
     if len(operational) != 167 or len(targets) != TARGET_COUNT:
@@ -118,7 +129,10 @@ def _target_source_columns(layout: ForecastLayout) -> tuple[tuple[int, int | Non
 
 
 def compact_target_history(
-    history_numeric_f32: np.ndarray, layout: ForecastLayout
+    history_numeric_f32: np.ndarray,
+    layout: ForecastLayout,
+    *,
+    source_available_f32: np.ndarray,
 ) -> np.ndarray:
     """Return causal 51-target estimates from a finite public numeric history.
 
@@ -128,6 +142,7 @@ def compact_target_history(
     read here.
     """
     history = np.asarray(history_numeric_f32)
+    available = np.asarray(source_available_f32)
     if (
         history.ndim != 2
         or history.shape[0] not in (4, 8, 16)
@@ -136,6 +151,12 @@ def compact_target_history(
         or not np.isfinite(history).all()
     ):
         raise PilotBaselineError("numeric history must be finite float32[W,194]")
+    if (
+        available.shape != (history.shape[0], TARGET_COUNT)
+        or available.dtype != np.bool_
+        or not available.all()
+    ):
+        raise PilotBaselineError("compact history requires all target-source availability evidence")
 
     output = np.empty((history.shape[0], TARGET_COUNT), dtype=np.float32)
     for target_index, (first, second) in enumerate(_target_source_columns(layout)):
@@ -155,6 +176,7 @@ def packet_examples(
     continuation_ids: np.ndarray,
     cluster_ids: np.ndarray,
     action_present: np.ndarray,
+    source_available_f32: np.ndarray,
     history_numeric_f32: np.ndarray,
     proposed_action_f32: np.ndarray,
     targets_f32: np.ndarray,
@@ -168,6 +190,7 @@ def packet_examples(
     identifiers = np.asarray(continuation_ids)
     clusters = np.asarray(cluster_ids)
     present = np.asarray(action_present)
+    available = np.asarray(source_available_f32)
     histories = np.asarray(history_numeric_f32)
     actions = np.asarray(proposed_action_f32)
     targets = np.asarray(targets_f32)
@@ -176,6 +199,9 @@ def packet_examples(
         or clusters.shape != (5,)
         or present.shape != (5,)
         or present.dtype != np.bool_
+        or available.shape != (5, 16, TARGET_COUNT)
+        or available.dtype != np.bool_
+        or not available.all()
         or histories.shape != (5, 16, NUMERIC_FEATURE_COUNT)
         or actions.shape != (5, 27)
         or targets.shape != (5, 8, TARGET_COUNT)
@@ -197,7 +223,11 @@ def packet_examples(
 
     examples: list[PilotExample] = []
     for index in range(5):
-        history = compact_target_history(histories[index, -window_steps:], layout)
+        history = compact_target_history(
+            histories[index, -window_steps:],
+            layout,
+            source_available_f32=available[index, -window_steps:],
+        )
         examples.append(
             PilotExample(
                 sample_id=str(identifiers[index]),
@@ -218,101 +248,17 @@ def load_validated_pilot_dataset(
     window_steps: int,
     horizon_steps: int,
 ) -> ValidatedPilotDataset:
-    """Materialise a timing view only after validating the complete campaign.
+    """Refuse archive materialisation until availability evidence is frozen.
 
-    This is intentionally read-only. It reuses the campaign's fail-closed pair
-    validator for every packet, checks the self-hashed campaign manifest, and
-    refuses incomplete/bounded campaigns.
+    The current packet schema stores numeric values but not the status tensors
+    needed to distinguish an observed zero from unavailable telemetry. This
+    guard makes that missing evidence a visible data-contract blocker.
     """
-    from .contracts import canonical_json_bytes, load_forecast_contracts
-    from .pilot import load_approved_pilot_design
-    from .pilot_campaign import _load_validated_staged_pair
-    from .projection import forecast_layout
-
     if window_steps not in (4, 8, 16) or horizon_steps not in (2, 4, 8):
         raise PilotBaselineError("timing view is outside the approved grid")
-    root = Path(repo_root).resolve()
-    output = Path(campaign_root).resolve()
-    manifest_path = output / "campaign-manifest.json"
-    try:
-        raw_manifest = manifest_path.read_bytes()
-        manifest = json.loads(raw_manifest)
-        declared = manifest.pop("campaign_manifest_sha256")
-    except (OSError, KeyError, json.JSONDecodeError) as error:
-        raise PilotBaselineError("campaign manifest cannot be loaded") from error
-    if (
-        raw_manifest
-        != canonical_json_bytes({**manifest, "campaign_manifest_sha256": declared})
-        or type(declared) is not str
-        or declared != hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
-        or set(manifest)
-        != {
-            "schema_version",
-            "roster_sha256",
-            "profile_action_sha256",
-            "preflight_sha256",
-            "planned_hmc_runs",
-            "worker_count",
-            "pairs_completed",
-            "hmc_runs_executed",
-            "pair_manifests",
-        }
-        or manifest["schema_version"]
-        != "aeolus_habitat_v2_forecast_pilot_campaign_manifest_v1"
-        or manifest["pairs_completed"] != 4680
-        or manifest["hmc_runs_executed"] != 23400
-        or len(manifest["pair_manifests"]) != 4680
-    ):
-        raise PilotBaselineError("campaign manifest is not the complete frozen campaign")
-
-    design = load_approved_pilot_design(root)
-    layout = forecast_layout(load_forecast_contracts(root))
-    expected_clusters = {cluster.cluster_id for cluster in design.clusters}
-    examples: list[PilotExample] = []
-    seen_pairs: set[str] = set()
-    seen_samples: set[str] = set()
-    for declared_pair in manifest["pair_manifests"]:
-        if not isinstance(declared_pair, dict) or set(declared_pair) != {
-            "pair_id",
-            "manifest_sha256",
-            "training_packet_sha256",
-            "training_packet_byte_length",
-        }:
-            raise PilotBaselineError("campaign pair manifest is malformed")
-        pair_id = declared_pair["pair_id"]
-        if type(pair_id) is not str or pair_id in seen_pairs:
-            raise PilotBaselineError("campaign pair identity is malformed or duplicated")
-        seen_pairs.add(pair_id)
-        validated = _load_validated_staged_pair(output / pair_id, design)
-        if validated != declared_pair:
-            raise PilotBaselineError("campaign pair record drifts from validated packet")
-        try:
-            with np.load(output / pair_id / "training.npz", allow_pickle=False) as packet:
-                pair_examples = packet_examples(
-                    continuation_ids=packet["continuation_ids"],
-                    cluster_ids=packet["cluster_ids"],
-                    action_present=packet["action_present"],
-                    history_numeric_f32=packet["history_numeric_f32"],
-                    proposed_action_f32=packet["proposed_action_f32"],
-                    targets_f32=packet["targets_f32"],
-                    layout=layout,
-                    window_steps=window_steps,
-                    horizon_steps=horizon_steps,
-                )
-        except (OSError, ValueError, KeyError) as error:
-            raise PilotBaselineError("validated packet tensors cannot be loaded") from error
-        for example in pair_examples:
-            if example.cluster_id not in expected_clusters or example.sample_id in seen_samples:
-                raise PilotBaselineError("dataset cluster/sample identity drifts")
-            seen_samples.add(example.sample_id)
-            examples.append(example)
-    if len(examples) != 23400 or {item.cluster_id for item in examples} != expected_clusters:
-        raise PilotBaselineError("complete campaign examples do not cover the frozen design")
-    return ValidatedPilotDataset(
-        campaign_manifest_sha256=declared,
-        window_steps=window_steps,
-        horizon_steps=horizon_steps,
-        examples=tuple(examples),
+    raise PilotBaselineError(
+        "campaign packets omit target-source availability evidence; "
+        "a provenance-bound availability artifact is required before loading"
     )
 
 
