@@ -71,7 +71,7 @@ def test_resume_preserves_existing_custody_validated_output_and_uses_exact_allow
     launcher._generate_or_resume_corpus(ROOT, corpus, design=design, contracts=contracts, preflight=preflight, allowed_cluster_ids=split.authorized_cluster_ids, runner=runner)
     assert sentinel.exists()
     assert received["resume"] is True
-    assert received["allowed_cluster_ids"] == split.authorized_cluster_ids
+    assert "allowed_cluster_ids" not in received
     assert received["pair_limit"] is None
 
 
@@ -109,3 +109,27 @@ def test_cal_metric_and_strict_gate_boundary() -> None:
     assert good["aggregate_normalized_mae"] == pytest.approx(0.5)
     assert launcher._cal_gate(good, persistence)
     assert not launcher._cal_gate(tied, persistence)
+
+
+def test_qualification_custody_cli_has_no_validation_escape_hatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    import runpy
+    monkeypatch.setattr(sys, "argv", ["qual_v2_prepare.py", "custody", "--help"])
+    with pytest.raises(SystemExit):
+        runpy.run_path(str(ROOT / "scripts" / "qual_v2_prepare.py"), run_name="__main__")
+
+
+def test_runtime_guard_refuses_existing_lock_without_deleting_it(tmp_path: Path) -> None:
+    from aeolus.habitat_v2.forecast.qualified_runtime_guard import QualifiedRuntimeGuard, QualifiedRuntimeGuardError, QualifiedRuntimeLimits
+    lock = tmp_path / ".aeolus-v2-qualified.lock"; lock.write_text("do not delete", encoding="utf-8")
+    guard = QualifiedRuntimeGuard(tmp_path, QualifiedRuntimeLimits(1, 1, 1, 82, 1))
+    with pytest.raises(QualifiedRuntimeGuardError, match="exclusive"):
+        guard.__enter__()
+    assert lock.read_text(encoding="utf-8") == "do not delete"
+
+
+def test_caller_selected_cluster_roster_is_refused_before_pair_execution(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from aeolus.habitat_v2.forecast import pilot_campaign
+    design = load_approved_pilot_design(ROOT); contracts = load_forecast_contracts(ROOT)
+    monkeypatch.setattr(pilot_campaign, "run_pilot_pair", lambda *args: pytest.fail("must not execute HMC"))
+    with pytest.raises(PilotCampaignError, match="unknown roster IDs"):
+        pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=launcher._load_pinned_resource_preflight(ROOT), output_root=tmp_path, allowed_cluster_ids=frozenset({"validation"}), pair_limit=1, worker_count=1, resume=False)

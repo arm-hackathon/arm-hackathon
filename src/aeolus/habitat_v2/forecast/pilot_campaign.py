@@ -396,7 +396,7 @@ def run_pilot_campaign(
     *,
     preflight: Any,
     output_root: str | Path,
-    allowed_cluster_ids: frozenset[str],
+    allowed_cluster_ids: frozenset[str] | None = None,
     pair_limit: int | None = None,
     worker_count: int = 1,
     resume: bool = False,
@@ -437,18 +437,31 @@ def run_pilot_campaign(
         or any(character not in "0123456789abcdef" for character in preflight.v2_binding_sha256)
     ):
         raise PilotCampaignError("campaign requires a loaded v2 preflight binding")
+    # This is a qualification-only actuator boundary.  The roster is derived
+    # from the signed split here; callers cannot nominate any cluster, notably
+    # not validation/final IDs, before grouping or materialization.
+    from .qualification_split import build_qualification_split, load_qualified_protocol
+    root = Path(repo_root).resolve()
+    sealed = build_qualification_split(design, load_qualified_protocol(root))
+    derived_cluster_ids = sealed.authorized_cluster_ids
+    if allowed_cluster_ids is not None:
+        # Compatibility input only: it proves no authority.  Any caller-selected
+        # variation is rejected before continuation grouping or materialization.
+        validation = allowed_cluster_ids & frozenset(sealed.validation_cluster_ids)
+        if validation:
+            raise PilotCampaignError("validation/final cluster IDs are forbidden before planning")
+        if allowed_cluster_ids != derived_cluster_ids:
+            raise PilotCampaignError("campaign received unknown roster IDs; sealed split is derived internally")
+    allowed_cluster_ids = derived_cluster_ids
     approved_cluster_ids = frozenset(cluster.cluster_id for cluster in design.clusters)
-    if not isinstance(allowed_cluster_ids, frozenset) or not allowed_cluster_ids:
-        raise PilotCampaignError("explicit non-empty frozen allowed_cluster_ids are required")
-    if allowed_cluster_ids - approved_cluster_ids:
-        raise PilotCampaignError("allowed_cluster_ids contain unknown roster IDs")
+    if not allowed_cluster_ids or allowed_cluster_ids - approved_cluster_ids or allowed_cluster_ids & frozenset(sealed.validation_cluster_ids):
+        raise PilotCampaignError("sealed qualification roster is invalid or includes locked validation IDs")
     if pair_limit is not None and (type(pair_limit) is not int or pair_limit < 1):
         raise PilotCampaignError("pair limit must be a positive integer")
     if type(worker_count) is not int or worker_count < 1:
         raise PilotCampaignError("worker count must be a positive integer")
     if type(resume) is not bool:
         raise PilotCampaignError("resume flag must be a boolean")
-    root = Path(repo_root).resolve()
     target = Path(output_root).resolve()
 
     def pair_groups():
