@@ -141,7 +141,11 @@ def _sha256(value: bytes) -> str:
 
 def _readonly_f32(value: object, *, shape: tuple[int, ...], label: str) -> np.ndarray:
     array = np.asarray(value)
-    if array.dtype != np.float32 or array.shape != shape or not np.isfinite(array).all():
+    if (
+        array.dtype != np.float32
+        or array.shape != shape
+        or not np.isfinite(array).all()
+    ):
         raise LiveForecastError(f"{label} must be finite float32 with shape {shape}")
     result = np.array(array, dtype=np.float32, copy=True, order="C")
     result.setflags(write=False)
@@ -149,22 +153,26 @@ def _readonly_f32(value: object, *, shape: tuple[int, ...], label: str) -> np.nd
 
 
 def load_live_ridge_model(
-    source: str | Path,
+    source: str | Path | bytes,
     *,
     expected_sha256: str | None = None,
 ) -> LiveForecastModel:
     """Load the exact action-aware demo winner and reject identity or authority drift."""
-    path = Path(source)
-    try:
-        raw = path.read_bytes()
-    except OSError as error:
-        raise LiveForecastError("live ridge artifact is unreadable") from error
+    if type(source) is bytes:
+        raw = source
+    else:
+        try:
+            raw = Path(source).read_bytes()
+        except OSError as error:
+            raise LiveForecastError("live ridge artifact is unreadable") from error
     actual_sha256 = _sha256(raw)
     if expected_sha256 is not None:
         if not _is_sha256(expected_sha256):
             raise LiveForecastError("expected model identity must be SHA-256")
         if actual_sha256 != expected_sha256:
-            raise LiveForecastError("live ridge artifact SHA-256 does not match receipt")
+            raise LiveForecastError(
+                "live ridge artifact SHA-256 does not match receipt"
+            )
 
     try:
         with np.load(io.BytesIO(raw), allow_pickle=False) as value:
@@ -193,9 +201,9 @@ def load_live_ridge_model(
     feature_mean, feature_scale, target_mean, coefficient = arrays
     feature_count = feature_mean.shape[0] if feature_mean.ndim == 1 else -1
     target_count = FORECAST_HORIZON_STEPS * TARGET_COUNT
-    expected_feature_count = FORECAST_WINDOW_STEPS * (
-        194 + 167 * 5 + 4 + 4 + 287 * 4
-    ) + ACTION_COUNT
+    expected_feature_count = (
+        FORECAST_WINDOW_STEPS * (194 + 167 * 5 + 4 + 4 + 287 * 4) + ACTION_COUNT
+    )
     if (
         schema_version not in {_MODEL_SCHEMA, _MODEL_SCHEMA_FP32}
         or release_tier != DEMO_RELEASE_TIER
@@ -215,7 +223,9 @@ def load_live_ridge_model(
         or (feature_scale <= 0.0).any()
         or any(not np.isfinite(array).all() for array in arrays)
     ):
-        raise LiveForecastError("live ridge artifact shape or contract identity is invalid")
+        raise LiveForecastError(
+            "live ridge artifact shape or contract identity is invalid"
+        )
     expected_dtype = (
         np.dtype(np.float32)
         if schema_version == _MODEL_SCHEMA_FP32
@@ -266,7 +276,9 @@ def run_live_forecast_demo(
 ) -> LiveForecastResult:
     """Forecast all catalogue actions at step 16, then let HMC execute one caller choice."""
     if type(model) is not LiveForecastModel or model.actuator_authority is not False:
-        raise LiveForecastError("live run requires an exact forecast-only model wrapper")
+        raise LiveForecastError(
+            "live run requires an exact forecast-only model wrapper"
+        )
     root = Path(repo_root).resolve()
     bundle = load_forecast_contracts(root)
     actions = tuple(bundle.actions)
@@ -379,7 +391,10 @@ def run_live_forecast_demo(
             shadow,
             arbitration.final_command,
         )
-        if _sha256(canonical_json_bytes(shadow_result.receipt)) != step_receipt.plant_receipt_digest:
+        if (
+            _sha256(canonical_json_bytes(shadow_result.receipt))
+            != step_receipt.plant_receipt_digest
+        ):
             raise LiveForecastError("live-demo shadow plant diverges from HMC")
         shadow = shadow_result.state
         states[shadow.step] = shadow
