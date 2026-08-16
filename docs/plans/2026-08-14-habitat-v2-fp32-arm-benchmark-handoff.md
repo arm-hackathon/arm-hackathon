@@ -22,6 +22,10 @@ Compare the existing FP64 action-aware ridge model with an FP32 version using id
 - The model loader accepts either the original FP64 schema or the explicit FP32 schema and preserves the stored runtime dtype.
 - Ridge inference uses the model's declared FP64 or FP32 dtype rather than silently converting FP32 back to FP64.
 - The converter records exact source and candidate hashes, compressed file bytes and raw numeric-array bytes.
+- Regeneration guarantees canonical uncompressed `.npy` payloads and equal arrays,
+  not cross-platform identity of the DEFLATE-compressed `.npz` container.
+- The committed FP32 `.npz` is frozen benchmark evidence bound by its recorded
+  byte length and SHA-256; native runs benchmark those exact bytes without rewriting them.
 - The FP32 candidate halves raw model-array bytes by construction.
 - A real live-demo comparison checks all four action-conditioned forecasts against the predeclared numerical gate.
 - The benchmark alternates FP64-first and FP32-first execution order over the same captured live-demo history and actions.
