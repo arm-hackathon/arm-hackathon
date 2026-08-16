@@ -89,6 +89,8 @@ def build_v2_source_manifest(repo_root: str | Path) -> dict[str, str]:
         "docs/plans/2026-08-15-habitat-v2-forecast-pilot-v2-generation-amendment-v1.json",
         "docs/plans/2026-08-16-habitat-v2-qualified-model-protocol-v1.json",
         "docs/plans/2026-08-16-habitat-v2-qualified-model-protocol-v2-amendment-v1.json",
+        "scripts/run_v2_fitcal_qualified.py",
+        "scripts/qual_v2_prepare.py",
     )
     try:
         result = subprocess.run(

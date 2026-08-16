@@ -30,7 +30,10 @@ from aeolus.habitat_v2.forecast.pilot import (
     load_approved_pilot_design,
 )
 from aeolus.habitat_v2.forecast.pilot_baselines import compact_target_history
-from aeolus.habitat_v2.forecast.pilot_benchmark import build_v2_source_manifest
+from aeolus.habitat_v2.forecast.pilot_benchmark import V2_RESOURCE_CEILINGS, build_v2_source_manifest
+from aeolus.habitat_v2.forecast.qualified_runtime_guard import (
+    QualifiedRuntimeGuard, QualifiedRuntimeGuardError, QualifiedRuntimeLimits,
+)
 from aeolus.habitat_v2.forecast.pilot_campaign import run_pilot_campaign
 from aeolus.habitat_v2.forecast.projection import forecast_layout
 from aeolus.habitat_v2.forecast.qualification_split import (
@@ -43,7 +46,7 @@ AMENDMENT_PATH = Path("docs/plans/2026-08-16-habitat-v2-qualified-model-protocol
 PREFLIGHT_RELATIVE = Path("out/helios-qual-v2/v2-resource-preflight-real.json")
 PREFLIGHT_SHA256 = "590bdca9a09bcfe5b527ea295d50f4fefc45dd65250e92eca57af5cc36b85420"
 PREFLIGHT_BYTES_SHA256 = "01c0e18141deca4a4e94124a08f60bf45b3a51b3ddacfb87a746ef1fc9e17147"
-SOURCE_PREFLIGHT_RELATIVE = Path("out/helios-qual-v2/v2-protocol-preflight-qualified-e66691b.json")
+SOURCE_PREFLIGHT_RELATIVE = Path("out/helios-qual-v2/v2-protocol-preflight-qualified-w1-final3.json")
 
 FIT_CLUSTERS = 36
 CAL_CLUSTERS = 12
@@ -153,15 +156,14 @@ def _assert_source_provenance(root: Path, protocol: Mapping[str, Any], amendment
     sealed_commit = receipt.get("source_commit")
     if type(sealed_commit) is not str:
         raise QualifiedLaunchError("source preflight has no sealed source commit")
+    if commit != sealed_commit:
+        raise QualifiedLaunchError("current HEAD is not the exact sealed source commit")
     try:
-        descendant = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", sealed_commit, commit],
-            cwd=root, check=False, capture_output=True,
-        ).returncode == 0
-    except OSError as error:
-        raise QualifiedLaunchError("cannot verify sealed source ancestry") from error
-    if not descendant:
-        raise QualifiedLaunchError("current commit is not a descendant of sealed source preflight")
+        dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=all"], cwd=root, text=True)
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise QualifiedLaunchError("cannot verify clean sealed source worktree") from error
+    if dirty:
+        raise QualifiedLaunchError("sealed launcher requires an exactly clean committed worktree")
     if receipt.get("source_manifest") != build_v2_source_manifest(root):
         raise QualifiedLaunchError("current source manifest differs from sealed preflight")
     return commit
@@ -257,6 +259,7 @@ def _generate_or_resume_corpus(
     preflight: PilotResourcePreflight,
     allowed_cluster_ids: frozenset[str],
     runner: Callable[..., Mapping[str, Any]] = run_pilot_campaign,
+    health_check: Callable[[str], None] | None = None,
 ) -> None:
     """Resume validated pair directories only; bad partial artifacts are retained and fail."""
     if (corpus / "campaign-manifest.json").exists():
@@ -264,11 +267,10 @@ def _generate_or_resume_corpus(
         return
     # The campaign's resume validator verifies every existing pair before HMC.
     # It never deletes a malformed directory; validation failure is terminal.
-    runner(
-        root, design, contracts, preflight=preflight, output_root=corpus,
-        allowed_cluster_ids=allowed_cluster_ids, pair_limit=None, worker_count=1,
-        resume=corpus.exists(),
-    )
+    if health_check: health_check("before-corpus-generation")
+    runner(root, design, contracts, preflight=preflight, output_root=corpus,
+           pair_limit=None, worker_count=1, resume=corpus.exists())
+    if health_check: health_check("after-corpus-generation")
     _verify_campaign_manifest(corpus, allowed_cluster_ids)
 
 
@@ -301,12 +303,15 @@ def _verify_exact_custody(root: Path, corpus: Path, split: Any, protocol: Mappin
     return receipt
 
 
-def _load_authorized_arrays(corpus: Path, allowed_cluster_ids: frozenset[str]) -> CorpusArrays:
-    packets = sorted(corpus.glob("*/training.npz"))
-    if len(packets) != AUTHORIZED_PACKETS:
+def _load_authorized_arrays(corpus: Path, allowed_cluster_ids: frozenset[str], custody: Mapping[str, Any]) -> CorpusArrays:
+    packets = [Path(path) for split in ("fit", "cal") for path in custody["splits"][split]["packet_paths"]]
+    expected_hashes = [digest for split in ("fit", "cal") for digest in custody["splits"][split]["packet_sha256s"]]
+    if len(packets) != AUTHORIZED_PACKETS or len(expected_hashes) != len(packets):
         raise QualifiedLaunchError("training requires exact authorized packet count")
     rows: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]] = []
-    for path in packets:
+    for path, expected_hash in zip(packets, expected_hashes, strict=True):
+        if path.parent.parent != corpus or _sha_bytes(path.read_bytes()) != expected_hash:
+            raise QualifiedLaunchError("custody ledger packet path/hash drift")
         with np.load(path, allow_pickle=False) as packet:
             cluster_ids = packet["cluster_ids"].tolist()
             if set(cluster_ids) - allowed_cluster_ids:
@@ -407,8 +412,8 @@ def _determinism_probe(**kwargs: Any) -> dict[str, Any]:
     return {"measured": True, "receipt_equal": one == two, "checkpoint_sha256_equal": _sha_bytes(one_bytes) == _sha_bytes(two_bytes), "first": one, "second": two}
 
 
-def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, protocol: Mapping[str, Any]) -> dict[str, Any]:
-    arrays = _load_authorized_arrays(corpus, split.authorized_cluster_ids)
+def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, protocol: Mapping[str, Any], custody: Mapping[str, Any]) -> dict[str, Any]:
+    arrays = _load_authorized_arrays(corpus, split.authorized_cluster_ids, custody)
     labels = np.asarray([cluster in split.fit_cluster_ids for cluster in arrays.clusters])
     if int(labels.sum()) != FIT_EXAMPLES or int((~labels).sum()) != CAL_EXAMPLES:
         raise QualifiedLaunchError("FIT/CAL example assignment drift")
@@ -426,13 +431,17 @@ def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, 
     persistence = _metrics(_persistence_predictions(cal, layout), cal.targets, scale)
     probe = _determinism_probe(**aware_args)
     if not probe["receipt_equal"] or not probe["checkpoint_sha256_equal"]: raise QualifiedLaunchError("measured determinism probe failed")
-    result = {"schema_version": "aeolus_habitat_v2_fitcal_training_receipt_v1", "protocol_sha256": protocol["protocol_sha256"], "validation_accessed": False, "fit_target_mean": mean.tolist(), "fit_target_scale": scale.tolist(), "models": {"action_aware": aware, "action_blind": blind, "persistence": persistence}, "determinism_probe": probe, "cal_gate_action_aware_strictly_below_persistence": _cal_gate(aware["cal_metrics"], persistence)}
-    _write_new_json(run_root / "training-receipt.json", result)
+    checkpoint_hashes: dict[str, str] = {}
     for name, raw in (("action-aware-selected.pt", aware_checkpoint), ("action-blind-selected.pt", blind_checkpoint)):
         path = run_root / name
         try:
-            with path.open("xb") as handle: handle.write(raw)
+            with path.open("xb") as handle:
+                handle.write(raw); handle.flush(); os.fsync(handle.fileno())
         except FileExistsError as error: raise QualifiedLaunchError(f"refusing to overwrite checkpoint: {path}") from error
+        checkpoint_hashes[name] = _sha_bytes(raw)
+    result = {"schema_version": "aeolus_habitat_v2_fitcal_training_receipt_v2", "protocol_sha256": protocol["protocol_sha256"], "validation_accessed": False, "fit_target_mean": mean.tolist(), "fit_target_scale": scale.tolist(), "checkpoint_sha256": checkpoint_hashes, "models": {"action_aware": aware, "action_blind": blind, "persistence": persistence}, "determinism_probe": probe, "cal_gate_action_aware_strictly_below_persistence": _cal_gate(aware["cal_metrics"], persistence)}
+    result["training_receipt_sha256"] = _sha_bytes(canonical_json_bytes(result))
+    _write_new_json(run_root / "training-receipt.json", result)
     if not result["cal_gate_action_aware_strictly_below_persistence"]: raise QualifiedLaunchError("CAL gate failed: action-aware normalized MAE is not strictly below persistence")
     return result
 
@@ -448,8 +457,14 @@ def run(root: Path, run_root: Path, *, dry_run: bool = False) -> None:
         print(json.dumps({"verdict": "PASS", "validation_accessed": False, "authorized_clusters": AUTHORIZED_CLUSTERS, "authorized_packets": AUTHORIZED_PACKETS, "authorized_examples": AUTHORIZED_EXAMPLES}, sort_keys=True)); return
     _start_or_resume_run(run_root, protocol=protocol, source_commit=source_commit)
     preflight = _load_pinned_resource_preflight(root)
+    limits = protocol["resource_limits"]
+    try:
+        guard = QualifiedRuntimeGuard(run_root, QualifiedRuntimeLimits(preflight.projected_wall_time_seconds, int(float(limits["abort_free_ram_gb"]) * 1024**3), int(float(limits["abort_vram_free_gb"]) * 1024**3), int(limits["abort_gpu_temperature_c"]), V2_RESOURCE_CEILINGS.disk_reserve_bytes))
+        guard.__enter__()
+    except QualifiedRuntimeGuardError as error: raise QualifiedLaunchError(str(error)) from error
     corpus = run_root / "corpus"
-    _generate_or_resume_corpus(root, corpus, design=design, contracts=contracts, preflight=preflight, allowed_cluster_ids=split.authorized_cluster_ids)
+    _generate_or_resume_corpus(root, corpus, design=design, contracts=contracts, preflight=preflight, allowed_cluster_ids=split.authorized_cluster_ids, health_check=guard.check)
+    guard.check("before-custody")
     custody = _verify_exact_custody(root, corpus, split, protocol)
     custody_path = run_root / "custody-receipt.json"
     if custody_path.exists():
@@ -460,18 +475,21 @@ def run(root: Path, run_root: Path, *, dry_run: bool = False) -> None:
     if training_path.exists():
         training = _read_json(training_path)
         if (
-            training.get("schema_version") != "aeolus_habitat_v2_fitcal_training_receipt_v1"
+            training.get("schema_version") != "aeolus_habitat_v2_fitcal_training_receipt_v2"
             or training.get("protocol_sha256") != protocol["protocol_sha256"]
             or training.get("validation_accessed") is not False
             or training.get("cal_gate_action_aware_strictly_below_persistence") is not True
+            or training.get("training_receipt_sha256") != _sha_bytes(canonical_json_bytes({k: v for k, v in training.items() if k != "training_receipt_sha256"}))
+            or training.get("checkpoint_sha256") != {path.name: _sha_bytes(path.read_bytes()) for path in checkpoint_paths if path.is_file()}
             or not all(path.is_file() for path in checkpoint_paths)
         ):
             raise QualifiedLaunchError("partial or invalid existing training output is preserved and rejected")
     else:
         if any(path.exists() for path in checkpoint_paths):
             raise QualifiedLaunchError("partial training checkpoint is preserved and rejected")
-        training = _train_and_record(run_root, corpus, split, contracts, protocol)
-    _write_new_json(run_root / "launcher-complete.json", {"schema_version": "aeolus_habitat_v2_fitcal_launcher_complete_v1", "protocol_sha256": protocol["protocol_sha256"], "validation_accessed": False, "cal_gate_passed": True, "training_receipt_sha256": _sha_bytes(canonical_json_bytes(training))})
+        training = _train_and_record(run_root, corpus, split, contracts, protocol, custody)
+    _write_new_json(run_root / "launcher-complete.json", {"schema_version": "aeolus_habitat_v2_fitcal_launcher_complete_v1", "protocol_sha256": protocol["protocol_sha256"], "validation_accessed": False, "cal_gate_passed": True, "training_receipt_sha256": training["training_receipt_sha256"]})
+    guard.__exit__(None, None, None)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

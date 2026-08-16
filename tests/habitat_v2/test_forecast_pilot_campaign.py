@@ -227,7 +227,6 @@ def test_campaign_refuses_without_passing_preflight(tmp_path: Path) -> None:
             contracts,
             preflight=None,
             output_root=tmp_path / "campaign",
-            allowed_cluster_ids=_all_cluster_ids(design),
             pair_limit=1,
         )
     failed = _synthetic_pass_preflight()
@@ -239,7 +238,6 @@ def test_campaign_refuses_without_passing_preflight(tmp_path: Path) -> None:
             contracts,
             preflight=failed,
             output_root=tmp_path / "campaign",
-            allowed_cluster_ids=_all_cluster_ids(design),
             pair_limit=1,
         )
     legacy = _synthetic_pass_preflight()
@@ -252,7 +250,6 @@ def test_campaign_refuses_without_passing_preflight(tmp_path: Path) -> None:
             contracts,
             preflight=legacy,
             output_root=tmp_path / "legacy-campaign",
-            allowed_cluster_ids=_all_cluster_ids(design),
             pair_limit=1,
         )
 
@@ -270,7 +267,6 @@ def test_campaign_executes_bounded_pairs_and_writes_manifest(tmp_path: Path) -> 
         contracts,
         preflight=_synthetic_pass_preflight(),
         output_root=tmp_path / "campaign",
-        allowed_cluster_ids=_all_cluster_ids(design),
         pair_limit=1,
         worker_count=2,
     )
@@ -304,7 +300,6 @@ def test_campaign_resume_reuses_validated_packet_and_executes_only_missing_pair(
         contracts,
         preflight=_synthetic_pass_preflight(),
         output_root=output_root,
-        allowed_cluster_ids=_all_cluster_ids(design),
         pair_limit=1,
     )
     # Mimic an interrupted campaign: completed atomic pair packet, no final manifest.
@@ -318,7 +313,6 @@ def test_campaign_resume_reuses_validated_packet_and_executes_only_missing_pair(
         contracts,
         preflight=_synthetic_pass_preflight(),
         output_root=output_root,
-        allowed_cluster_ids=_all_cluster_ids(design),
         pair_limit=2,
         resume=True,
     )
