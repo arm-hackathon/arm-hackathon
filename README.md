@@ -54,10 +54,16 @@ untouched version-4 final suite.
   eligible families improved and seven were unchanged. None were worsened.
 - The safety and physical-benefit gates both passed.
 
-The accepted architecture retains deterministic actuator authority. This result
-does not justify a learned recovery controller, and Arm model export or
-optimisation remains blocked until a bounded learned component demonstrates
-reproducible closed-loop value on separate untouched evidence.
+The accepted architecture retains deterministic actuator authority. A separate
+frozen `DEMO_ONLY_PERMANENTLY_EXCLUDED` FP32 advisory candidate is SHA-256-bound
+to its FP64 source and reduces raw model-array bytes exactly 50%, from
+`28,759,024` to `14,379,512`. Three native `ubuntu-24.04-arm` repetitions on a
+Neoverse-N2 runner passed the predeclared `1e-4` prediction-parity threshold and
+recorded a median-of-run speedup of about `1.73x`; see authoritative exact-head
+[run 31941351824](https://github.com/arm-hackathon/arm-hackathon/actions/runs/31941351824).
+This is bounded benchmark evidence, not an INT8, Arm-specific kernel/operator,
+NEON, deployment, physical-board, NPU, energy, thermal, qualification,
+production, learned-control, or actuator-authority claim.
 
 See
 [`docs/evidence/recovery-final-verification-result.md`](docs/evidence/recovery-final-verification-result.md)
