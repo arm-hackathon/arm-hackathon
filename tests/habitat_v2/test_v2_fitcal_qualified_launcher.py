@@ -15,6 +15,7 @@ from aeolus.habitat_v2.forecast.contracts import (
 )
 from aeolus.habitat_v2.forecast.pilot import load_approved_pilot_design
 from aeolus.habitat_v2.forecast.pilot_campaign import PilotCampaignError
+from aeolus.habitat_v2.forecast.qualified_runtime_guard import QualifiedRuntimeGuard, QualifiedRuntimeGuardError, QualifiedRuntimeLimits
 from aeolus.habitat_v2.forecast.qualification_split import (
     build_qualification_split,
     load_qualified_protocol,
@@ -133,3 +134,45 @@ def test_caller_selected_cluster_roster_is_refused_before_pair_execution(monkeyp
     monkeypatch.setattr(pilot_campaign, "run_pilot_pair", lambda *args: pytest.fail("must not execute HMC"))
     with pytest.raises(PilotCampaignError, match="unknown roster IDs"):
         pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=launcher._load_pinned_resource_preflight(ROOT), output_root=tmp_path, allowed_cluster_ids=frozenset({"validation"}), pair_limit=1, worker_count=1, resume=False)
+
+
+def test_guard_lock_is_cleaned_after_injected_body_exception(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    guard = QualifiedRuntimeGuard(tmp_path, QualifiedRuntimeLimits(60, 0, 0, 1000, 0))
+    monkeypatch.setattr(guard, "check", lambda _phase: None)
+    with pytest.raises(RuntimeError, match="injected"):
+        with guard:
+            raise RuntimeError("injected campaign exception")
+    assert not guard.lock_path.exists()
+
+
+def test_campaign_health_check_aborts_between_pairs_and_preserves_partial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from aeolus.habitat_v2.forecast import pilot_campaign
+    design = load_approved_pilot_design(ROOT); contracts = load_forecast_contracts(ROOT)
+    calls: list[str] = []
+    def stop(phase: str) -> None:
+        calls.append(phase)
+        if phase.startswith("after-pair-"):
+            raise QualifiedRuntimeGuardError("injected reserve breach")
+    def fake_pair(payload: object) -> dict[str, object]:
+        _root, target, group = payload  # type: ignore[misc]
+        pair = group[0].pair_id
+        directory = Path(target) / pair; directory.mkdir(parents=True, exist_ok=True)
+        (directory / "partial-evidence").write_text("retain", encoding="utf-8")
+        return {"pair_id": pair, "manifest_sha256": "0" * 64, "training_packet_sha256": "1" * 64, "training_packet_byte_length": 1}
+    monkeypatch.setattr(pilot_campaign, "_execute_and_stage_pair", fake_pair)
+    with pytest.raises(QualifiedRuntimeGuardError, match="reserve"):
+        pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=launcher._load_pinned_resource_preflight(ROOT), output_root=tmp_path / "corpus", pair_limit=2, worker_count=1, resume=False, health_check=stop)
+    assert any(phase.startswith("before-pair-") for phase in calls)
+    assert (tmp_path / "corpus").exists()
+    assert any(path.name == "partial-evidence" and path.read_text(encoding="utf-8") == "retain" for path in (tmp_path / "corpus").rglob("partial-evidence"))
+
+
+def test_training_health_check_aborts_at_first_bounded_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Fail before importing/allocating torch or beginning a batch: fixture-only.
+    seen: list[str] = []
+    def stop(phase: str) -> None:
+        seen.append(phase)
+        raise QualifiedRuntimeGuardError("injected training breach")
+    with pytest.raises(QualifiedRuntimeGuardError, match="training breach"):
+        launcher._train_candidate(name="fixture", fit_x=np.zeros((1, 1), dtype=np.float32), fit_y=np.zeros((1, 8, 51), dtype=np.float32), cal_x=np.zeros((1, 1), dtype=np.float32), cal_y=np.zeros((1, 8, 51), dtype=np.float32), target_mean=np.zeros((51,), dtype=np.float32), target_scale=np.ones((51,), dtype=np.float32), seed=1, health_check=stop)
+    assert seen == ["training-fixture-epoch-0"]

@@ -269,7 +269,7 @@ def _generate_or_resume_corpus(
     # It never deletes a malformed directory; validation failure is terminal.
     if health_check: health_check("before-corpus-generation")
     runner(root, design, contracts, preflight=preflight, output_root=corpus,
-           pair_limit=None, worker_count=1, resume=corpus.exists())
+           pair_limit=None, worker_count=1, resume=corpus.exists(), health_check=health_check)
     if health_check: health_check("after-corpus-generation")
     _verify_campaign_manifest(corpus, allowed_cluster_ids)
 
@@ -372,6 +372,7 @@ def _seed_deterministic(seed: int) -> Any:
 def _train_candidate(
     *, name: str, fit_x: np.ndarray, fit_y: np.ndarray, cal_x: np.ndarray, cal_y: np.ndarray,
     target_mean: np.ndarray, target_scale: np.ndarray, seed: int,
+    health_check: Callable[[str], None] | None = None,
 ) -> tuple[dict[str, Any], bytes]:
     torch = _seed_deterministic(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -381,9 +382,11 @@ def _train_candidate(
     cal_xt = torch.from_numpy(cal_x).to(device)
     best_metric = float("inf"); best_epoch = -1; best_state: dict[str, Any] | None = None; stale = 0
     for epoch in range(80):
+        if health_check: health_check(f"training-{name}-epoch-{epoch}")
         model.train()
         generator = torch.Generator().manual_seed(seed + epoch)
-        for index in torch.randperm(len(x), generator=generator).split(128):
+        for batch, index in enumerate(torch.randperm(len(x), generator=generator).split(128)):
+            if health_check: health_check(f"training-{name}-epoch-{epoch}-batch-{batch}")
             prediction = model(x[index].to(device)); loss = torch.nn.functional.mse_loss(prediction, y[index].to(device))
             optimizer.zero_grad(set_to_none=True); loss.backward(); optimizer.step()
         model.eval()
@@ -412,7 +415,7 @@ def _determinism_probe(**kwargs: Any) -> dict[str, Any]:
     return {"measured": True, "receipt_equal": one == two, "checkpoint_sha256_equal": _sha_bytes(one_bytes) == _sha_bytes(two_bytes), "first": one, "second": two}
 
 
-def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, protocol: Mapping[str, Any], custody: Mapping[str, Any]) -> dict[str, Any]:
+def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, protocol: Mapping[str, Any], custody: Mapping[str, Any], *, health_check: Callable[[str], None] | None = None) -> dict[str, Any]:
     arrays = _load_authorized_arrays(corpus, split.authorized_cluster_ids, custody)
     labels = np.asarray([cluster in split.fit_cluster_ids for cluster in arrays.clusters])
     if int(labels.sum()) != FIT_EXAMPLES or int((~labels).sum()) != CAL_EXAMPLES:
@@ -426,10 +429,10 @@ def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, 
         "cal_y": cal.targets, "target_mean": mean, "target_scale": scale, "seed": 20260816,
     }
     blind_args = {**aware_args, "name": "action-blind-mlp-v1", "fit_x": _features(fit, layout, action_aware=False), "cal_x": _features(cal, layout, action_aware=False)}
-    aware, aware_checkpoint = _train_candidate(**aware_args)
-    blind, blind_checkpoint = _train_candidate(**blind_args)
+    aware, aware_checkpoint = _train_candidate(**aware_args, health_check=health_check)
+    blind, blind_checkpoint = _train_candidate(**blind_args, health_check=health_check)
     persistence = _metrics(_persistence_predictions(cal, layout), cal.targets, scale)
-    probe = _determinism_probe(**aware_args)
+    probe = _determinism_probe(**aware_args, health_check=health_check)
     if not probe["receipt_equal"] or not probe["checkpoint_sha256_equal"]: raise QualifiedLaunchError("measured determinism probe failed")
     checkpoint_hashes: dict[str, str] = {}
     for name, raw in (("action-aware-selected.pt", aware_checkpoint), ("action-blind-selected.pt", blind_checkpoint)):
@@ -458,38 +461,38 @@ def run(root: Path, run_root: Path, *, dry_run: bool = False) -> None:
     _start_or_resume_run(run_root, protocol=protocol, source_commit=source_commit)
     preflight = _load_pinned_resource_preflight(root)
     limits = protocol["resource_limits"]
+    guard = QualifiedRuntimeGuard(run_root, QualifiedRuntimeLimits(preflight.projected_wall_time_seconds, int(float(limits["abort_free_ram_gb"]) * 1024**3), int(float(limits["abort_vram_free_gb"]) * 1024**3), int(limits["abort_gpu_temperature_c"]), V2_RESOURCE_CEILINGS.disk_reserve_bytes))
     try:
-        guard = QualifiedRuntimeGuard(run_root, QualifiedRuntimeLimits(preflight.projected_wall_time_seconds, int(float(limits["abort_free_ram_gb"]) * 1024**3), int(float(limits["abort_vram_free_gb"]) * 1024**3), int(limits["abort_gpu_temperature_c"]), V2_RESOURCE_CEILINGS.disk_reserve_bytes))
-        guard.__enter__()
-    except QualifiedRuntimeGuardError as error: raise QualifiedLaunchError(str(error)) from error
-    corpus = run_root / "corpus"
-    _generate_or_resume_corpus(root, corpus, design=design, contracts=contracts, preflight=preflight, allowed_cluster_ids=split.authorized_cluster_ids, health_check=guard.check)
-    guard.check("before-custody")
-    custody = _verify_exact_custody(root, corpus, split, protocol)
-    custody_path = run_root / "custody-receipt.json"
-    if custody_path.exists():
-        if _read_json(custody_path) != custody: raise QualifiedLaunchError("existing custody receipt does not match corpus")
-    else: _write_new_json(custody_path, custody)
-    training_path = run_root / "training-receipt.json"
-    checkpoint_paths = (run_root / "action-aware-selected.pt", run_root / "action-blind-selected.pt")
-    if training_path.exists():
-        training = _read_json(training_path)
-        if (
-            training.get("schema_version") != "aeolus_habitat_v2_fitcal_training_receipt_v2"
-            or training.get("protocol_sha256") != protocol["protocol_sha256"]
-            or training.get("validation_accessed") is not False
-            or training.get("cal_gate_action_aware_strictly_below_persistence") is not True
-            or training.get("training_receipt_sha256") != _sha_bytes(canonical_json_bytes({k: v for k, v in training.items() if k != "training_receipt_sha256"}))
-            or training.get("checkpoint_sha256") != {path.name: _sha_bytes(path.read_bytes()) for path in checkpoint_paths if path.is_file()}
-            or not all(path.is_file() for path in checkpoint_paths)
-        ):
-            raise QualifiedLaunchError("partial or invalid existing training output is preserved and rejected")
-    else:
-        if any(path.exists() for path in checkpoint_paths):
-            raise QualifiedLaunchError("partial training checkpoint is preserved and rejected")
-        training = _train_and_record(run_root, corpus, split, contracts, protocol, custody)
-    _write_new_json(run_root / "launcher-complete.json", {"schema_version": "aeolus_habitat_v2_fitcal_launcher_complete_v1", "protocol_sha256": protocol["protocol_sha256"], "validation_accessed": False, "cal_gate_passed": True, "training_receipt_sha256": training["training_receipt_sha256"]})
-    guard.__exit__(None, None, None)
+        with guard:
+            corpus = run_root / "corpus"
+            _generate_or_resume_corpus(root, corpus, design=design, contracts=contracts, preflight=preflight, allowed_cluster_ids=split.authorized_cluster_ids, health_check=guard.check)
+            guard.check("before-custody")
+            custody = _verify_exact_custody(root, corpus, split, protocol)
+            custody_path = run_root / "custody-receipt.json"
+            if custody_path.exists():
+                if _read_json(custody_path) != custody: raise QualifiedLaunchError("existing custody receipt does not match corpus")
+            else: _write_new_json(custody_path, custody)
+            training_path = run_root / "training-receipt.json"
+            checkpoint_paths = (run_root / "action-aware-selected.pt", run_root / "action-blind-selected.pt")
+            if training_path.exists():
+                training = _read_json(training_path)
+                if (
+                    training.get("schema_version") != "aeolus_habitat_v2_fitcal_training_receipt_v2"
+                    or training.get("protocol_sha256") != protocol["protocol_sha256"]
+                    or training.get("validation_accessed") is not False
+                    or training.get("cal_gate_action_aware_strictly_below_persistence") is not True
+                    or training.get("training_receipt_sha256") != _sha_bytes(canonical_json_bytes({k: v for k, v in training.items() if k != "training_receipt_sha256"}))
+                    or training.get("checkpoint_sha256") != {path.name: _sha_bytes(path.read_bytes()) for path in checkpoint_paths if path.is_file()}
+                    or not all(path.is_file() for path in checkpoint_paths)
+                ):
+                    raise QualifiedLaunchError("partial or invalid existing training output is preserved and rejected")
+            else:
+                if any(path.exists() for path in checkpoint_paths):
+                    raise QualifiedLaunchError("partial training checkpoint is preserved and rejected")
+                training = _train_and_record(run_root, corpus, split, contracts, protocol, custody, health_check=guard.check)
+            _write_new_json(run_root / "launcher-complete.json", {"schema_version": "aeolus_habitat_v2_fitcal_launcher_complete_v1", "protocol_sha256": protocol["protocol_sha256"], "validation_accessed": False, "cal_gate_passed": True, "training_receipt_sha256": training["training_receipt_sha256"]})
+    except QualifiedRuntimeGuardError as error:
+        raise QualifiedLaunchError(str(error)) from error
 
 
 def main(argv: Sequence[str] | None = None) -> int:

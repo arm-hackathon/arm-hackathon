@@ -13,7 +13,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -400,6 +400,7 @@ def run_pilot_campaign(
     pair_limit: int | None = None,
     worker_count: int = 1,
     resume: bool = False,
+    health_check: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Execute the bounded pilot campaign under a passing preflight receipt.
 
@@ -462,6 +463,8 @@ def run_pilot_campaign(
         raise PilotCampaignError("worker count must be a positive integer")
     if type(resume) is not bool:
         raise PilotCampaignError("resume flag must be a boolean")
+    if health_check is not None and not callable(health_check):
+        raise PilotCampaignError("health check must be callable")
     target = Path(output_root).resolve()
 
     def pair_groups():
@@ -509,10 +512,20 @@ def run_pilot_campaign(
     missing_groups = [group for group in groups if group[0].pair_id not in existing_by_id]
     payloads = ((str(root), str(target), group) for group in missing_groups)
     if worker_count == 1:
-        new_pair_manifests = [_execute_and_stage_pair(payload) for payload in payloads]
+        new_pair_manifests = []
+        for payload, group in zip(payloads, missing_groups, strict=True):
+            if health_check: health_check(f"before-pair-{group[0].pair_id}")
+            new_pair_manifests.append(_execute_and_stage_pair(payload))
+            if health_check: health_check(f"after-pair-{group[0].pair_id}")
     else:
+        # A process pool cannot safely share a live guard callback. Check before
+        # dispatch and after every completed pair so a breach stops new work.
+        if health_check: health_check("before-parallel-pair-dispatch")
         with ProcessPoolExecutor(max_workers=worker_count) as executor:
-            new_pair_manifests = list(executor.map(_execute_and_stage_pair, payloads))
+            new_pair_manifests = []
+            for group, manifest in zip(missing_groups, executor.map(_execute_and_stage_pair, payloads), strict=True):
+                new_pair_manifests.append(manifest)
+                if health_check: health_check(f"after-pair-{group[0].pair_id}")
     all_pair_manifests = {
         **existing_by_id,
         **{item["pair_id"]: item for item in new_pair_manifests},
