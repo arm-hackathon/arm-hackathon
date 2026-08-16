@@ -1,0 +1,173 @@
+{
+  "actions": [
+    {
+      "action_id": "normal-occupied-v1",
+      "command": {
+        "condenser_duty": 0.65,
+        "cooling_removed_w": {
+          "air_processing_bay": 350.0,
+          "airlock_suitport": 40.0,
+          "common_galley": 200.0,
+          "crew_quarters_a": 40.0,
+          "crew_quarters_b": 40.0,
+          "equipment_power_bay": 450.0,
+          "hygiene_medical": 40.0,
+          "laboratory": 300.0
+        },
+        "damper_position_by_id": {
+          "air_processing_bay_supply_damper": 0.65,
+          "airlock_suitport_supply_damper": 0.45,
+          "common_galley_supply_damper": 0.82,
+          "crew_quarters_a_supply_damper": 0.62,
+          "crew_quarters_b_supply_damper": 0.52,
+          "equipment_power_bay_supply_damper": 0.55,
+          "hygiene_medical_supply_damper": 0.58,
+          "laboratory_supply_damper": 0.9
+        },
+        "fan_speed_fraction": 0.72,
+        "oxygen_injection_mol_s": {
+          "air_processing_bay": 0.0,
+          "airlock_suitport": 0.0,
+          "common_galley": 0.0003,
+          "crew_quarters_a": 0.0003,
+          "crew_quarters_b": 0.0,
+          "equipment_power_bay": 0.0,
+          "hygiene_medical": 0.0,
+          "laboratory": 0.0006
+        },
+        "scrubber_duty": 0.75
+      },
+      "command_sha256": "d65c89b029d316a62b03b6c903d2a99d4afc3d40ec1beaad3a55ed8519fcc6e6",
+      "source_mode": "occupied",
+      "source_segment_index": 0
+    },
+    {
+      "action_id": "normal-eva_transition-v1",
+      "command": {
+        "condenser_duty": 0.72,
+        "cooling_removed_w": {
+          "air_processing_bay": 380.0,
+          "airlock_suitport": 260.0,
+          "common_galley": 40.0,
+          "crew_quarters_a": 40.0,
+          "crew_quarters_b": 40.0,
+          "equipment_power_bay": 500.0,
+          "hygiene_medical": 40.0,
+          "laboratory": 220.0
+        },
+        "damper_position_by_id": {
+          "air_processing_bay_supply_damper": 0.65,
+          "airlock_suitport_supply_damper": 1.0,
+          "common_galley_supply_damper": 0.82,
+          "crew_quarters_a_supply_damper": 0.62,
+          "crew_quarters_b_supply_damper": 0.52,
+          "equipment_power_bay_supply_damper": 0.55,
+          "hygiene_medical_supply_damper": 0.58,
+          "laboratory_supply_damper": 0.72
+        },
+        "fan_speed_fraction": 0.82,
+        "oxygen_injection_mol_s": {
+          "air_processing_bay": 0.0,
+          "airlock_suitport": 0.0006,
+          "common_galley": 0.0,
+          "crew_quarters_a": 0.0,
+          "crew_quarters_b": 0.0,
+          "equipment_power_bay": 0.0,
+          "hygiene_medical": 0.0,
+          "laboratory": 0.0003
+        },
+        "scrubber_duty": 0.82
+      },
+      "command_sha256": "566b8cac580986279b93d9d693583b0b18cdc061f00bf53a835f34705407df8a",
+      "source_mode": "eva_transition",
+      "source_segment_index": 1
+    },
+    {
+      "action_id": "normal-contingency-v1",
+      "command": {
+        "condenser_duty": 0.9,
+        "cooling_removed_w": {
+          "air_processing_bay": 650.0,
+          "airlock_suitport": 300.0,
+          "common_galley": 300.0,
+          "crew_quarters_a": 300.0,
+          "crew_quarters_b": 300.0,
+          "equipment_power_bay": 650.0,
+          "hygiene_medical": 300.0,
+          "laboratory": 300.0
+        },
+        "damper_position_by_id": {
+          "air_processing_bay_supply_damper": 0.9,
+          "airlock_suitport_supply_damper": 0.9,
+          "common_galley_supply_damper": 0.9,
+          "crew_quarters_a_supply_damper": 0.9,
+          "crew_quarters_b_supply_damper": 0.9,
+          "equipment_power_bay_supply_damper": 0.9,
+          "hygiene_medical_supply_damper": 0.9,
+          "laboratory_supply_damper": 0.9
+        },
+        "fan_speed_fraction": 0.95,
+        "oxygen_injection_mol_s": {
+          "air_processing_bay": 0.0,
+          "airlock_suitport": 0.0,
+          "common_galley": 0.0006,
+          "crew_quarters_a": 0.0,
+          "crew_quarters_b": 0.0,
+          "equipment_power_bay": 0.0,
+          "hygiene_medical": 0.0,
+          "laboratory": 0.0006
+        },
+        "scrubber_duty": 0.95
+      },
+      "command_sha256": "7577f354ddb3e4f85271e2f00ce3627d7eb9cba441d83242acef9a7545af7390",
+      "source_mode": "contingency",
+      "source_segment_index": 2
+    },
+    {
+      "action_id": "normal-dormant-v1",
+      "command": {
+        "condenser_duty": 0.25,
+        "cooling_removed_w": {
+          "air_processing_bay": 220.0,
+          "airlock_suitport": 40.0,
+          "common_galley": 40.0,
+          "crew_quarters_a": 40.0,
+          "crew_quarters_b": 40.0,
+          "equipment_power_bay": 260.0,
+          "hygiene_medical": 40.0,
+          "laboratory": 40.0
+        },
+        "damper_position_by_id": {
+          "air_processing_bay_supply_damper": 0.42,
+          "airlock_suitport_supply_damper": 0.28,
+          "common_galley_supply_damper": 0.28,
+          "crew_quarters_a_supply_damper": 0.28,
+          "crew_quarters_b_supply_damper": 0.28,
+          "equipment_power_bay_supply_damper": 0.28,
+          "hygiene_medical_supply_damper": 0.28,
+          "laboratory_supply_damper": 0.28
+        },
+        "fan_speed_fraction": 0.35,
+        "oxygen_injection_mol_s": {
+          "air_processing_bay": 0.0,
+          "airlock_suitport": 0.0,
+          "common_galley": 0.0,
+          "crew_quarters_a": 0.0,
+          "crew_quarters_b": 0.0,
+          "equipment_power_bay": 0.0,
+          "hygiene_medical": 0.0,
+          "laboratory": 0.0
+        },
+        "scrubber_duty": 0.3
+      },
+      "command_sha256": "7c7b36dc871f32aad240c2fb05b05d683f739fb50a485f6c93599afe0df82bd4",
+      "source_mode": "dormant",
+      "source_segment_index": 3
+    }
+  ],
+  "catalogue_sha256": "476df714510cc9435a4b82ebb23c8ebfab7d6953930c3b0481124a2af45521f9",
+  "observable_topology_sha256": "b0246a9dc8f847c3236068c8e1eeeddb31809a680e6133eaf038ea197d6e10e6",
+  "release_tier": "DEVELOPMENT_FIXTURE_ONLY",
+  "schema_version": "aeolus_habitat_v2_forecast_action_catalogue_v1",
+  "source_scenario_sha256": "a9ee8eecdb4a952ef95347edcabb7dad614280eb496877cc9cddf8a5c9f77de7"
+}
