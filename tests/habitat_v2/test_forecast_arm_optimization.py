@@ -120,26 +120,41 @@ def test_fp32_candidate_passes_live_drift_gate_and_emits_comparable_timings(
 def test_benchmark_file_sizes_are_bound_to_loaded_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from aeolus.habitat_v2.forecast.arm_optimization import (
-        benchmark_fp64_vs_fp32,
-        optimise_ridge_fp32,
-    )
+    from aeolus.habitat_v2.forecast import arm_optimization
 
     root = _repo_root()
-    source = root / "artifacts/demo-only/habitat-v2-forecast/action-aware-ridge.npz"
+    committed_source = (
+        root / "artifacts/demo-only/habitat-v2-forecast/action-aware-ridge.npz"
+    )
+    source = tmp_path / "action-aware-ridge.npz"
     candidate = tmp_path / "action-aware-ridge-fp32.npz"
+    source.write_bytes(committed_source.read_bytes())
     source_raw = source.read_bytes()
-    conversion = optimise_ridge_fp32(
+    conversion = arm_optimization.optimise_ridge_fp32(
         source,
         candidate,
         expected_source_sha256=hashlib.sha256(source_raw).hexdigest(),
     )
     candidate_raw = candidate.read_bytes()
 
+    original_loader = arm_optimization.load_live_ridge_model
+    loaded: list[bytes] = []
+
+    def load_and_mutate_files(
+        artifact: str | Path | bytes, *, expected_sha256: str | None = None
+    ):
+        assert type(artifact) is bytes
+        loaded.append(artifact)
+        model = original_loader(artifact, expected_sha256=expected_sha256)
+        if len(loaded) == 2:
+            source.write_bytes(source_raw + b"changed-after-load")
+            candidate.write_bytes(candidate_raw + b"changed-after-load")
+        return model
+
     monkeypatch.setattr(
-        Path, "stat", lambda _path: pytest.fail("stat must not be used")
+        arm_optimization, "load_live_ridge_model", load_and_mutate_files
     )
-    receipt = benchmark_fp64_vs_fp32(
+    receipt = arm_optimization.benchmark_fp64_vs_fp32(
         root,
         source,
         candidate,
@@ -149,6 +164,7 @@ def test_benchmark_file_sizes_are_bound_to_loaded_bytes(
         measured_iterations=4,
     )
 
+    assert loaded == [source_raw, candidate_raw]
     assert receipt["models"]["fp64"]["file_bytes"] == len(source_raw)
     assert receipt["models"]["fp32"]["file_bytes"] == len(candidate_raw)
 
