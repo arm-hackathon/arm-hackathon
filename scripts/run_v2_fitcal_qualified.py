@@ -55,6 +55,8 @@ def load_preflight(path: Path, head: str) -> dict[str, Any]:
     d["preflight_sha256"]=declared
     if d.get("source_commit") != head or d.get("verdict") != "PASS": fail("preflight commit/verdict mismatch")
     from aeolus.habitat_v2.forecast.pilot_benchmark import build_v2_source_manifest
+    if d.get("source_manifest") != build_v2_source_manifest(ROOT): fail("preflight source manifest drifts from current source")
+    from aeolus.habitat_v2.forecast.pilot_benchmark import build_v2_source_manifest
     if d.get("source_manifest") != build_v2_source_manifest(ROOT): fail("preflight source manifest drift")
     return d
 
