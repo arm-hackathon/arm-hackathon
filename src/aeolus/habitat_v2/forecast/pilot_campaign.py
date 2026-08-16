@@ -347,6 +347,7 @@ def _load_validated_staged_pair(
                 "action_present",
                 "history_numeric_f32",
                 "operational_available_bool",
+                "operational_available_sha256",
                 "proposed_action_f32",
                 "targets_f32",
             }

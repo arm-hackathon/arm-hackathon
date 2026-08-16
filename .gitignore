@@ -8,3 +8,4 @@ __pycache__/
 .agents/
 out/
 traces/*.jsonl
+.venv-qual/ 
