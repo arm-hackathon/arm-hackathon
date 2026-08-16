@@ -15,7 +15,6 @@ import numpy as np
 
 from .projection import ForecastLayout
 
-
 TARGET_COUNT: Final = 51
 NUMERIC_FEATURE_COUNT: Final = 194
 PILOT_INPUT_MANIFEST_SHA256: Final = (
@@ -134,13 +133,15 @@ def compact_target_history(
     *,
     operational_available_bool: np.ndarray,
 ) -> np.ndarray:
-    """Return causal 51-target estimates from a finite public numeric history.
+    """Return causal 51-target observations from frozen public sources.
 
-    Environmental estimates average both available public heads, use the sole
-    remaining head when one is unavailable, and reject a row where neither
-    source is available. Airflow and resource estimates require their exact
-    public operational-feedback source. No target truth, future field, receipt,
-    ID or authority outcome is read here.
+    Every environmental target maps to its ordered primary sensor head and,
+    only when that head is unavailable, to its named secondary head. Airflow
+    and resource targets map to their exact public operational-feedback
+    instruments. This is a source-grounded observation mapping, never an
+    availability-weighted or averaged target estimate. A row with no available
+    mapped source is rejected. No target truth, future field, receipt, ID or
+    authority outcome is read here.
     """
     history = np.asarray(history_numeric_f32)
     available = np.asarray(operational_available_bool)
@@ -168,10 +169,11 @@ def compact_target_history(
         second_available = available[:, second]
         if not np.logical_or(first_available, second_available).all():
             raise PilotBaselineError("target source availability is incomplete")
+        # Ordered, source-grounded fallback: no synthetic averaging of heads.
         output[:, target_index] = np.where(
-            np.logical_and(first_available, second_available),
-            (history[:, first] + history[:, second]) / np.float32(2.0),
-            np.where(first_available, history[:, first], history[:, second]),
+            first_available,
+            history[:, first],
+            history[:, second],
         )
     if not np.isfinite(output).all():
         raise PilotBaselineError("compact target history is non-finite")
