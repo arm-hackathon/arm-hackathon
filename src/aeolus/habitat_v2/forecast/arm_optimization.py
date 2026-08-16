@@ -47,7 +47,8 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def _deterministic_npz(values: dict[str, np.ndarray]) -> bytes:
+def _compressed_model_npz(values: dict[str, np.ndarray]) -> bytes:
+    """Write canonical NPY members; DEFLATE container bytes are platform-dependent."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(
         buffer,
@@ -114,7 +115,7 @@ def optimise_ridge_fp32(
     if candidate_raw_array_bytes * 2 != source_raw_array_bytes:
         raise ArmOptimizationError("FP32 candidate did not halve raw model-array bytes")
 
-    candidate_raw = _deterministic_npz(values)
+    candidate_raw = _compressed_model_npz(values)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     destination_path.write_bytes(candidate_raw)
 
