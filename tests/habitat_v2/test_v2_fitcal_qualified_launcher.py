@@ -176,3 +176,26 @@ def test_training_health_check_aborts_at_first_bounded_interval(monkeypatch: pyt
     with pytest.raises(QualifiedRuntimeGuardError, match="training breach"):
         launcher._train_candidate(name="fixture", fit_x=np.zeros((1, 1), dtype=np.float32), fit_y=np.zeros((1, 8, 51), dtype=np.float32), cal_x=np.zeros((1, 1), dtype=np.float32), cal_y=np.zeros((1, 8, 51), dtype=np.float32), target_mean=np.zeros((51,), dtype=np.float32), target_scale=np.ones((51,), dtype=np.float32), seed=1, health_check=stop)
     assert seen == ["training-fixture-epoch-0"]
+
+
+def test_campaign_manifest_byte_tamper_fails_before_campaign_resume(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    allowed = frozenset({"fit-a"})
+    monkeypatch.setattr(launcher, "AUTHORIZED_PACKETS", 1)
+    monkeypatch.setattr(launcher, "AUTHORIZED_EXAMPLES", 5)
+    body = {"pairs_completed": 1, "hmc_runs_executed": 5, "allowed_cluster_ids": ["fit-a"]}
+    body["campaign_manifest_sha256"] = hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+    path = tmp_path / "campaign-manifest.json"; path.write_bytes(canonical_json_bytes(body))
+    path.write_bytes(path.read_bytes().replace(b"fit-a", b"fit-b", 1))
+    with pytest.raises(launcher.QualifiedLaunchError, match="self-hash"):
+        launcher._verify_campaign_manifest(tmp_path, allowed)
+
+
+def test_npz_byte_tamper_fails_before_npz_load(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(launcher, "AUTHORIZED_PACKETS", 1)
+    packet_dir = tmp_path / "pair"; packet_dir.mkdir(); packet = packet_dir / "training.npz"
+    packet.write_bytes(b"fixture-packet")
+    custody = {"splits": {"fit": {"packet_paths": [str(packet)], "packet_sha256s": [hashlib.sha256(b"original").hexdigest()]}, "cal": {"packet_paths": [], "packet_sha256s": []}}}
+    monkeypatch.setattr(launcher.np, "load", lambda *_a, **_kw: pytest.fail("must not decode tampered NPZ"))
+    with pytest.raises(launcher.QualifiedLaunchError, match="path/hash drift"):
+        launcher._load_authorized_arrays(tmp_path, frozenset({"fit-a"}), custody)
+    assert packet.read_bytes() == b"fixture-packet"
