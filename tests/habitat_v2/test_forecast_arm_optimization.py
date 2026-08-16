@@ -117,6 +117,42 @@ def test_fp32_candidate_passes_live_drift_gate_and_emits_comparable_timings(
     assert receipt["claims"]["arm_specific_operator_optimisation"] is False
 
 
+def test_benchmark_file_sizes_are_bound_to_loaded_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from aeolus.habitat_v2.forecast.arm_optimization import (
+        benchmark_fp64_vs_fp32,
+        optimise_ridge_fp32,
+    )
+
+    root = _repo_root()
+    source = root / "artifacts/demo-only/habitat-v2-forecast/action-aware-ridge.npz"
+    candidate = tmp_path / "action-aware-ridge-fp32.npz"
+    source_raw = source.read_bytes()
+    conversion = optimise_ridge_fp32(
+        source,
+        candidate,
+        expected_source_sha256=hashlib.sha256(source_raw).hexdigest(),
+    )
+    candidate_raw = candidate.read_bytes()
+
+    monkeypatch.setattr(
+        Path, "stat", lambda _path: pytest.fail("stat must not be used")
+    )
+    receipt = benchmark_fp64_vs_fp32(
+        root,
+        source,
+        candidate,
+        expected_source_sha256=hashlib.sha256(source_raw).hexdigest(),
+        expected_candidate_sha256=conversion["candidate_model_sha256"],
+        warmup_iterations=2,
+        measured_iterations=4,
+    )
+
+    assert receipt["models"]["fp64"]["file_bytes"] == len(source_raw)
+    assert receipt["models"]["fp32"]["file_bytes"] == len(candidate_raw)
+
+
 def test_fp32_candidate_has_canonical_payloads_and_frozen_artifact_identity(
     tmp_path: Path,
 ) -> None:

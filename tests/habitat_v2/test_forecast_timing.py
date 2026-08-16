@@ -61,3 +61,17 @@ def test_unsupported_receipt_outcomes_reject() -> None:
             target_manifest_sha256=TARGET,
             outcome="PROCEED_TO_EXPERIMENT_FREEZE",
         )
+
+
+def test_receipt_evidence_requires_an_exact_dict() -> None:
+    class Evidence(dict[str, object]):
+        pass
+
+    with pytest.raises(TimingError, match="one canonical object"):
+        emit_timing_receipt(
+            4,
+            2,
+            timing_evidence=Evidence(pilot="fixture"),
+            input_manifest_sha256=INPUT,
+            target_manifest_sha256=TARGET,
+        )

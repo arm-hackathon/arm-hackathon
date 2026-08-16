@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
 import json
@@ -72,7 +71,7 @@ def validate_candidate_timing(window_steps: int, horizon_steps: int) -> None:
 
 def _receipt(
     kind: str,
-    evidence: Mapping[str, Any],
+    evidence: dict[str, Any],
     input_manifest_sha256: str,
     target_manifest_sha256: str,
     *,
@@ -105,7 +104,7 @@ def emit_timing_receipt(
     window_steps: int,
     horizon_steps: int,
     *,
-    timing_evidence: Mapping[str, Any],
+    timing_evidence: dict[str, Any],
     input_manifest_sha256: str,
     target_manifest_sha256: str,
     outcome: str = OUTCOME,
@@ -125,7 +124,7 @@ def emit_timing_receipt(
 
 def emit_baseline_gate_receipt(
     *,
-    baseline_evidence: Mapping[str, Any],
+    baseline_evidence: dict[str, Any],
     input_manifest_sha256: str,
     target_manifest_sha256: str,
     outcome: str = OUTCOME,
