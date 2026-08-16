@@ -35,6 +35,16 @@ class PilotCampaignError(ValueError):
     """Pilot campaign evidence is outside its frozen contract."""
 
 
+def _availability_row_sha256(
+    continuation_id: str, availability: np.ndarray
+) -> str:
+    return hashlib.sha256(
+        continuation_id.encode("utf-8")
+        + b"\0"
+        + np.ascontiguousarray(availability, dtype=np.bool_).tobytes()
+    ).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class RunView:
     """One timing view derived from a run's maximum witness."""
@@ -208,6 +218,15 @@ def stage_pair_training_packet(
         ],
         axis=0,
     ).astype(np.float32, copy=False)
+    continuation_ids = [record["continuation_id"] for record in records]
+    availability_row_sha256 = np.asarray(
+        [
+            _availability_row_sha256(continuation_id, row)
+            for continuation_id, row in zip(
+                continuation_ids, availability, strict=True
+            )
+        ]
+    )
     if (
         histories.shape != (5, 16, 194)
         or availability.shape != (5, 16, 167)
@@ -228,14 +247,13 @@ def stage_pair_training_packet(
                     "aeolus_habitat_v2_forecast_training_pair_v2"
                 ),
                 pair_id=np.asarray(records[0]["pair_id"]),
-                continuation_ids=np.asarray(
-                    [record["continuation_id"] for record in records]
-                ),
+                continuation_ids=np.asarray(continuation_ids),
                 cluster_ids=np.asarray([record["cluster_id"] for record in records]),
                 action_ids=np.asarray([record["action_id"] for record in records]),
                 action_present=action_present,
                 history_numeric_f32=histories,
                 operational_available_bool=availability,
+                operational_available_sha256=availability_row_sha256,
                 proposed_action_f32=actions,
                 targets_f32=targets,
             )
@@ -405,6 +423,14 @@ def run_pilot_campaign(
         raise PilotCampaignError(
             "campaign requires a passing, pinned resource preflight"
         )
+    if (
+        preflight.schema_version
+        != "aeolus_habitat_v2_forecast_pilot_resource_preflight_v2"
+        or type(preflight.v2_binding_sha256) is not str
+        or len(preflight.v2_binding_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in preflight.v2_binding_sha256)
+    ):
+        raise PilotCampaignError("campaign requires a loaded v2 preflight binding")
     if pair_limit is not None and (type(pair_limit) is not int or pair_limit < 1):
         raise PilotCampaignError("pair limit must be a positive integer")
     if type(worker_count) is not int or worker_count < 1:
