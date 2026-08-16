@@ -8,17 +8,16 @@ invents resource budgets and never marks a failing campaign as PASS.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import importlib.metadata
 import json
 import math
 import platform
-from pathlib import Path
-import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -88,6 +87,8 @@ def build_v2_source_manifest(repo_root: str | Path) -> dict[str, str]:
         "scenarios/habitat_v2_observability/*.json",
         "docs/plans/2026-08-14-habitat-v2-forecast-*.json",
         "docs/plans/2026-08-15-habitat-v2-forecast-pilot-v2-generation-amendment-v1.json",
+        "docs/plans/2026-08-16-habitat-v2-qualified-model-protocol-v1.json",
+        "docs/plans/2026-08-16-habitat-v2-qualified-model-protocol-v2-amendment-v1.json",
     )
     try:
         result = subprocess.run(
