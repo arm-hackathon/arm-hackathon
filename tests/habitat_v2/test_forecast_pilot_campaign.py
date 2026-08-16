@@ -199,6 +199,8 @@ def _synthetic_pass_preflight():
         projected_peak_rss_bytes=600_000_000,
         projected_artifact_bytes=4_914_000_000,
         verdict="PASS",
+        schema_version="aeolus_habitat_v2_forecast_pilot_resource_preflight_v2",
+        v2_binding_sha256="c" * 64,
     )
 
 
@@ -232,6 +234,18 @@ def test_campaign_refuses_without_passing_preflight(tmp_path: Path) -> None:
             contracts,
             preflight=failed,
             output_root=tmp_path / "campaign",
+            pair_limit=1,
+        )
+    legacy = _synthetic_pass_preflight()
+    object.__setattr__(legacy, "schema_version", "")
+    object.__setattr__(legacy, "v2_binding_sha256", None)
+    with pytest.raises(PilotCampaignError, match="v2"):
+        run_pilot_campaign(
+            ROOT,
+            design,
+            contracts,
+            preflight=legacy,
+            output_root=tmp_path / "legacy-campaign",
             pair_limit=1,
         )
 

@@ -13,12 +13,12 @@ def _measurements():
 
     return (
         RunMeasurement(
-            wall_time_seconds=10.0,
+            wall_time_seconds=1.0,
             peak_rss_bytes=500_000_000,
             artifact_bytes=200_000,
         ),
         RunMeasurement(
-            wall_time_seconds=12.0,
+            wall_time_seconds=1.2,
             peak_rss_bytes=600_000_000,
             artifact_bytes=220_000,
         ),
@@ -38,27 +38,95 @@ def _ceilings(**overrides):
     return BenchmarkCeilings(**values)
 
 
-def test_preflight_receipt_round_trips_through_pinned_loader(tmp_path: Path) -> None:
-    from aeolus.habitat_v2.forecast.pilot import load_resource_preflight
+def test_v2_preflight_binds_current_source_contract_config_and_runtime() -> None:
+    from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+    from aeolus.habitat_v2.forecast.pilot import load_approved_pilot_design
     from aeolus.habitat_v2.forecast.pilot_benchmark import (
+        V2_RESOURCE_CEILINGS,
+        build_v2_preflight_receipt,
+    )
+
+    receipt = build_v2_preflight_receipt(
+        ROOT,
+        load_approved_pilot_design(ROOT),
+        load_forecast_contracts(ROOT),
+        measurements=_measurements(),
+        ceilings=V2_RESOURCE_CEILINGS,
+        free_disk_bytes=600_000_000_000,
+    )
+
+    assert receipt["schema_version"] == (
+        "aeolus_habitat_v2_forecast_pilot_resource_preflight_v2"
+    )
+    assert receipt["source_manifest_sha256"] == hashlib.sha256(
+        __import__("json").dumps(
+            receipt["source_manifest"],
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert set(receipt["config_raw_sha256"]) == {"pyproject.toml", "uv.lock"}
+    assert receipt["contract_identities"]
+    assert receipt["runtime_identity"]
+    assert receipt["free_disk_bytes"] == 600_000_000_000
+    assert receipt["ceilings"] == {
+        "wall_time_seconds": 172_800.0,
+        "peak_rss_bytes": 4_294_967_296,
+        "artifact_bytes": 34_359_738_368,
+        "disk_reserve_bytes": 21_474_836_480,
+    }
+
+
+def test_preflight_receipt_round_trips_through_pinned_loader(tmp_path: Path) -> None:
+    from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+    from aeolus.habitat_v2.forecast.pilot import (
+        PilotContractError,
+        load_approved_pilot_design,
+        load_resource_preflight,
+    )
+    from aeolus.habitat_v2.forecast.pilot_benchmark import (
+        V2_RESOURCE_CEILINGS,
         build_preflight_receipt,
+        build_v2_preflight_receipt,
         write_preflight_receipt,
     )
 
-    receipt = build_preflight_receipt(
+    legacy = build_preflight_receipt(
         measurements=_measurements(),
         ceilings=_ceilings(),
         free_disk_bytes=600_000_000_000,
     )
-    assert receipt["schema_version"] == (
+    assert legacy["schema_version"] == (
         "aeolus_habitat_v2_forecast_pilot_resource_preflight_v1"
+    )
+    legacy_path = tmp_path / "preflight-v1.json"
+    write_preflight_receipt(legacy_path, legacy)
+    with pytest.raises(PilotContractError, match="v2"):
+        load_resource_preflight(
+            legacy_path,
+            repo_root=ROOT,
+            expected_preflight_sha256=legacy["preflight_sha256"],
+            expected_preflight_bytes_sha256=hashlib.sha256(
+                legacy_path.read_bytes()
+            ).hexdigest(),
+        )
+
+    receipt = build_v2_preflight_receipt(
+        ROOT,
+        load_approved_pilot_design(ROOT),
+        load_forecast_contracts(ROOT),
+        measurements=_measurements(),
+        ceilings=V2_RESOURCE_CEILINGS,
+        free_disk_bytes=600_000_000_000,
     )
     assert receipt["planned_hmc_runs"] == 23_400
     assert receipt["benchmark_hmc_runs"] == 2
-    assert receipt["measured_wall_time_seconds"] == pytest.approx(22.0)
+    assert receipt["measured_wall_time_seconds"] == pytest.approx(2.2)
     assert receipt["measured_peak_rss_bytes"] == 600_000_000
     assert receipt["measured_artifact_bytes"] == 420_000
-    assert receipt["projected_wall_time_seconds"] == pytest.approx(22.0 / 2 * 23_400)
+    assert receipt["projected_wall_time_seconds"] == pytest.approx(2.2 / 2 * 23_400)
     assert receipt["projected_peak_rss_bytes"] == 600_000_000
     assert receipt["projected_artifact_bytes"] == 420_000 * 23_400 // 2
     assert receipt["runtime_within_ceiling"] is True
@@ -70,9 +138,12 @@ def test_preflight_receipt_round_trips_through_pinned_loader(tmp_path: Path) -> 
     write_preflight_receipt(path, receipt)
     loaded = load_resource_preflight(
         path,
+        repo_root=ROOT,
         expected_preflight_sha256=receipt["preflight_sha256"],
         expected_preflight_bytes_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
     )
+    assert loaded.schema_version.endswith("_v2")
+    assert loaded.v2_binding_sha256 == receipt["source_manifest_sha256"]
     assert loaded.planned_hmc_runs == 23_400
     assert loaded.benchmark_hmc_runs == 2
     assert loaded.verdict == "PASS"
@@ -98,9 +169,10 @@ def test_failed_ceiling_receipt_is_rejected_by_loader(tmp_path: Path) -> None:
 
     path = tmp_path / "failed.json"
     write_preflight_receipt(path, receipt)
-    with pytest.raises(PilotContractError, match="does not authorize"):
+    with pytest.raises(PilotContractError, match="v2"):
         load_resource_preflight(
             path,
+            repo_root=ROOT,
             expected_preflight_sha256=receipt["preflight_sha256"],
             expected_preflight_bytes_sha256=hashlib.sha256(
                 path.read_bytes()

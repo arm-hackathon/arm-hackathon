@@ -171,6 +171,8 @@ class PilotResourcePreflight:
     projected_peak_rss_bytes: int
     projected_artifact_bytes: int
     verdict: str
+    schema_version: str = ""
+    v2_binding_sha256: str | None = None
 
 
 def _sha256(value: bytes) -> str:
@@ -651,10 +653,19 @@ def validate_canonical_pilot_exclusion(
 def load_resource_preflight(
     path: str | Path,
     *,
+    repo_root: str | Path,
     expected_preflight_sha256: str,
     expected_preflight_bytes_sha256: str,
 ) -> PilotResourcePreflight:
-    """Load only independently pinned, canonical passing resource evidence."""
+    """Load only a fresh, independently pinned v2 resource receipt."""
+    from .pilot_benchmark import (
+        V2_PREFLIGHT_SCHEMA_VERSION,
+        V2_RESOURCE_CEILINGS,
+        build_v2_contract_identities,
+        build_v2_runtime_identity,
+        build_v2_source_manifest,
+    )
+
     value, raw_sha = _load_bound_json(
         Path(path),
         label="preflight",
@@ -662,13 +673,24 @@ def load_resource_preflight(
         expected_semantic_sha256=expected_preflight_sha256,
         expected_bytes_sha256=expected_preflight_bytes_sha256,
     )
+    if value.get("schema_version") != V2_PREFLIGHT_SCHEMA_VERSION:
+        raise PilotContractError("resource preflight is not the required v2 schema")
     expected_fields = frozenset(
         {
             "schema_version",
             "roster_sha256",
+            "roster_bytes_sha256",
             "profile_action_sha256",
+            "profile_action_bytes_sha256",
+            "source_manifest",
+            "source_manifest_sha256",
+            "contract_identities",
+            "config_raw_sha256",
+            "runtime_identity",
             "planned_hmc_runs",
             "benchmark_hmc_runs",
+            "free_disk_bytes",
+            "ceilings",
             "measured_wall_time_seconds",
             "measured_peak_rss_bytes",
             "measured_artifact_bytes",
@@ -683,11 +705,14 @@ def load_resource_preflight(
         }
     )
     _require_exact_fields(value, expected_fields, label="preflight")
+    root = Path(repo_root).resolve()
+    design = load_approved_pilot_design(root)
     if (
-        value["schema_version"]
-        != "aeolus_habitat_v2_forecast_pilot_resource_preflight_v1"
+        value["schema_version"] != V2_PREFLIGHT_SCHEMA_VERSION
         or value["roster_sha256"] != APPROVED_ROSTER_SHA256
+        or value["roster_bytes_sha256"] != design.roster_bytes_sha256
         or value["profile_action_sha256"] != APPROVED_PROFILE_ACTION_SHA256
+        or value["profile_action_bytes_sha256"] != design.profile_action_bytes_sha256
         or value["planned_hmc_runs"] != 23_400
         or value["verdict"] != "PASS"
         or any(
@@ -699,10 +724,10 @@ def load_resource_preflight(
             )
         )
     ):
-        raise PilotContractError("resource preflight does not authorize the plan")
+        raise PilotContractError("resource preflight is not a passing v2 binding")
     benchmark_runs = value["benchmark_hmc_runs"]
-    if type(benchmark_runs) is not int or benchmark_runs <= 0:
-        raise PilotContractError("preflight benchmark count must be positive")
+    if type(benchmark_runs) is not int or benchmark_runs != 2:
+        raise PilotContractError("v2 preflight must bind exactly two benchmark runs")
     measured_wall = _require_positive_number(
         value["measured_wall_time_seconds"], label="measured wall time"
     )
@@ -719,6 +744,61 @@ def load_resource_preflight(
         type(value[field]) is not int or value[field] <= 0 for field in integer_fields
     ):
         raise PilotContractError("preflight byte counts must be positive integers")
+    if type(value["free_disk_bytes"]) is not int or value["free_disk_bytes"] < 0:
+        raise PilotContractError("preflight free disk measurement is invalid")
+
+    expected_ceilings = {
+        "wall_time_seconds": float(V2_RESOURCE_CEILINGS.wall_time_seconds),
+        "peak_rss_bytes": V2_RESOURCE_CEILINGS.peak_rss_bytes,
+        "artifact_bytes": V2_RESOURCE_CEILINGS.artifact_bytes,
+        "disk_reserve_bytes": V2_RESOURCE_CEILINGS.disk_reserve_bytes,
+    }
+    if value["ceilings"] != expected_ceilings:
+        raise PilotContractError("v2 preflight ceilings drift from the ratified amendment")
+    source_manifest = value["source_manifest"]
+    if type(source_manifest) is not dict or source_manifest != build_v2_source_manifest(root):
+        raise PilotContractError("v2 preflight source manifest is stale or substituted")
+    source_manifest_sha = hashlib.sha256(
+        canonical_json_bytes(source_manifest)
+    ).hexdigest()
+    if value["source_manifest_sha256"] != source_manifest_sha:
+        raise PilotContractError("v2 preflight source manifest identity is malformed")
+    if value["contract_identities"] != build_v2_contract_identities(root):
+        raise PilotContractError("v2 preflight contract binding is stale or substituted")
+    expected_config = {
+        name: _sha256((root / name).read_bytes()) for name in ("pyproject.toml", "uv.lock")
+    }
+    if value["config_raw_sha256"] != expected_config:
+        raise PilotContractError("v2 preflight config binding is stale or substituted")
+    if value["runtime_identity"] != build_v2_runtime_identity():
+        raise PilotContractError("v2 preflight runtime binding is stale or substituted")
+
+    projected_artifact = -(
+        -(value["measured_artifact_bytes"] * 23_400) // benchmark_runs
+    )
+    if (
+        not math.isclose(
+            projected_wall,
+            measured_wall * 23_400 / benchmark_runs,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+        or value["projected_peak_rss_bytes"] != value["measured_peak_rss_bytes"]
+        or value["projected_artifact_bytes"] != projected_artifact
+        or (projected_wall <= expected_ceilings["wall_time_seconds"])
+        is not value["runtime_within_ceiling"]
+        or (
+            value["projected_peak_rss_bytes"] <= expected_ceilings["peak_rss_bytes"]
+        )
+        is not value["memory_within_ceiling"]
+        or (
+            value["free_disk_bytes"] - projected_artifact
+            >= expected_ceilings["disk_reserve_bytes"]
+            and projected_artifact <= expected_ceilings["artifact_bytes"]
+        )
+        is not value["disk_reserve_preserved"]
+    ):
+        raise PilotContractError("v2 preflight resource arithmetic is incoherent")
     return PilotResourcePreflight(
         preflight_sha256=value["preflight_sha256"],
         preflight_bytes_sha256=raw_sha,
@@ -731,6 +811,8 @@ def load_resource_preflight(
         projected_peak_rss_bytes=value["projected_peak_rss_bytes"],
         projected_artifact_bytes=value["projected_artifact_bytes"],
         verdict=value["verdict"],
+        schema_version=value["schema_version"],
+        v2_binding_sha256=source_manifest_sha,
     )
 
 

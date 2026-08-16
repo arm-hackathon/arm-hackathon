@@ -10,10 +10,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import importlib.metadata
+import json
 import math
+import platform
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 import time
 from typing import Any
+
+import numpy as np
 
 from .contracts import canonical_json_bytes
 from .pilot import (
@@ -26,6 +34,9 @@ from .pilot import (
 PLANNED_HMC_RUNS: int = 23_400
 PREFLIGHT_SCHEMA_VERSION: str = (
     "aeolus_habitat_v2_forecast_pilot_resource_preflight_v1"
+)
+V2_PREFLIGHT_SCHEMA_VERSION: str = (
+    "aeolus_habitat_v2_forecast_pilot_resource_preflight_v2"
 )
 
 
@@ -50,6 +61,88 @@ class BenchmarkCeilings:
     peak_rss_bytes: int
     artifact_bytes: int
     disk_reserve_bytes: int
+
+
+V2_RESOURCE_CEILINGS = BenchmarkCeilings(
+    wall_time_seconds=48.0 * 60.0 * 60.0,
+    peak_rss_bytes=4_294_967_296,
+    artifact_bytes=34_359_738_368,
+    disk_reserve_bytes=21_474_836_480,
+)
+
+
+def _sha256_file(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as error:
+        raise PilotBenchmarkError(f"preflight source cannot be read: {path}") from error
+
+
+def build_v2_source_manifest(repo_root: str | Path) -> dict[str, str]:
+    """Bind every tracked Habitat V2 source/config byte in the reviewed scope."""
+    root = Path(repo_root).resolve()
+    pathspecs = (
+        "src/aeolus/habitat_v2",
+        "contracts/habitat_v2*.json",
+        "scenarios/habitat_v2*.json",
+        "scenarios/habitat_v2_observability/*.json",
+        "docs/plans/2026-08-14-habitat-v2-forecast-*.json",
+        "docs/plans/2026-08-15-habitat-v2-forecast-pilot-v2-generation-amendment-v1.json",
+    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--", *pathspecs],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise PilotBenchmarkError("Git cannot enumerate the reviewed v2 source") from error
+    relative_paths = tuple(sorted(line for line in result.stdout.splitlines() if line))
+    if not relative_paths:
+        raise PilotBenchmarkError("reviewed v2 source manifest is empty")
+    return {relative: _sha256_file(root / relative) for relative in relative_paths}
+
+
+def build_v2_contract_identities(repo_root: str | Path) -> dict[str, dict[str, str]]:
+    """Return raw-byte and canonical-semantic identities for every HMC contract."""
+    root = Path(repo_root).resolve()
+    result: dict[str, dict[str, str]] = {}
+    for path in sorted((root / "contracts").glob("habitat_v2*.json")):
+        try:
+            raw = path.read_bytes()
+            value = json.loads(raw)
+            if type(value) is not dict:
+                raise ValueError("contract is not an object")
+            semantic = hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            raise PilotBenchmarkError(f"contract identity cannot be built: {path}") from error
+        relative = path.relative_to(root).as_posix()
+        result[relative] = {
+            "raw_bytes_sha256": hashlib.sha256(raw).hexdigest(),
+            "semantic_sha256": semantic,
+        }
+    if not result:
+        raise PilotBenchmarkError("v2 contract identity set is empty")
+    return result
+
+
+def build_v2_runtime_identity() -> dict[str, str]:
+    """Bind the interpreter, platform and measurement-library runtime."""
+    try:
+        psutil_version = importlib.metadata.version("psutil")
+    except importlib.metadata.PackageNotFoundError:
+        psutil_version = "UNAVAILABLE"
+    return {
+        "python_implementation": platform.python_implementation(),
+        "python_version": platform.python_version(),
+        "python_cache_tag": str(sys.implementation.cache_tag),
+        "python_executable": Path(sys.executable).resolve().as_posix(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "numpy_version": np.__version__,
+        "psutil_version": psutil_version,
+    }
 
 
 def _require_measurement(value: Any) -> RunMeasurement:
@@ -136,6 +229,64 @@ def build_preflight_receipt(
         "memory_within_ceiling": memory_ok,
         "disk_reserve_preserved": disk_ok,
         "verdict": verdict,
+    }
+    body["preflight_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)
+    ).hexdigest()
+    return body
+
+
+def build_v2_preflight_receipt(
+    repo_root: str | Path,
+    design: PilotDesign,
+    contracts: Any,
+    *,
+    measurements: tuple[RunMeasurement, ...],
+    ceilings: BenchmarkCeilings,
+    free_disk_bytes: int,
+) -> dict[str, Any]:
+    """Build a fresh v2 receipt bound to all reviewed executable inputs."""
+    from .contracts import ForecastContracts
+
+    if type(design) is not PilotDesign or type(contracts) is not ForecastContracts:
+        raise PilotBenchmarkError("v2 preflight requires exact design and contracts")
+    if design.roster_sha256 != APPROVED_ROSTER_SHA256 or (
+        design.profile_action_sha256 != APPROVED_PROFILE_ACTION_SHA256
+    ):
+        raise PilotBenchmarkError("v2 preflight design identity drifts")
+    limits = _require_ceilings(ceilings)
+    if limits != V2_RESOURCE_CEILINGS:
+        raise PilotBenchmarkError("v2 preflight ceilings drift from the ratified amendment")
+
+    root = Path(repo_root).resolve()
+    legacy = build_preflight_receipt(
+        measurements=measurements,
+        ceilings=limits,
+        free_disk_bytes=free_disk_bytes,
+    )
+    legacy.pop("preflight_sha256")
+    source_manifest = build_v2_source_manifest(root)
+    body: dict[str, Any] = {
+        **legacy,
+        "schema_version": V2_PREFLIGHT_SCHEMA_VERSION,
+        "roster_bytes_sha256": design.roster_bytes_sha256,
+        "profile_action_bytes_sha256": design.profile_action_bytes_sha256,
+        "source_manifest": source_manifest,
+        "source_manifest_sha256": hashlib.sha256(
+            canonical_json_bytes(source_manifest)
+        ).hexdigest(),
+        "contract_identities": build_v2_contract_identities(root),
+        "config_raw_sha256": {
+            name: _sha256_file(root / name) for name in ("pyproject.toml", "uv.lock")
+        },
+        "runtime_identity": build_v2_runtime_identity(),
+        "free_disk_bytes": free_disk_bytes,
+        "ceilings": {
+            "wall_time_seconds": float(limits.wall_time_seconds),
+            "peak_rss_bytes": limits.peak_rss_bytes,
+            "artifact_bytes": limits.artifact_bytes,
+            "disk_reserve_bytes": limits.disk_reserve_bytes,
+        },
     }
     body["preflight_sha256"] = hashlib.sha256(
         canonical_json_bytes(body)
