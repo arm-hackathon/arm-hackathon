@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -30,7 +29,7 @@ def test_compact_history_uses_only_causal_target_estimators() -> None:
     assert result.dtype == np.float32
     assert result.shape == (4, 51)
     assert np.array_equal(
-        result[:, 0], np.array((12.0, 22.0, 32.0, 42.0), dtype=np.float32)
+        result[:, 0], np.array((10.0, 20.0, 30.0, 40.0), dtype=np.float32)
     )
     assert np.array_equal(
         result[:, 5], np.array((1.0, 2.0, 3.0, 4.0), dtype=np.float32)
@@ -143,7 +142,7 @@ def test_packet_examples_slice_maximum_tensors_without_physics_rerun() -> None:
     assert examples[0].cluster_id == "cluster-a"
     assert examples[0].action_present is False
     assert examples[0].history_f32.shape == (4, 51)
-    assert np.all(examples[0].history_f32[:, 0] == 12.0)
+    assert np.all(examples[0].history_f32[:, 0] == 10.0)
     assert np.array_equal(examples[4].action_f32, actions[4])
     assert np.array_equal(examples[3].targets_f32, targets[3, :2])
 

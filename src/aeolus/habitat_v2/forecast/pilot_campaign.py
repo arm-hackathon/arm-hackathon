@@ -9,9 +9,9 @@ module performs no generation campaign by itself.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -300,7 +300,11 @@ def _load_validated_staged_pair(
 ) -> dict[str, Any]:
     """Validate and describe one existing pair before a campaign resume."""
     from .contracts import canonical_json_bytes
-    from .pilot import APPROVED_PROFILE_ACTION_SHA256, APPROVED_ROSTER_SHA256, PilotDesign
+    from .pilot import (
+        APPROVED_PROFILE_ACTION_SHA256,
+        APPROVED_ROSTER_SHA256,
+        PilotDesign,
+    )
     from .pilot_custody import PAIR_MANIFEST_SCHEMA, validate_pilot_pair
 
     if type(design) is not PilotDesign or not destination.is_dir():
@@ -392,6 +396,7 @@ def run_pilot_campaign(
     *,
     preflight: Any,
     output_root: str | Path,
+    allowed_cluster_ids: frozenset[str],
     pair_limit: int | None = None,
     worker_count: int = 1,
     resume: bool = False,
@@ -432,6 +437,11 @@ def run_pilot_campaign(
         or any(character not in "0123456789abcdef" for character in preflight.v2_binding_sha256)
     ):
         raise PilotCampaignError("campaign requires a loaded v2 preflight binding")
+    approved_cluster_ids = frozenset(cluster.cluster_id for cluster in design.clusters)
+    if not isinstance(allowed_cluster_ids, frozenset) or not allowed_cluster_ids:
+        raise PilotCampaignError("explicit non-empty frozen allowed_cluster_ids are required")
+    if allowed_cluster_ids - approved_cluster_ids:
+        raise PilotCampaignError("allowed_cluster_ids contain unknown roster IDs")
     if pair_limit is not None and (type(pair_limit) is not int or pair_limit < 1):
         raise PilotCampaignError("pair limit must be a positive integer")
     if type(worker_count) is not int or worker_count < 1:
@@ -442,7 +452,13 @@ def run_pilot_campaign(
     target = Path(output_root).resolve()
 
     def pair_groups():
-        continuations = iter(iter_pilot_continuations(design))
+        # Filter the plan before grouping, scenario materialization, or HMC
+        # dispatch. Excluded clusters never reach an execution runner.
+        continuations = (
+            item
+            for item in iter_pilot_continuations(design)
+            if item.cluster_id in allowed_cluster_ids
+        )
         width = 1 + len(design.action_ids)
         while True:
             group = tuple(islice(continuations, width))
@@ -450,11 +466,15 @@ def run_pilot_campaign(
                 return
             if len(group) != width:
                 raise PilotCampaignError("pilot plan ends with a partial pair")
+            if any(item.cluster_id not in allowed_cluster_ids for item in group):
+                raise PilotCampaignError("excluded cluster reached pair group")
             yield group
 
     groups = tuple(pair_groups())
     if pair_limit is not None:
         groups = groups[:pair_limit]
+    if not groups:
+        raise PilotCampaignError("allowed_cluster_ids selected no pilot pairs")
     expected_pair_ids = {group[0].pair_id for group in groups}
     existing_by_id: dict[str, dict[str, Any]] = {}
     if target.exists():
@@ -497,6 +517,7 @@ def run_pilot_campaign(
         "preflight_sha256": preflight.preflight_sha256,
         "planned_hmc_runs": preflight.planned_hmc_runs,
         "worker_count": worker_count,
+        "allowed_cluster_ids": sorted(allowed_cluster_ids),
         "pairs_completed": pairs_completed,
         "hmc_runs_executed": runs_executed,
         "pair_manifests": pair_manifests,
