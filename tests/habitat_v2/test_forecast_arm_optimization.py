@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import zipfile
 
 import numpy as np
 import pytest
@@ -116,7 +117,7 @@ def test_fp32_candidate_passes_live_drift_gate_and_emits_comparable_timings(
     assert receipt["claims"]["arm_specific_operator_optimisation"] is False
 
 
-def test_fp32_candidate_and_static_receipt_are_exactly_reproducible(
+def test_fp32_candidate_has_canonical_payloads_and_frozen_artifact_identity(
     tmp_path: Path,
 ) -> None:
     from aeolus.habitat_v2.forecast.arm_optimization import optimise_ridge_fp32
@@ -129,19 +130,39 @@ def test_fp32_candidate_and_static_receipt_are_exactly_reproducible(
     committed_receipt = artifact_root / "fp32-conversion-receipt.json"
     source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
     first = tmp_path / "first.npz"
-    second = tmp_path / "second.npz"
 
     first_receipt = optimise_ridge_fp32(
         source, first, expected_source_sha256=source_sha256
     )
-    second_receipt = optimise_ridge_fp32(
-        source, second, expected_source_sha256=source_sha256
-    )
 
-    assert first.read_bytes() == second.read_bytes() == committed_candidate.read_bytes()
-    assert first_receipt == second_receipt
-    assert committed_receipt.read_bytes() == canonical_json_bytes(first_receipt)
-    assert json.loads(committed_receipt.read_bytes()) == first_receipt
+    with (
+        zipfile.ZipFile(first) as regenerated,
+        zipfile.ZipFile(committed_candidate) as frozen,
+    ):
+        assert sorted(regenerated.namelist()) == sorted(frozen.namelist())
+        for name in frozen.namelist():
+            assert regenerated.read(name) == frozen.read(name)
+    with (
+        np.load(first, allow_pickle=False) as regenerated,
+        np.load(committed_candidate, allow_pickle=False) as frozen,
+    ):
+        assert set(regenerated.files) == set(frozen.files)
+        for name in frozen.files:
+            assert np.array_equal(regenerated[name], frozen[name])
+
+    frozen_raw = committed_candidate.read_bytes()
+    frozen_receipt_raw = committed_receipt.read_bytes()
+    frozen_receipt = json.loads(frozen_receipt_raw)
+    assert frozen_receipt_raw == canonical_json_bytes(frozen_receipt)
+    assert (
+        frozen_receipt["candidate_model_sha256"]
+        == hashlib.sha256(frozen_raw).hexdigest()
+    )
+    assert frozen_receipt["candidate_model_file_bytes"] == len(frozen_raw)
+    assert (
+        first_receipt["candidate_raw_array_bytes"]
+        == frozen_receipt["candidate_raw_array_bytes"]
+    )
 
 
 def test_cli_benchmarks_exact_existing_candidate_without_rewriting_it(

@@ -56,7 +56,10 @@ def _arguments() -> argparse.Namespace:
     root = Path(__file__).resolve().parents[1]
     artifact_root = root / "artifacts/demo-only/habitat-v2-forecast"
     parser = argparse.ArgumentParser(
-        description="Convert and benchmark the frozen Habitat V2 FP64 ridge model."
+        description=(
+            "Convert and benchmark the frozen Habitat V2 FP64 ridge model. "
+            "Compressed NPZ bytes are not cross-platform reproducible."
+        )
     )
     parser.add_argument("--repo-root", type=Path, default=root)
     parser.add_argument(
@@ -89,8 +92,8 @@ def _arguments() -> argparse.Namespace:
         "--use-existing-candidate",
         action="store_true",
         help=(
-            "Benchmark the exact candidate and conversion receipt already present "
-            "instead of regenerating platform-dependent compressed bytes."
+            "Benchmark the exact SHA-bound candidate and conversion receipt already "
+            "present instead of regenerating platform-dependent compressed bytes."
         ),
     )
     return parser.parse_args()
