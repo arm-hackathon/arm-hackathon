@@ -35,6 +35,12 @@ _FIXTURE_SCENARIO_SHA256 = (
 _REFERENCE_SCENARIO_SHA256 = (
     "a9ee8eecdb4a952ef95347edcabb7dad614280eb496877cc9cddf8a5c9f77de7"
 )
+_PACKAGED_REVIEWED_HMC_DIRECTORY = (
+    "contracts/habitat-v2-forecast-reviewed-hmc-v1"
+)
+_PACKAGED_REVIEWED_HMC_MANIFEST_SHA256 = (
+    "b630e90b57ac25aec87576bc6ed9757b811c477abc9ab32181c4134ce6dea9d2"
+)
 
 
 class ForecastContractError(ValueError):
@@ -270,6 +276,120 @@ def _final_git_source(root: Path, path: str) -> bytes:
     return result.stdout
 
 
+def _packaged_reviewed_source(root: Path, path: str) -> bytes:
+    """Load one reviewed byte stream from the immutable source package.
+
+    The package is a provenance fallback only.  Its manifest is pinned here and
+    must exactly restate the reviewed binding before any source byte is used.
+    """
+
+    package_root = root / _PACKAGED_REVIEWED_HMC_DIRECTORY
+    manifest = _strict_json(package_root / "manifest.json")
+    _exact(
+        manifest,
+        {
+            "schema_version",
+            "release_tier",
+            "original_hmc_commit_sha",
+            "original_hmc_tree_sha",
+            "source_files",
+            "package_manifest_sha256",
+        },
+        "packaged reviewed HMC manifest",
+    )
+    if (
+        manifest["schema_version"]
+        != "aeolus_habitat_v2_forecast_reviewed_hmc_package_v1"
+        or manifest["release_tier"] != RELEASE_TIER
+        or manifest["original_hmc_commit_sha"]
+        != "79d6a718e0d44122a763bb72f9c8ed929f39fd23"
+        or manifest["original_hmc_tree_sha"]
+        != "91cea3b4c2334a4ece140bd1bf7144353f52ec0d"
+    ):
+        raise ForecastContractError("packaged reviewed HMC identity is unsupported")
+    _self_hash(
+        manifest,
+        "package_manifest_sha256",
+        _PACKAGED_REVIEWED_HMC_MANIFEST_SHA256,
+    )
+    entries = manifest["source_files"]
+    if type(entries) is not list or len(entries) != 27:
+        raise ForecastContractError(
+            "packaged reviewed HMC manifest must contain exactly 27 files"
+        )
+    expected_paths: set[str] = set()
+    source_by_path: dict[str, Mapping[str, Any]] = {}
+    for index, entry in enumerate(entries):
+        if type(entry) is not dict:
+            raise ForecastContractError(
+                "packaged reviewed HMC manifest entry must be an object"
+            )
+        _exact(
+            entry,
+            {"path", "sha256", "git_blob_sha1", "byte_length"},
+            f"packaged reviewed HMC entry {index}",
+        )
+        entry_path = entry["path"]
+        if (
+            type(entry_path) is not str
+            or not entry_path
+            or entry_path.startswith("/")
+            or ".." in Path(entry_path).parts
+            or type(entry["byte_length"]) is not int
+            or entry["byte_length"] < 0
+        ):
+            raise ForecastContractError("packaged reviewed HMC manifest path is unsafe")
+        _sha(entry["sha256"], label="packaged source sha256")
+        if (
+            type(entry["git_blob_sha1"]) is not str
+            or len(entry["git_blob_sha1"]) != 40
+            or any(char not in "0123456789abcdef" for char in entry["git_blob_sha1"])
+        ):
+            raise ForecastContractError(
+                "packaged reviewed HMC manifest has invalid Git blob SHA-1"
+            )
+        if entry_path in source_by_path:
+            raise ForecastContractError(
+                "packaged reviewed HMC manifest contains duplicate paths"
+            )
+        expected_paths.add(entry_path)
+        source_by_path[entry_path] = entry
+    actual_paths = {
+        item.relative_to(package_root / "sources").as_posix()
+        for item in (package_root / "sources").rglob("*")
+        if item.is_file()
+    }
+    if actual_paths != expected_paths:
+        raise ForecastContractError(
+            "packaged reviewed HMC source path set is incomplete or substituted"
+        )
+    entry = source_by_path.get(path)
+    if entry is None:
+        raise ForecastContractError(f"packaged reviewed HMC source {path} is absent")
+    try:
+        raw = (package_root / "sources" / path).read_bytes()
+    except OSError as error:
+        raise ForecastContractError(
+            f"cannot read packaged reviewed HMC source {path}"
+        ) from error
+    if (
+        len(raw) != entry["byte_length"]
+        or hashlib.sha256(raw).hexdigest() != entry["sha256"]
+        or _git_blob_sha1(raw) != entry["git_blob_sha1"]
+    ):
+        raise ForecastContractError(f"packaged reviewed HMC source {path} has drifted")
+    return raw
+
+
+def _reviewed_source(root: Path, path: str) -> bytes:
+    """Prefer Git's historical proof; use the pinned byte package if absent."""
+
+    try:
+        return _final_git_source(root, path)
+    except ForecastContractError:
+        return _packaged_reviewed_source(root, path)
+
+
 def _validate_binding(root: Path, value: Mapping[str, Any]) -> None:
     fields = {
         "schema_version",
@@ -328,7 +448,7 @@ def _validate_binding(root: Path, value: Mapping[str, Any]) -> None:
         ):
             raise ForecastContractError("HMC source manifest path is unsafe")
         paths.append(path)
-        source = _final_git_source(root, path)
+        source = _reviewed_source(root, path)
         if (
             hashlib.sha256(source).hexdigest()
             != _sha(entry["sha256"], label="source sha256")

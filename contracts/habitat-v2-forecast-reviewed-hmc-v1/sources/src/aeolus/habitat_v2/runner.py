@@ -1,0 +1,1040 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import hashlib
+import json
+import math
+from typing import Any, Mapping
+
+from . import physics as physics_module
+from .physics import StepResult, advance_one_step, initial_state
+from .scenario import (
+    Scenario,
+    SCENARIO_SCHEMA_VERSION_V5,
+    TRACE_SCHEMA_VERSION_V2,
+    TRACE_SCHEMA_VERSION_V3,
+    TRACE_SCHEMA_VERSION_V4,
+    TRACE_SCHEMA_VERSION_V5,
+)
+from .state import PlantState
+
+_STATE_TOLERANCE = 1e-12
+_SENSOR_CHANNELS = (
+    "temperature_k",
+    "pressure_pa",
+    "co2_ppm",
+    "o2_mole_fraction",
+    "relative_humidity",
+)
+
+
+class AccountingInvariantError(RuntimeError):
+    """Raised when a completed step's accounting receipt does not close."""
+
+
+class StateInvariantError(RuntimeError):
+    """Raised when a completed step violates a physical or resource invariant."""
+
+
+def _finite_accounting_value(
+    value: Any,
+    *,
+    path: str,
+    non_negative: bool = False,
+) -> float:
+    if isinstance(value, bool):
+        raise AccountingInvariantError(f"{path} must be finite numeric data")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise AccountingInvariantError(
+            f"{path} must be finite numeric data"
+        ) from error
+    if not math.isfinite(number):
+        raise AccountingInvariantError(f"{path} must be finite numeric data")
+    if non_negative and number < 0.0:
+        raise AccountingInvariantError(f"{path} must be non-negative")
+    return number
+
+
+@dataclass(frozen=True)
+class SimulationRun:
+    final_state: PlantState
+    rows: tuple[Mapping[str, Any], ...]
+    trace_bytes: bytes
+
+
+def _require_causal_receipt_match(
+    actual: Any, expected: Any, *, path: str
+) -> None:
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping) or set(actual) != set(expected):
+            raise AccountingInvariantError(
+                f"{path} does not match causal recomputation"
+            )
+        for key in sorted(expected):
+            _require_causal_receipt_match(
+                actual[key], expected[key], path=f"{path}.{key}"
+            )
+        return
+    if isinstance(expected, (int, float)) and not isinstance(expected, bool):
+        if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+            raise AccountingInvariantError(
+                f"{path} does not match causal recomputation"
+            )
+        actual_value = float(actual)
+        expected_value = float(expected)
+        tolerance = max(
+            1e-12,
+            1e-10 * max(1.0, abs(actual_value), abs(expected_value)),
+        )
+        if (
+            not math.isfinite(actual_value)
+            or abs(actual_value - expected_value) > tolerance
+        ):
+            raise AccountingInvariantError(
+                f"{path} does not match causal recomputation"
+            )
+        return
+    if actual != expected:
+        raise AccountingInvariantError(f"{path} does not match causal recomputation")
+
+
+def validate_accounting_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    scenario: Scenario | None = None,
+    pre_step_state: PlantState | None = None,
+    command: Mapping[str, Any] | None = None,
+) -> None:
+    species = receipt["species_accounting"]
+    tolerance_mol = _finite_accounting_value(
+        species["tolerance_mol"],
+        path="species_accounting.tolerance_mol",
+        non_negative=True,
+    )
+    for field in (
+        "co2_residual_mol",
+        "o2_residual_mol",
+        "water_residual_mol",
+        "inert_residual_mol",
+    ):
+        residual = _finite_accounting_value(
+            species[field], path=f"species_accounting.{field}"
+        )
+        if abs(residual) > tolerance_mol:
+            raise AccountingInvariantError(
+                f"{field} exceeds declared species tolerance"
+            )
+
+    thermal = receipt["thermal"]
+    system_receipt_scale_j = 0.0
+    for zone_id in sorted(thermal["zones"]):
+        zone = thermal["zones"][zone_id]
+        zone_receipt_scale_j = sum(
+            abs(
+                _finite_accounting_value(
+                    zone[field], path=f"thermal.zones.{zone_id}.{field}"
+                )
+            )
+            for field in (
+                "metabolic_heat_added_j",
+                "recirculation_heat_added_j",
+                "cooling_heat_removed_j",
+                "passive_heat_rejected_j",
+                "passive_heat_received_j",
+                "zone_thermal_energy_delta_j",
+            )
+        )
+        system_receipt_scale_j += zone_receipt_scale_j
+        receipt_scale_j = max(1.0, zone_receipt_scale_j)
+        tolerance_j = max(1e-6, 1e-10 * receipt_scale_j)
+        zone_residual_j = _finite_accounting_value(
+            zone["zone_thermal_residual_j"],
+            path=f"thermal.zones.{zone_id}.zone_thermal_residual_j",
+        )
+        if abs(zone_residual_j) > tolerance_j:
+            raise AccountingInvariantError(
+                f"{zone_id} thermal residual exceeds declared tolerance"
+            )
+    system_tolerance_j = max(1e-6, 1e-10 * max(1.0, system_receipt_scale_j))
+    system_residual_j = _finite_accounting_value(
+        thermal["system_residual_j"], path="thermal.system_residual_j"
+    )
+    if abs(system_residual_j) > system_tolerance_j:
+        raise AccountingInvariantError(
+            "system thermal residual exceeds declared tolerance"
+        )
+
+    electrical = receipt["electrical"]
+    electrical_scale_wh = max(
+        1.0,
+        sum(
+            abs(
+                _finite_accounting_value(
+                    electrical[field], path=f"electrical.{field}"
+                )
+            )
+            for field in (
+                "generation_wh",
+                "battery_withdrawn_wh",
+                "served_load_wh",
+                "battery_charge_stored_wh",
+                "curtailed_generation_wh",
+                "charge_conversion_loss_wh",
+                "discharge_conversion_loss_wh",
+            )
+        ),
+    )
+    electrical_tolerance_wh = max(1e-12, 1e-10 * electrical_scale_wh)
+    electrical_residual_wh = _finite_accounting_value(
+        electrical["residual_wh"], path="electrical.residual_wh"
+    )
+    if abs(electrical_residual_wh) > electrical_tolerance_wh:
+        raise AccountingInvariantError("electrical residual exceeds declared tolerance")
+
+    has_external_command_digest = "external_command_digest" in receipt
+    recomputed_receipt: Mapping[str, Any] | None = None
+    if has_external_command_digest:
+        if scenario is None:
+            raise AccountingInvariantError(
+                "external-command accounting requires the parsed scenario contract"
+            )
+        if pre_step_state is None:
+            raise AccountingInvariantError(
+                "external-command accounting requires the pre-step plant state"
+            )
+        if command is None:
+            raise AccountingInvariantError(
+                "external-command accounting requires the supplied command"
+            )
+        recomputed_receipt = physics_module.advance_one_step_with_command(
+            scenario, pre_step_state, command
+        ).receipt
+    elif command is not None:
+        raise AccountingInvariantError(
+            "timeline accounting does not accept external command context"
+        )
+
+    network = receipt.get("air_network")
+    if network is None:
+        if scenario is not None and scenario.trace_schema_version in {
+            TRACE_SCHEMA_VERSION_V3,
+            TRACE_SCHEMA_VERSION_V4,
+            TRACE_SCHEMA_VERSION_V5,
+        }:
+            raise AccountingInvariantError(
+                "scenario-v3/v4 accounting requires an air-network receipt"
+            )
+        if recomputed_receipt is not None:
+            _require_causal_receipt_match(
+                receipt,
+                recomputed_receipt,
+                path="accounting receipt",
+            )
+        elif scenario is not None and pre_step_state is not None:
+            _require_causal_receipt_match(
+                receipt,
+                physics_module.advance_one_step(scenario, pre_step_state).receipt,
+                path="accounting receipt",
+            )
+        return
+    if scenario is None:
+        raise AccountingInvariantError(
+            "air-network accounting requires the parsed scenario contract"
+        )
+    if pre_step_state is None:
+        raise AccountingInvariantError(
+            "air-network accounting requires the pre-step plant state"
+        )
+
+    def finite_network_value(field: str) -> float:
+        value = float(network[field])
+        if not math.isfinite(value):
+            raise AccountingInvariantError(f"air-network {field} must be finite")
+        return value
+
+    density = finite_network_value("air_density_kg_m3")
+    efficiency = finite_network_value("total_efficiency")
+    if density <= 0.0:
+        raise AccountingInvariantError("air-network density must be positive")
+    if not 0.0 < efficiency <= 1.0:
+        raise AccountingInvariantError("air-network efficiency must be in (0, 1]")
+
+    declared_density = float(scenario.data["equipment"]["air_density_kg_m3"])
+    declared_efficiency = float(
+        scenario.data["air_network"]["fan"]["total_efficiency"]
+    )
+    parameter_tolerance = 1e-12
+    if abs(density - declared_density) > parameter_tolerance:
+        raise AccountingInvariantError(
+            "air-network receipt does not use the declared reference density"
+        )
+    if abs(efficiency - declared_efficiency) > parameter_tolerance:
+        raise AccountingInvariantError(
+            "air-network receipt does not use the declared fan efficiency"
+        )
+
+    fan_pressure_pa = finite_network_value("fan_pressure_rise_pa")
+    shared_pressure_pa = finite_network_value("shared_pressure_loss_pa")
+    total_flow_m3_s = finite_network_value("total_flow_m3_s")
+    fan_air_power_w = finite_network_value("fan_air_power_w")
+    fan_electrical_power_w = finite_network_value("fan_electrical_power_w")
+    if min(
+        fan_pressure_pa,
+        shared_pressure_pa,
+        total_flow_m3_s,
+        fan_air_power_w,
+        fan_electrical_power_w,
+    ) < 0.0:
+        raise AccountingInvariantError(
+            "air-network pressure, flow, and power must be non-negative"
+        )
+
+    zone_flow = network["zone_flow_m3_s"]
+    zone_mass_flow = network["zone_mass_flow_kg_s"]
+    branch_pressure = network["branch_pressure_loss_pa"]
+    mass_residual = network["mass_balance_residual_kg_s"]
+    if not (
+        set(zone_flow)
+        == set(zone_mass_flow)
+        == set(branch_pressure)
+        == set(mass_residual)
+    ):
+        raise AccountingInvariantError("air-network zone receipt ids do not match")
+
+    flow_sum = sum(float(zone_flow[zone_id]) for zone_id in sorted(zone_flow))
+    flow_tolerance = max(
+        1e-12,
+        1e-10 * max(1.0, abs(total_flow_m3_s), abs(flow_sum)),
+    )
+    if abs(total_flow_m3_s - flow_sum) > flow_tolerance:
+        raise AccountingInvariantError(
+            "air-network total flow does not equal branch flow sum"
+        )
+
+    for zone_id in sorted(zone_flow):
+        flow = float(zone_flow[zone_id])
+        mass_flow = float(zone_mass_flow[zone_id])
+        residual = float(mass_residual[zone_id])
+        pressure = float(branch_pressure[zone_id])
+        if not all(
+            math.isfinite(value) for value in (flow, mass_flow, residual, pressure)
+        ):
+            raise AccountingInvariantError("air-network zone receipts must be finite")
+        if flow < 0.0 or mass_flow < 0.0 or pressure < 0.0:
+            raise AccountingInvariantError(
+                "air-network zone flow, mass, and pressure must be non-negative"
+            )
+
+        expected_mass_flow = density * flow
+        mass_tolerance = max(
+            1e-12,
+            1e-10 * max(1.0, abs(mass_flow), abs(expected_mass_flow)),
+        )
+        if abs(mass_flow - expected_mass_flow) > mass_tolerance:
+            raise AccountingInvariantError(
+                f"{zone_id} mass flow does not equal reference density times volumetric flow"
+            )
+        if abs(residual) > mass_tolerance:
+            raise AccountingInvariantError(
+                f"{zone_id} fixed-density supply-return residual exceeds tolerance"
+            )
+
+        recomputed_pressure_residual = (
+            fan_pressure_pa - shared_pressure_pa - pressure
+        )
+        pressure_tolerance = max(
+            1e-9,
+            1e-10
+            * max(
+                1.0,
+                abs(fan_pressure_pa),
+                abs(shared_pressure_pa),
+                abs(pressure),
+            ),
+        )
+        if abs(recomputed_pressure_residual) > pressure_tolerance:
+            raise AccountingInvariantError(
+                f"{zone_id} fan/system pressure residual exceeds tolerance"
+            )
+
+    recorded_pressure_residual = finite_network_value(
+        "operating_point_residual_pa"
+    )
+    pressure_tolerance = max(
+        1e-9,
+        1e-10 * max(1.0, abs(fan_pressure_pa), abs(shared_pressure_pa)),
+    )
+    if abs(recorded_pressure_residual) > pressure_tolerance:
+        raise AccountingInvariantError(
+            "recorded fan/system pressure residual exceeds tolerance"
+        )
+
+    expected_air_power_w = fan_pressure_pa * total_flow_m3_s
+    air_power_tolerance_w = max(
+        1e-9,
+        1e-10 * max(1.0, abs(fan_air_power_w), abs(expected_air_power_w)),
+    )
+    if abs(fan_air_power_w - expected_air_power_w) > air_power_tolerance_w:
+        raise AccountingInvariantError("fan air power does not equal pressure times flow")
+
+    expected_electrical_power_w = fan_air_power_w / efficiency
+    electrical_power_tolerance_w = max(
+        1e-9,
+        1e-10
+        * max(
+            1.0,
+            abs(fan_electrical_power_w),
+            abs(expected_electrical_power_w),
+        ),
+    )
+    if (
+        abs(fan_electrical_power_w - expected_electrical_power_w)
+        > electrical_power_tolerance_w
+    ):
+        raise AccountingInvariantError(
+            "fan electrical power does not equal air power divided by efficiency"
+        )
+
+    recorded_fan_load_wh = float(electrical["fan_load_wh"])
+    if not math.isfinite(recorded_fan_load_wh):
+        raise AccountingInvariantError("electrical fan load must be finite")
+    expected_fan_load_wh = (
+        fan_electrical_power_w * float(scenario.data["dt_seconds"]) / 3600.0
+    )
+    fan_load_tolerance_wh = max(
+        1e-12,
+        1e-10
+        * max(1.0, abs(recorded_fan_load_wh), abs(expected_fan_load_wh)),
+    )
+    if abs(recorded_fan_load_wh - expected_fan_load_wh) > fan_load_tolerance_wh:
+        raise AccountingInvariantError(
+            "electrical fan load does not match air-network fan power"
+        )
+
+    if recomputed_receipt is None:
+        recomputed_receipt = physics_module.advance_one_step(
+            scenario, pre_step_state
+        ).receipt
+    _require_causal_receipt_match(
+        receipt,
+        recomputed_receipt,
+        path="accounting receipt",
+    )
+
+
+def _assert_finite(value: Any, *, path: str) -> None:
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            _assert_finite(nested, path=f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, nested in enumerate(value):
+            _assert_finite(nested, path=f"{path}[{index}]")
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        if not math.isfinite(float(value)):
+            raise StateInvariantError(f"non-finite state at {path}")
+
+
+def _state_payload(scenario: Scenario, state: PlantState) -> dict[str, Any]:
+    zone_configs = {str(zone["id"]): zone for zone in scenario.data["zones"]}
+    zones: dict[str, Any] = {}
+    for zone_id in sorted(state.zones):
+        zone = state.zones[zone_id]
+        zones[zone_id] = {
+            "co2_mol": zone.co2_mol,
+            "o2_mol": zone.o2_mol,
+            "water_vapor_mol": zone.water_vapor_mol,
+            "inert_mol": zone.inert_mol,
+            "temperature_k": zone.temperature_k,
+            "telemetry": zone.telemetry(
+                volume_m3=float(zone_configs[zone_id]["volume_m3"])
+            ),
+        }
+    utility = state.utility
+    payload = {
+        "zones": zones,
+        "utility": {
+            "co2_sorbent_remaining_mol": utility.co2_sorbent_remaining_mol,
+            "oxygen_store_mol": utility.oxygen_store_mol,
+            "battery_energy_wh": utility.battery_energy_wh,
+            "captured_co2_mol": utility.captured_co2_mol,
+            "condensed_water_mol": utility.condensed_water_mol,
+            "external_heat_received_j": utility.external_heat_received_j,
+            "external_heat_rejected_j": utility.external_heat_rejected_j,
+            "actual_airflow_m3_s": {
+                zone_id: float(utility.actual_airflow_m3_s[zone_id])
+                for zone_id in sorted(utility.actual_airflow_m3_s)
+            },
+            "actual_scrubber_duty": utility.actual_scrubber_duty,
+            "actual_condenser_duty": utility.actual_condenser_duty,
+        },
+    }
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        payload["utility"].update(
+            {
+                "actual_cooling_removed_w": dict(
+                    utility.actual_cooling_removed_w
+                ),
+                "actual_oxygen_injection_mol_s": dict(
+                    utility.actual_oxygen_injection_mol_s
+                ),
+                "effective_scrubber_capture_ability": (
+                    utility.effective_scrubber_capture_ability
+                ),
+                "effective_condenser_removal_ability": (
+                    utility.effective_condenser_removal_ability
+                ),
+                "effective_cooling_delivery_by_zone": dict(
+                    utility.effective_cooling_delivery_by_zone
+                ),
+                "effective_oxygen_delivery_by_zone": dict(
+                    utility.effective_oxygen_delivery_by_zone
+                ),
+                "last_operational_feedback": utility.last_operational_feedback,
+            }
+        )
+    return payload
+
+
+def _assert_state_invariants(scenario: Scenario, state: PlantState) -> None:
+    payload = _state_payload(scenario, state)
+    _assert_finite(payload, path="state")
+    for zone_id, zone in state.zones.items():
+        for field in ("co2_mol", "o2_mol", "water_vapor_mol", "inert_mol"):
+            if getattr(zone, field) < -_STATE_TOLERANCE:
+                raise StateInvariantError(f"negative {field} in {zone_id}")
+        if zone.temperature_k <= 0.0:
+            raise StateInvariantError(f"non-positive temperature in {zone_id}")
+        relative_humidity = payload["zones"][zone_id]["telemetry"]["relative_humidity"]
+        if not -_STATE_TOLERANCE <= relative_humidity <= 1.0 + _STATE_TOLERANCE:
+            raise StateInvariantError(f"relative humidity outside [0, 1] in {zone_id}")
+
+    equipment = scenario.data["equipment"]
+    utility = state.utility
+    for field in (
+        "co2_sorbent_remaining_mol",
+        "oxygen_store_mol",
+        "battery_energy_wh",
+        "captured_co2_mol",
+        "condensed_water_mol",
+        "external_heat_received_j",
+        "external_heat_rejected_j",
+    ):
+        if getattr(utility, field) < -_STATE_TOLERANCE:
+            raise StateInvariantError(f"negative utility inventory: {field}")
+    if (
+        utility.battery_energy_wh
+        > float(equipment["battery_capacity_wh"]) + _STATE_TOLERANCE
+    ):
+        raise StateInvariantError("battery exceeds declared capacity")
+    if not 0.0 <= utility.actual_scrubber_duty <= 1.0:
+        raise StateInvariantError("scrubber duty outside [0, 1]")
+    if not 0.0 <= utility.actual_condenser_duty <= 1.0:
+        raise StateInvariantError("condenser duty outside [0, 1]")
+    if any(value < 0.0 for value in utility.actual_airflow_m3_s.values()):
+        raise StateInvariantError("negative actual airflow")
+    if scenario.scenario_schema_version == SCENARIO_SCHEMA_VERSION_V5:
+        zone_ids = set(state.zones)
+        for field in (
+            "actual_cooling_removed_w",
+            "actual_oxygen_injection_mol_s",
+            "effective_cooling_delivery_by_zone",
+            "effective_oxygen_delivery_by_zone",
+        ):
+            values = getattr(utility, field)
+            if set(values) != zone_ids:
+                raise StateInvariantError(f"{field} topology does not match zones")
+            if any(float(value) < -_STATE_TOLERANCE for value in values.values()):
+                raise StateInvariantError(f"negative V5 actuator state: {field}")
+        for field in (
+            "effective_scrubber_capture_ability",
+            "effective_condenser_removal_ability",
+        ):
+            value = float(getattr(utility, field))
+            if not 0.0 <= value <= 1.0:
+                raise StateInvariantError(f"{field} outside [0, 1]")
+
+
+def _trace_telemetry(scenario: Scenario, state: PlantState) -> dict[str, Any]:
+    payload = _state_payload(scenario, state)
+    observable_fields = (
+        "temperature_k",
+        "pressure_pa",
+        "co2_ppm",
+        "o2_mole_fraction",
+        "relative_humidity",
+    )
+    return {
+        zone_id: {
+            field: payload["zones"][zone_id]["telemetry"][field]
+            for field in observable_fields
+        }
+        for zone_id in sorted(payload["zones"])
+    }
+
+
+def _sensor_sample(
+    *, seed: int, zone_id: str, sensor_head: str, channel: str, step: int
+) -> float:
+    payload = (
+        f"{seed}\0{zone_id}\0{sensor_head}\0{channel}\0{step}".encode("utf-8")
+    )
+    integer = int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
+    return (2.0 * integer / float(1 << 64)) - 1.0
+
+
+def _clamp_sensor_value(channel: str, value: float) -> float:
+    lower, upper = {
+        "temperature_k": (0.0, math.inf),
+        "pressure_pa": (0.0, math.inf),
+        "co2_ppm": (0.0, 1_000_000.0),
+        "o2_mole_fraction": (0.0, 1.0),
+        "relative_humidity": (0.0, 1.0),
+    }[channel]
+    return min(upper, max(lower, value))
+
+
+def _healthy_sensor_head(
+    scenario: Scenario,
+    truth_telemetry: Mapping[str, Mapping[str, float]],
+    *,
+    sensor_head: str,
+    step: int,
+) -> dict[str, dict[str, float]]:
+    model = scenario.data["sensor_model"]
+    amplitudes = model[f"{sensor_head}_noise_amplitude"]
+    seed = int(model["random_seed"])
+    return {
+        zone_id: {
+            channel: float(truth_telemetry[zone_id][channel])
+            + float(amplitudes[channel])
+            * _sensor_sample(
+                seed=seed,
+                zone_id=zone_id,
+                sensor_head=sensor_head,
+                channel=channel,
+                step=step,
+            )
+            for channel in _SENSOR_CHANNELS
+        }
+        for zone_id in sorted(truth_telemetry)
+    }
+
+
+def _linear_sensor_bias(profile: Mapping[str, Any], *, emitted_step: int) -> float:
+    start_step = int(profile["start_step"])
+    end_step = int(profile["end_step"])
+    start_bias = float(profile["start_bias"])
+    end_bias = float(profile["end_bias"])
+    count = end_step - start_step
+    if count == 1:
+        return end_bias
+    progress = (emitted_step - start_step) / float(count - 1)
+    return start_bias + (end_bias - start_bias) * progress
+
+
+def _apply_sensor_faults(
+    scenario: Scenario,
+    *,
+    emitted_step: int,
+    primary: dict[str, dict[str, float]],
+    secondary: dict[str, dict[str, float]],
+    previous_primary: Mapping[str, Mapping[str, float]] | None,
+    previous_secondary: Mapping[str, Mapping[str, float]] | None,
+) -> list[Mapping[str, Any]]:
+    observations = {"primary": primary, "secondary": secondary}
+    previous_observations = {
+        "primary": previous_primary,
+        "secondary": previous_secondary,
+    }
+    active: list[Mapping[str, Any]] = []
+    for profile in scenario.data["fault_profiles"]:
+        if profile["type"] not in {"sensor_bias_drift", "sensor_stuck"} or not (
+            int(profile["start_step"])
+            <= emitted_step
+            < int(profile["end_step"])
+        ):
+            continue
+        zone_id = str(profile["zone_id"])
+        sensor_head = str(profile["sensor_head"])
+        channel = str(profile["channel"])
+        target_id = f"{zone_id}/{sensor_head}/{channel}"
+        if profile["type"] == "sensor_bias_drift":
+            bias = _linear_sensor_bias(profile, emitted_step=emitted_step)
+            observations[sensor_head][zone_id][channel] += bias
+            active.append(
+                {
+                    "fault_id": str(profile["id"]),
+                    "fault_type": "sensor_bias_drift",
+                    "target_id": target_id,
+                    "effect_name": "additive_sensor_bias",
+                    "effect_value": bias,
+                }
+            )
+            continue
+
+        previous_head = previous_observations[sensor_head]
+        if previous_head is None:
+            raise StateInvariantError(
+                "sensor stuck fault requires a previous completed observation"
+            )
+        held_value = float(previous_head[zone_id][channel])
+        observations[sensor_head][zone_id][channel] = held_value
+        active.append(
+            {
+                "fault_id": str(profile["id"]),
+                "fault_type": "sensor_stuck",
+                "target_id": target_id,
+                "effect_name": "held_sensor_observation",
+                "effect_value": held_value,
+            }
+        )
+    return active
+
+
+def _v4_sensor_projection(
+    scenario: Scenario,
+    state: PlantState,
+    *,
+    active_faults: list[Mapping[str, Any]],
+    previous_primary: Mapping[str, Mapping[str, float]] | None,
+    previous_secondary: Mapping[str, Mapping[str, float]] | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    truth = _trace_telemetry(scenario, state)
+    primary = _healthy_sensor_head(
+        scenario, truth, sensor_head="primary", step=state.step
+    )
+    secondary = _healthy_sensor_head(
+        scenario, truth, sensor_head="secondary", step=state.step
+    )
+    sensor_faults = _apply_sensor_faults(
+        scenario,
+        emitted_step=state.step,
+        primary=primary,
+        secondary=secondary,
+        previous_primary=previous_primary,
+        previous_secondary=previous_secondary,
+    )
+    for observations in (primary, secondary):
+        for zone_id in sorted(observations):
+            for channel in _SENSOR_CHANNELS:
+                observations[zone_id][channel] = _clamp_sensor_value(
+                    channel, observations[zone_id][channel]
+                )
+    disagreement = {
+        zone_id: {
+            "secondary": dict(secondary[zone_id]),
+            "primary_minus_secondary": {
+                channel: primary[zone_id][channel] - secondary[zone_id][channel]
+                for channel in _SENSOR_CHANNELS
+            },
+        }
+        for zone_id in sorted(truth)
+    }
+    if state.step == 0:
+        return primary, disagreement, None
+    receipt = {
+        "truth_telemetry": truth,
+        "primary_residual": {
+            zone_id: {
+                channel: primary[zone_id][channel] - truth[zone_id][channel]
+                for channel in _SENSOR_CHANNELS
+            }
+            for zone_id in sorted(truth)
+        },
+        "secondary_residual": {
+            zone_id: {
+                channel: secondary[zone_id][channel] - truth[zone_id][channel]
+                for channel in _SENSOR_CHANNELS
+            }
+            for zone_id in sorted(truth)
+        },
+        "active_faults": sorted(
+            [dict(value) for value in active_faults]
+            + [dict(value) for value in sensor_faults],
+            key=lambda value: str(value["fault_id"]),
+        ),
+    }
+    return primary, disagreement, receipt
+
+
+def _trace_resources(state: PlantState) -> dict[str, float]:
+    utility = state.utility
+    return {
+        "co2_sorbent_remaining_mol": utility.co2_sorbent_remaining_mol,
+        "oxygen_store_mol": utility.oxygen_store_mol,
+        "battery_energy_wh": utility.battery_energy_wh,
+        "captured_co2_mol": utility.captured_co2_mol,
+        "condensed_water_mol": utility.condensed_water_mol,
+        "external_heat_received_j": utility.external_heat_received_j,
+        "external_heat_rejected_j": utility.external_heat_rejected_j,
+    }
+
+
+def _trace_actual_action(
+    scenario: Scenario,
+    state: PlantState,
+    *,
+    segment: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    zone_ids = sorted(state.zones)
+    command = segment["command"] if segment is not None else None
+    action: dict[str, Any] = {
+        "airflow_m3_s": {
+            zone_id: float(state.utility.actual_airflow_m3_s[zone_id])
+            for zone_id in zone_ids
+        },
+        "scrubber_duty": state.utility.actual_scrubber_duty,
+        "condenser_duty": state.utility.actual_condenser_duty,
+        "cooling_removed_w": {
+            zone_id: (
+                float(command["cooling_removed_w"][zone_id])
+                if command is not None
+                else 0.0
+            )
+            for zone_id in zone_ids
+        },
+        "oxygen_injection_mol_s": {
+            zone_id: (
+                float(command["oxygen_injection_mol_s"][zone_id])
+                if command is not None
+                else 0.0
+            )
+            for zone_id in zone_ids
+        },
+    }
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5:
+        action.pop("airflow_m3_s")
+        action["cooling_removed_w"] = {
+            zone_id: float(state.utility.actual_cooling_removed_w[zone_id])
+            for zone_id in zone_ids
+        }
+        action["oxygen_injection_mol_s"] = {
+            zone_id: float(state.utility.actual_oxygen_injection_mol_s[zone_id])
+            for zone_id in zone_ids
+        }
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
+        action["fan_speed_fraction"] = state.utility.actual_fan_speed_fraction
+        action["damper_position_by_id"] = {
+            damper_id: float(state.utility.actual_damper_position_by_id[damper_id])
+            for damper_id in sorted(state.utility.actual_damper_position_by_id)
+        }
+    return action
+
+
+def _trace_command(
+    scenario: Scenario, segment: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    if segment is None:
+        return None
+    command = segment["command"]
+    action: dict[str, Any] = {
+        "scrubber_duty": float(command["scrubber_duty"]),
+        "condenser_duty": float(command["condenser_duty"]),
+        "cooling_removed_w": {
+            zone_id: float(command["cooling_removed_w"][zone_id])
+            for zone_id in sorted(command["cooling_removed_w"])
+        },
+        "oxygen_injection_mol_s": {
+            zone_id: float(command["oxygen_injection_mol_s"][zone_id])
+            for zone_id in sorted(command["oxygen_injection_mol_s"])
+        },
+    }
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
+        action["fan_speed_fraction"] = float(command["fan_speed_fraction"])
+        action["damper_position_by_id"] = {
+            damper_id: float(command["damper_position_by_id"][damper_id])
+            for damper_id in sorted(command["damper_position_by_id"])
+        }
+    elif scenario.trace_schema_version not in {TRACE_SCHEMA_VERSION_V5}:
+        action["airflow_m3_s"] = {
+            zone_id: float(command["airflow_m3_s"][zone_id])
+            for zone_id in sorted(command["airflow_m3_s"])
+        }
+    return action
+
+
+def _row(
+    scenario: Scenario,
+    state: PlantState,
+    *,
+    segment: Mapping[str, Any] | None,
+    receipt: Mapping[str, Any] | None,
+    previous_row: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    accounting_receipt = receipt
+    if receipt is not None and scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V3,
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
+        accounting_receipt = {
+            key: value
+            for key, value in receipt.items()
+            if key
+            not in {
+                "air_network",
+                "active_faults",
+                "actuators",
+                "operational_feedback",
+                "realised_loads",
+                "external_command_digest",
+            }
+        }
+    telemetry = _trace_telemetry(scenario, state)
+    sensor_disagreement = None
+    fault_receipt = None
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
+        previous_primary = None
+        previous_secondary = None
+        if previous_row is not None:
+            previous_primary = previous_row["telemetry"]
+            previous_secondary = {
+                zone_id: previous_row["sensor_disagreement"][zone_id]["secondary"]
+                for zone_id in sorted(previous_row["sensor_disagreement"])
+            }
+        telemetry, sensor_disagreement, fault_receipt = _v4_sensor_projection(
+            scenario,
+            state,
+            active_faults=([] if receipt is None else list(receipt["active_faults"])),
+            previous_primary=previous_primary,
+            previous_secondary=previous_secondary,
+        )
+    operational_feedback = (
+        state.utility.last_operational_feedback
+        if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5
+        else None
+    )
+    actuator_receipt = None
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5 and receipt is not None:
+        operational_feedback = receipt["operational_feedback"]
+        actuator_receipt = receipt["actuators"]
+    row = {
+        "schema_version": scenario.trace_schema_version,
+        "lineage": {
+            "run_id": scenario.run_id,
+            "scenario_sha256": scenario.scenario_sha256,
+            "scenario_schema_version": scenario.scenario_schema_version,
+            "trace_schema_version": scenario.trace_schema_version,
+            "equation_contract_revision": scenario.equation_contract_revision,
+            **(
+                {
+                    "actuator_feedback_contract_revision": (
+                        scenario.actuator_feedback_contract_revision
+                    )
+                }
+                if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5
+                else {}
+            ),
+        },
+        "step": state.step,
+        "time_s": state.step * float(scenario.data["dt_seconds"]),
+        "telemetry": telemetry,
+        "commanded_action": _trace_command(scenario, segment),
+        "actual_action": _trace_actual_action(scenario, state, segment=segment),
+        "resource_state": _trace_resources(state),
+        "realised_loads": segment["loads"] if segment is not None else None,
+        "accounting_receipt": accounting_receipt,
+        "invariant_status": {"passed": True},
+    }
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V2:
+        row["applied_operating_mode"] = (
+            None if segment is None else segment["operating_mode"]
+        )
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V3:
+        row["applied_operating_mode"] = (
+            None if segment is None else segment["operating_mode"]
+        )
+        row["air_network_receipt"] = (
+            None if receipt is None else receipt["air_network"]
+        )
+    if scenario.trace_schema_version in {
+        TRACE_SCHEMA_VERSION_V4,
+        TRACE_SCHEMA_VERSION_V5,
+    }:
+        row["applied_operating_mode"] = (
+            None if segment is None else segment["operating_mode"]
+        )
+        row["air_network_receipt"] = (
+            None if receipt is None else receipt["air_network"]
+        )
+        row["sensor_disagreement"] = sensor_disagreement
+        row["fault_receipt"] = fault_receipt
+    if scenario.trace_schema_version == TRACE_SCHEMA_VERSION_V5:
+        row["operational_feedback"] = operational_feedback
+        row["actuator_receipt"] = actuator_receipt
+    return row
+
+
+def _canonical_trace_bytes(rows: list[Mapping[str, Any]]) -> bytes:
+    return b"".join(
+        json.dumps(
+            row,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+        for row in rows
+    )
+
+
+def run_scenario(scenario: Scenario) -> SimulationRun:
+    scenario.validate_contract_identities()
+    state = initial_state(scenario)
+    _assert_state_invariants(scenario, state)
+    rows: list[Mapping[str, Any]] = [
+        _row(
+            scenario,
+            state,
+            segment=None,
+            receipt=None,
+            previous_row=None,
+        )
+    ]
+    while state.step < int(scenario.data["steps"]):
+        segment = next(
+            segment
+            for segment in scenario.data["timeline"]
+            if segment["start_step"] <= state.step < segment["end_step"]
+        )
+        result: StepResult = advance_one_step(scenario, state)
+        canonical_result = physics_module.advance_one_step(scenario, state)
+        if result.state != canonical_result.state:
+            raise StateInvariantError(
+                "post-step state does not match causal recomputation"
+            )
+        validate_accounting_receipt(
+            result.receipt,
+            scenario=scenario,
+            pre_step_state=state,
+        )
+        state = result.state
+        _assert_state_invariants(scenario, state)
+        rows.append(
+            _row(
+                scenario,
+                state,
+                segment=segment,
+                receipt=result.receipt,
+                previous_row=rows[-1],
+            )
+        )
+    return SimulationRun(
+        final_state=state,
+        rows=tuple(rows),
+        trace_bytes=_canonical_trace_bytes(rows),
+    )

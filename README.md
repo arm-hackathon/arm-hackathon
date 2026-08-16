@@ -101,6 +101,26 @@ result, and no historical model is qualified to control the reserve path. The
 final suite was used only for the frozen deterministic policy's one-time
 verification, not for model training, selection, or tuning.
 
+## Judge demo: one reproducible local command
+
+From a clean source checkout with [uv](https://docs.astral.sh/uv/) available:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_forecast_judge_demo.py
+```
+
+The command creates a new ignored receipt directory, runs the local simulated
+forecast, and independently verifies a fresh deterministic HMC replay before it
+prints the `file:` URL for the self-contained report. It never overwrites an
+older receipt. The report is advisory-only: it does not execute model inference
+in the browser, does not control hardware, and does not qualify or validate a
+model. The deterministic HMC remains the sole command authority.
+
+For a separate browser-local fixture explorer, open
+[`demo/browser-simulator/index.html`](demo/browser-simulator/index.html) locally.
+It operates offline, exposes four fixed scenarios, makes no hardware/controller
+claim, and every row has `actionAuthority: "none"`.
+
 ## Source-checkout verification
 
 ```bash
