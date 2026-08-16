@@ -190,12 +190,17 @@ def benchmark_fp64_vs_fp32(
     root = Path(repo_root).resolve()
     source_path = Path(source)
     candidate_path = Path(candidate)
+    try:
+        source_raw = source_path.read_bytes()
+        candidate_raw = candidate_path.read_bytes()
+    except OSError as error:
+        raise ArmOptimizationError("benchmark model artifact is unreadable") from error
     fp64_model = load_live_ridge_model(
-        source_path,
+        source_raw,
         expected_sha256=expected_source_sha256,
     )
     fp32_model = load_live_ridge_model(
-        candidate_path,
+        candidate_raw,
         expected_sha256=expected_candidate_sha256,
     )
     if (
@@ -276,8 +281,8 @@ def benchmark_fp64_vs_fp32(
 
     fp64_timing = _timing_summary(measurements["fp64"])
     fp32_timing = _timing_summary(measurements["fp32"])
-    fp64_file_bytes = source_path.stat().st_size
-    fp32_file_bytes = candidate_path.stat().st_size
+    fp64_file_bytes = len(source_raw)
+    fp32_file_bytes = len(candidate_raw)
     fp64_array_bytes = _model_raw_array_bytes(fp64_model)
     fp32_array_bytes = _model_raw_array_bytes(fp32_model)
     machine = platform.machine().lower()
