@@ -1,0 +1,59 @@
+{
+  "amendment": "member T13 does not exist in the frozen treatment roster (T01-T12); replaced with T12 (last valid treatment) before any v2 outcome was produced; all other rules unchanged",
+  "arms": "unchanged from v1 (control = canonical HMC; advised = model adviser from step 16, HMC arbitrates)",
+  "date": "2026-08-18",
+  "locked_out": [
+    "qualification_claim",
+    "deployment",
+    "learned_actuator_authority",
+    "post-hoc rule changes after outcome access"
+  ],
+  "metrics": {
+    "new_resource_deltas": [
+      "battery_wh_consumed",
+      "oxygen_mol_consumed",
+      "sorbent_mol_consumed",
+      "per pair: advised minus control"
+    ],
+    "primary": "integrated_exceedance (unchanged v1 functional on realized states)",
+    "secondary": [
+      "peak_step_exceedance",
+      "exceedance_steps",
+      "proposals/admitted/overrides",
+      "terminal_status",
+      "hashes"
+    ]
+  },
+  "model": {
+    "checkpoint": "full-v1-20260818-a/action_aware/checkpoint.pt",
+    "note": "historical development MLP, no availability masks"
+  },
+  "risk_functional": "unchanged from v1 (frozen HMC health_policy thresholds, normalized exceedance, zone+gauge sum)",
+  "roster": {
+    "clusters": "all 17 held-out clusters from full-v1-20260818-a report splits, sorted",
+    "fault_members": [
+      "T01",
+      "T07",
+      "T12"
+    ],
+    "healthy_check": "member HEALTHY, repetition R01 only, both arms",
+    "repetitions": [
+      "R01",
+      "R02"
+    ]
+  },
+  "run_counts": {
+    "fault_pairs": 102,
+    "healthy_pairs": 17,
+    "total_runs": 238
+  },
+  "schema_version": "aeolus_habitat_v2_closed_loop_preregistration_v2",
+  "self_sha256": "0b7e3e7be5413d0093ff51d6065b314adbcaffeb25442107b384e9e4f7795712",
+  "status": "FROZEN_BEFORE_OUTCOMES",
+  "success_rule": {
+    "fault_pairs": "advised integrated_exceedance strictly lower than paired control in a majority of 102 pairs; zero terminal regressions; strict replay passes in all runs",
+    "healthy_pairs": "advised integrated_exceedance must be 0 in every healthy pair and no terminal regression (no-harm check, not an improvement test)",
+    "resource_guard": "report resource deltas; flag any pair where advised consumes strictly more of all three resources"
+  },
+  "supersedes": "preregistration.json self_sha256 a0c0839da3539aaf6108648060d5a0f0cba1ed0d9506b71d33bdca1a168e265c (v1 scope only; v1 rules unchanged)"
+}
