@@ -38,6 +38,25 @@ separate Habitat Plant V2 grey-box research analogue with explicit SI
 accounting. Neither is a spacecraft, life-support, building-control or
 safety-critical system, and neither must control physical equipment.
 
+## Closed-loop forecast advisory (development evidence, 2026-08-18)
+
+A development neural forecaster predicts the next 8 habitat steps for each
+candidate control action and advises the deterministic Habitat Management
+Computer (HMC), which remains the sole command authority. Across a
+pre-registered 238-run paired campaign on 17 held-out scenario clusters, the
+advised HMC beat canonical HMC in 78 of 102 fault pairs (0 worse) on
+integrated safety-threshold exceedance, with strict trace replay everywhere.
+See [`experiments/closed-loop-advisory-20260818/SYSTEM.md`](experiments/closed-loop-advisory-20260818/SYSTEM.md)
+for the architecture and authority boundaries, and run the one-command demo:
+
+```bash
+pip install -e ".[closed-loop]"
+python experiments/closed-loop-advisory-20260818/run_demo.py
+```
+
+Development evidence only — not qualification, not deployment, and no learned
+actuator authority.
+
 ## Current status: deterministic recovery passes blind final verification
 
 The repaired deterministic recovery policy was frozen at source commit
