@@ -156,6 +156,17 @@ development evidence only — not qualification, not deployment.
 
 ## What the experiment found
 
+Model documentation and assurance:
+
+- [`MODEL_CARD.md`](MODEL_CARD.md) — identity, training, held-out metrics,
+  limitations, and failure modes for `action_aware_mlp_v1`.
+- [`CORPUS_DATASHEET.md`](CORPUS_DATASHEET.md) — composition, collection,
+  split discipline, and known biases of the training archive.
+- [`SAFETY_CASE.md`](SAFETY_CASE.md) — the claims–argument–evidence case
+  for the learned advisory path, including its residual risks.
+- `scripts/check_habitat_v2_mlp_drift.py` — scores live telemetry against
+  the training distribution and flags drift (diagnostic only).
+
 Headline results from the paired closed-loop campaign (each scenario run
 twice with identical scenario, noise, and reset — once with canonical HMC
 alone, once with the model advising):
