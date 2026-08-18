@@ -155,6 +155,12 @@ class StepRecord:
     final_command_sha256: str
     requested_command_sha256: str | None
     adviser_abstained_unavailable: bool = False
+    # Live-display metrics (populated only when live_metrics=True; zero cost
+    # otherwise).  Derived from the same shadow state the scorer uses.
+    step_exceedance: float = 0.0
+    max_co2_ppm: float = 0.0
+    max_temperature_k: float = 0.0
+    min_o2_mole_fraction: float = 0.0
 
 
 def window_is_fully_available(history: Any) -> bool:
@@ -182,6 +188,7 @@ def run_closed_loop(
     repetition_id: str,
     adviser: HistoricalAdviser | None,
     on_step: Callable[[StepRecord], None] | None = None,
+    live_metrics: bool = False,
 ) -> dict[str, Any]:
     """Run one full HMC lifecycle; adviser proposes from step 16 onward.
 
@@ -292,6 +299,16 @@ def run_closed_loop(
             raise RuntimeError("shadow plant receipt diverges from HMC receipt")
         shadow = shadow_result.state
         states[shadow.step] = shadow
+        live: dict[str, float] = {}
+        if live_metrics:
+            row = project_physical_targets(contracts, [shadow], horizon_steps=1)[0]
+            zone_cols = [(z * 6) for z in range(ZONES)]
+            live = {
+                "step_exceedance": trajectory_risk(row[None, :]),
+                "max_co2_ppm": float(max(row[c + 2] for c in zone_cols)),
+                "max_temperature_k": float(max(row[c] for c in zone_cols)),
+                "min_o2_mole_fraction": float(min(row[c + 3] for c in zone_cols)),
+            }
         record = StepRecord(
             application_step=application_step,
             proposed_candidate=proposed_candidate,
@@ -299,6 +316,7 @@ def run_closed_loop(
             final_command_sha256=arbitration.final_command_sha256,
             requested_command_sha256=requested_sha,
             adviser_abstained_unavailable=abstained_unavailable,
+            **live,
         )
         step_records.append(record)
         if on_step is not None:
