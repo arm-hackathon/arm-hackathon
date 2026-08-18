@@ -1,0 +1,70 @@
+{
+  "arms": {
+    "advised": "model adviser may submit at most one canonical proposal per application step from step 16 onward; HMC arbitration decides the final command",
+    "control": "canonical HMC, no proposals, ever"
+  },
+  "candidates": {
+    "order": [
+      "NO_PROPOSAL",
+      "then the four frozen catalogue actions in design order"
+    ],
+    "tie_break": "lowest predicted risk; ties resolve to earliest candidate (NO_PROPOSAL preferred)"
+  },
+  "date": "2026-08-18",
+  "integrity": [
+    "shadow physics digest equality every step",
+    "strict completed trace replay every run",
+    "sealed repos imported read-only"
+  ],
+  "locked_out": [
+    "qualification_claim",
+    "deployment",
+    "learned_actuator_authority",
+    "post-hoc rule changes after outcome access"
+  ],
+  "metrics": {
+    "primary": "integrated_exceedance over all steps (realized states, same functional)",
+    "secondary": [
+      "peak_step_exceedance",
+      "exceedance_steps",
+      "proposals_made",
+      "proposals_admitted",
+      "hmc_overrides",
+      "terminal_status",
+      "trace/final-state hashes"
+    ]
+  },
+  "model": {
+    "checkpoint": "full-v1-20260818-a/action_aware/checkpoint.pt",
+    "input": "history[16,194] flatten + action[27] + action_present[1] = 3132",
+    "output": "targets[8,51] flattened = 408",
+    "type": "historical development MLP, no availability masks"
+  },
+  "pairing": "identical cluster/member/repetition across arms -> identical scenario_sha256, noise_seed and HMC reset nonce until first divergence",
+  "risk_functional": {
+    "aggregate": "sum over 8 zones x rules x horizon steps, plus 3 resource gauges x horizon steps",
+    "exceedance": "high: max(0,(x-w)/|c-w|); low: max(0,(w-x)/|c-w|)",
+    "rules": [
+      "high_co2 w=2500 c=5000 high",
+      "high_humidity w=0.65 c=0.75 high",
+      "high_temperature w=300 c=303 high",
+      "low_oxygen w=0.285 c=0.27 low",
+      "low_temperature w=291 c=288 low",
+      "resource_gauges w=0.2 c=0.1 low"
+    ],
+    "threshold_source": "HMC contract health_policy environmental/resource_gauges enter thresholds"
+  },
+  "scenario_selection": {
+    "clusters": "first 4 of sorted 17 held-out clusters from full-v1-20260818-a report splits",
+    "members": [
+      "T01",
+      "T07"
+    ],
+    "nonce_anchor": "design.anchor_completed_steps[0], identical both arms",
+    "repetition": "R01"
+  },
+  "schema_version": "aeolus_habitat_v2_closed_loop_preregistration_v1",
+  "self_sha256": "a0c0839da3539aaf6108648060d5a0f0cba1ed0d9506b71d33bdca1a168e265c",
+  "status": "FROZEN_BEFORE_OUTCOMES",
+  "success_rule": "advised arm integrated_exceedance strictly lower than paired control in a majority of the 8 pairs, with zero terminal-state regressions and zero HMC safety-invariant failures (replay must pass in every run)"
+}
