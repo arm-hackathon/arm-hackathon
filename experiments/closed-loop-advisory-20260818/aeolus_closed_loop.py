@@ -154,6 +154,22 @@ class StepRecord:
     validation_outcome: str
     final_command_sha256: str
     requested_command_sha256: str | None
+    adviser_abstained_unavailable: bool = False
+
+
+def window_is_fully_available(history: Any) -> bool:
+    """True only if every telemetry channel was AVAILABLE on every window step.
+
+    ``status_f32[row, channel, 0]`` is the AVAILABLE one-hot written by the
+    forecast projection; columns 0..166 are the telemetry channels (167+ are
+    the completed-command echo, which is not sensor evidence).  The Historical
+    V2 adviser was trained on complete telemetry only, so it must abstain
+    whenever any sensor evidence is missing rather than forecast on
+    zero-filled or degraded inputs.
+    """
+    status = np.asarray(history.status_f32, dtype=np.float32)
+    telemetry_available = status[:, :167, 0]
+    return bool(telemetry_available.shape[0] == 16 and (telemetry_available == 1.0).all())
 
 
 def run_closed_loop(
@@ -239,23 +255,27 @@ def run_closed_loop(
         proposal_value = None
         proposed_candidate: str | None = None
         requested_sha: str | None = None
+        abstained_unavailable = False
         if adviser is not None and application_step >= 16:
             pairs = [
                 snapshots[step]
                 for step in range(application_step - 15, application_step + 1)
             ]
             history = project_history_window(contracts, pairs, window_steps=16)
-            candidates = tuple((item[0], item[1]) for item in catalogue)
-            chosen, _ = adviser.choose(history.numeric_f32, candidates)
-            if chosen != "NO_PROPOSAL":
-                entry = next(item for item in catalogue if item[0] == chosen)
-                action = next(a for a in contracts.actions if a.action_id == chosen)
-                proposal_value = _proposal(
-                    hmc, snapshot.snapshot_sha256, application_step,
-                    action.command.to_mapping(), action.action_id,
-                )
-                proposed_candidate = chosen
-                requested_sha = entry[2]
+            if window_is_fully_available(history):
+                candidates = tuple((item[0], item[1]) for item in catalogue)
+                chosen, _ = adviser.choose(history.numeric_f32, candidates)
+                if chosen != "NO_PROPOSAL":
+                    entry = next(item for item in catalogue if item[0] == chosen)
+                    action = next(a for a in contracts.actions if a.action_id == chosen)
+                    proposal_value = _proposal(
+                        hmc, snapshot.snapshot_sha256, application_step,
+                        action.command.to_mapping(), action.action_id,
+                    )
+                    proposed_candidate = chosen
+                    requested_sha = entry[2]
+            else:
+                abstained_unavailable = True
 
         proposal_receipt = hmc.propose(proposal_value, handle)
         arbitration = hmc.arbitrate()
@@ -278,6 +298,7 @@ def run_closed_loop(
             validation_outcome=proposal_receipt.to_mapping()["validation_outcome"],
             final_command_sha256=arbitration.final_command_sha256,
             requested_command_sha256=requested_sha,
+            adviser_abstained_unavailable=abstained_unavailable,
         )
         step_records.append(record)
         if on_step is not None:
@@ -329,6 +350,9 @@ def run_closed_loop(
         "proposals_made": len(proposals),
         "proposals_admitted": len(admitted),
         "hmc_overrides": len(overrides),
+        "adviser_abstentions_unavailable": sum(
+            1 for r in step_records if r.adviser_abstained_unavailable
+        ),
         "battery_wh_consumed": float(
             states[0].utility.battery_energy_wh - shadow.utility.battery_energy_wh
         ),

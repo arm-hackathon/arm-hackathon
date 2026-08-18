@@ -53,8 +53,13 @@ recommends, HMC decides. HMC can and does override the model (81 overrides in
 
 - It never touches actuators. HMC validates, caps, modifies or rejects every
   proposal.
-- It does not handle missing/broken sensors — it was trained without
-  availability masks. That is the explicit next qualification tier.
+- It does not forecast from missing/broken sensors. Before forecasting at any
+  step, the harness verifies that all 167 telemetry channels were `AVAILABLE`
+  on all 16 window steps (`window_is_fully_available`); if anything is
+  missing, the adviser abstains (no proposal) and deterministic HMC continues
+  alone. Abstentions are recorded per step and counted in run summaries.
+  A model that can still forecast *with* masked missing sensors is the
+  explicit next qualification tier and is not claimed here.
 - It is not qualified, certified, or deployed anywhere.
 
 ## Reproduce
