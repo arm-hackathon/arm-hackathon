@@ -154,6 +154,30 @@ merged PR
 [#40](https://github.com/arm-hackathon/arm-hackathon/pull/40). This is
 development evidence only — not qualification, not deployment.
 
+## What the experiment found
+
+Headline results from the paired closed-loop campaign (each scenario run
+twice with identical scenario, noise, and reset — once with canonical HMC
+alone, once with the model advising):
+
+- **The demo scenario:** canonical HMC drifted past the CO2 warning threshold
+  and stayed there for 29 steps (integrated exceedance 19.94); the
+  model-advised arm never crossed it (0.0). The adviser acted at step 37 of
+  72 — before the first violation at step 43.
+- **Across 102 fault pairs:** 78 safer, 24 equal, 0 worse; 72 advised runs
+  finished with zero threshold exceedance.
+- **The authority boundary is exercised, not just asserted:** HMC overrode
+  81 of 793 model proposals — the model advises, it never commands.
+- **Broken sensors:** the adviser verifiably abstains whenever any telemetry
+  is missing and HMC continues alone (merged PR
+  [#41](https://github.com/arm-hackathon/arm-hackathon/pull/41)).
+  Forecasting *with* missing sensors is future work, not claimed here.
+- **The honest cost:** advised runs consumed more resources (median
+  +757 Wh battery, +1.97 mol oxygen, +6.04 mol sorbent) — the safety margin
+  is bought with consumables, and all runs stayed above resource floors.
+- **Reproducibility:** every run replays bit-for-bit; the same commands
+  produce the same numbers and trace hashes on any machine.
+
 ## Source-checkout verification
 
 ```bash
