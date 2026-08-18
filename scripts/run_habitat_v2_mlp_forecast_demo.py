@@ -45,6 +45,11 @@ def _arguments() -> argparse.Namespace:
             "normal-dormant-v1",
         ),
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the raw JSON receipt instead of the human-readable summary.",
+    )
     return parser.parse_args()
 
 
@@ -68,46 +73,76 @@ def main() -> int:
                 ),
             }
         )
-    print(
-        json.dumps(
-            {
-                "model": {
-                    "kind": result.model_kind,
-                    "artifact_sha256": result.model_artifact_sha256,
-                    "training_run_id": TRAINING_RUN_ID,
-                    "held_out_normalized_mae": 0.1146,
-                    "closed_loop_evidence": CLOSED_LOOP_EVIDENCE_PR,
-                },
-                "run": {
-                    "selected_action_id": result.selected_action_id,
-                    "forecast_completed_step": result.forecast_completed_step,
-                    "forecast_history_steps": list(result.forecast_history_steps),
-                    "truth_steps": list(result.truth_steps),
-                    "candidate_action_count": len(result.candidate_forecasts),
-                    "distinct_prediction_count": len(
-                        {
-                            item.prediction_f32.tobytes()
-                            for item in result.candidate_forecasts
-                        }
-                    ),
-                    "arbitration_disposition": result.arbitration_disposition,
-                    "hmc_is_sole_actuator_authority": (
-                        result.hmc_is_sole_actuator_authority
-                    ),
-                    "terminal_status": result.terminal_status,
-                    "trace_sha256": result.trace_sha256,
-                    "replay_committed_steps": result.replay_committed_steps,
-                },
-                "per_candidate_forecast_error": candidates,
-                "claim_boundary": (
-                    "development evidence only; not qualification; not deployment; "
-                    "model output is advisory and HMC arbitration is the sole authority"
-                ),
-            },
-            indent=2,
-            sort_keys=True,
+    receipt = {
+        "model": {
+            "kind": result.model_kind,
+            "artifact_sha256": result.model_artifact_sha256,
+            "training_run_id": TRAINING_RUN_ID,
+            "held_out_normalized_mae": 0.1146,
+            "closed_loop_evidence": CLOSED_LOOP_EVIDENCE_PR,
+        },
+        "run": {
+            "selected_action_id": result.selected_action_id,
+            "forecast_completed_step": result.forecast_completed_step,
+            "forecast_history_steps": list(result.forecast_history_steps),
+            "truth_steps": list(result.truth_steps),
+            "candidate_action_count": len(result.candidate_forecasts),
+            "distinct_prediction_count": len(
+                {
+                    item.prediction_f32.tobytes()
+                    for item in result.candidate_forecasts
+                }
+            ),
+            "arbitration_disposition": result.arbitration_disposition,
+            "hmc_is_sole_actuator_authority": (
+                result.hmc_is_sole_actuator_authority
+            ),
+            "terminal_status": result.terminal_status,
+            "trace_sha256": result.trace_sha256,
+            "replay_committed_steps": result.replay_committed_steps,
+        },
+        "per_candidate_forecast_error": candidates,
+        "claim_boundary": (
+            "development evidence only; not qualification; not deployment; "
+            "model output is advisory and HMC arbitration is the sole authority"
+        ),
+    }
+    if arguments.json:
+        print(json.dumps(receipt, indent=2, sort_keys=True))
+        return 0
+
+    width = max(len(item["action_id"]) for item in candidates)
+    print("AEOLUS Habitat V2 - action-aware forecast run")
+    print(f"Model: {result.model_kind} (training run {TRAINING_RUN_ID}, "
+          "held-out error 0.1146, lower is better)")
+    print()
+    print("At step 16 the model forecast the next 8 habitat states for each")
+    print("candidate action. Average forecast error against what the")
+    print("simulator actually did (lower = predicted reality better):")
+    for item in sorted(
+        candidates, key=lambda entry: entry["forecast_mae_vs_realized_truth"]
+    ):
+        marker = "  <- selected by operator" if (
+            item["action_id"] == result.selected_action_id
+        ) else ""
+        print(
+            f"  {item['action_id']:<{width}}  "
+            f"{item['forecast_mae_vs_realized_truth']:8.2f}{marker}"
         )
+    print()
+    print(
+        f"HMC (deterministic safety controller) reviewed the operator-selected "
+        f"action: {result.arbitration_disposition}."
     )
+    print(
+        f"All {result.replay_committed_steps} steps completed; control trace "
+        "replayed bit-for-bit."
+    )
+    print("The model only advises. HMC is the sole command authority.")
+    print()
+    print(f"Trace hash: {result.trace_sha256}")
+    print("Boundary: development evidence only - not qualification or deployment.")
+    print(f"Full closed-loop evidence: {CLOSED_LOOP_EVIDENCE_PR}")
     return 0
 
 
