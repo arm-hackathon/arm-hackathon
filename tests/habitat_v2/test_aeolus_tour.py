@@ -38,10 +38,13 @@ def test_replay_refuses_tampered_artifact(monkeypatch, capsys) -> None:
 def test_live_forecast_runs_with_visitor_action_choice(monkeypatch, capsys) -> None:
     answers = iter(["2"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    monkeypatch.setattr(tour, "_pause", lambda seconds=0.0: None)
     tour.run_live_forecast()
     output = capsys.readouterr().out
-    assert "normal-eva_transition-v1" in output
-    assert "<- your choice" in output
+    assert "what the model predicts" in output
+    assert "prediction vs reality" in output
+    assert "eva_transition" in output
+    assert "Operator proposes your action" in output
     assert "ACCEPTED" in output or "OVERRIDDEN" in output
 
 

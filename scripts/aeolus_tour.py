@@ -87,6 +87,11 @@ def _wait_for_enter() -> None:
         pass
 
 
+def _worst_co2(target_row) -> float:
+    """Worst-zone CO2 (ppm) from one [51] target row (8 zones x 6 fields)."""
+    return float(max(float(target_row[zone * 6 + 2]) for zone in range(8)))
+
+
 def run_live_forecast() -> None:
     print("\nThe model will look at the habitat at step 16 and forecast the")
     print("next 8 steps for every allowed action.  You pick which action")
@@ -113,23 +118,52 @@ def run_live_forecast() -> None:
             "a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd"
         ),
     )
+    print("Running the habitat to step 16, then asking the model to forecast")
+    print("every action...")
     result = run_live_mlp_forecast_demo(
         REPO_ROOT, model, selected_action_id=action_id,
     )
     import numpy as np
 
     truth = np.asarray(result.truth_f32, dtype=np.float64)
-    print("Forecast error per candidate action (vs what actually happened,")
-    print("lower = predicted reality better):")
-    for item in result.candidate_forecasts:
-        error = float(
-            np.abs(np.asarray(item.prediction_f32, dtype=np.float64) - truth).mean()
+    forecasts = {
+        item.action_id: np.asarray(item.prediction_f32, dtype=np.float64)
+        for item in result.candidate_forecasts
+    }
+    short = {action: action.replace("normal-", "").replace("-v1", "") for action, _ in ACTIONS}
+
+    print("\n--- what the model predicts (worst-zone CO2, next 8 steps) ---")
+    header = "step  |" + "|".join(f" {short[a]:>12}" for a, _ in ACTIONS)
+    print(header)
+    for horizon in range(8):
+        step_no = 17 + horizon
+        cells = "|".join(
+            f" {_worst_co2(forecasts[a][horizon]):>12.1f}" for a, _ in ACTIONS
         )
-        marker = "  <- your choice" if item.action_id == action_id else ""
-        print(f"  {item.action_id:<26} {error:8.2f}{marker}")
-    print(f"\nHMC reviewed your selected action: {result.arbitration_disposition}.")
-    print(f"All {result.replay_committed_steps} steps completed and the control")
-    print("trace replayed bit-for-bit.  The model only advised; HMC commanded.")
+        print(f"{step_no:5d} |{cells}")
+        _pause(0.15)
+
+    print(f"\nOperator proposes your action: {action_id}")
+    print(f"HMC reviews it -> {result.arbitration_disposition}.")
+    print("(HMC can accept, modify, or reject any proposal; it always has")
+    print(" the final word.  The model never commands.)")
+
+    chosen = forecasts[action_id]
+    print(f"\n--- prediction vs reality for {short[action_id]} "
+          "(steps 17-24, worst-zone CO2 ppm) ---")
+    total_error = 0.0
+    for horizon in range(8):
+        predicted = _worst_co2(chosen[horizon])
+        actual = _worst_co2(truth[horizon])
+        total_error += abs(predicted - actual)
+        print(
+            f"step {17 + horizon:3d} | predicted {predicted:8.1f} | "
+            f"actual {actual:8.1f} | error {abs(predicted - actual):6.1f}"
+        )
+        _pause(0.15)
+    print(f"\nMean per-step error for your action: {total_error / 8:.1f} ppm.")
+    print(f"All {result.replay_committed_steps} steps completed; the control")
+    print("trace replayed bit-for-bit.  The model advised; HMC commanded.")
 
 
 def replay_paired_experiment() -> None:
