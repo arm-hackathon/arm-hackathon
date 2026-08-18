@@ -14,13 +14,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from aeolus.habitat_v2.forecast.drift_monitor import (
+from aeolus.habitat_v2.forecast.drift_monitor import (  # noqa: E402
     assess_window,
     build_demo_window,
     load_window_stats,
     render_report,
 )
-from aeolus.habitat_v2.forecast.live_mlp_demo import load_live_mlp_model
+from aeolus.habitat_v2.forecast.live_mlp_demo import load_live_mlp_model  # noqa: E402
 
 ARTIFACT = (
     REPO_ROOT
