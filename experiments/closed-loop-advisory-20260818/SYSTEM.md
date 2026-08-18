@@ -60,13 +60,22 @@ recommends, HMC decides. HMC can and does override the model (81 overrides in
 ## Reproduce
 
 ```bash
-pip install -e ".[closed-loop]"
+pip install -e . && pip install torch
 python experiments/closed-loop-advisory-20260818/run_demo.py
 ```
 
 Expected: control exceedance 19.9406 vs advised 0.0 on the demo scenario, in
 about one minute. Full campaign evidence: `CLOSED_LOOP_REPORT_V2.md` and
 `results-summary.json` (hash-bound to the raw local evidence).
+
+To reproduce the complete 238-run campaign (~40 minutes):
+
+```bash
+python experiments/closed-loop-advisory-20260818/run_paired.py --roster v2 --output out/closed-loop-v2-rerun.json
+```
+
+The v2 smoke mode (`--smoke`) verifies determinism on one scenario in under a
+minute.
 
 ## Evidence discipline (for reviewers)
 

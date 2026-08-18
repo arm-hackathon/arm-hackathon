@@ -50,7 +50,7 @@ See [`experiments/closed-loop-advisory-20260818/SYSTEM.md`](experiments/closed-l
 for the architecture and authority boundaries, and run the one-command demo:
 
 ```bash
-pip install -e ".[closed-loop]"
+pip install -e . && pip install torch
 python experiments/closed-loop-advisory-20260818/run_demo.py
 ```
 

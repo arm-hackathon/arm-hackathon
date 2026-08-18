@@ -6,7 +6,7 @@ forecaster advising.  Prints the physical-outcome comparison.
 
 Usage (from the repository root, Python 3.10+ with numpy and torch):
 
-    pip install -e ".[closed-loop]"
+    pip install -e . && pip install torch
     python experiments/closed-loop-advisory-20260818/run_demo.py
 
 Takes roughly one minute.  Development evidence only: not qualification, not
@@ -42,7 +42,7 @@ def main() -> int:
     try:
         import torch  # noqa: F401
     except ImportError:
-        print("torch is required: pip install -e \".[closed-loop]\"", file=sys.stderr)
+        print("torch is required: pip install torch", file=sys.stderr)
         return 2
 
     from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts

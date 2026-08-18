@@ -1,0 +1,23 @@
+{
+ "schema_version": "aeolus_habitat_v2_closed_loop_heldout_roster_v1",
+ "source": "full-v1-20260818-a report.json splits.held_out (hash-derived split, seed-free)",
+ "clusters": [
+  "pilot-v1/contingency/low/balanced-initial-state",
+  "pilot-v1/contingency/low/thermal-air-processing-skew",
+  "pilot-v1/contingency/nominal/crew-metabolic-humidity-skew",
+  "pilot-v1/contingency/nominal/pressure-inventory-skew",
+  "pilot-v1/dormant/high/crew-metabolic-humidity-skew",
+  "pilot-v1/dormant/high/pressure-inventory-skew",
+  "pilot-v1/dormant/high/reduced-resource-inventory",
+  "pilot-v1/dormant/high/thermal-air-processing-skew",
+  "pilot-v1/eva_transition/high/balanced-initial-state",
+  "pilot-v1/eva_transition/low/balanced-initial-state",
+  "pilot-v1/eva_transition/low/crew-metabolic-humidity-skew",
+  "pilot-v1/eva_transition/nominal/reduced-resource-inventory",
+  "pilot-v1/occupied/high/balanced-initial-state",
+  "pilot-v1/occupied/low/reduced-resource-inventory",
+  "pilot-v1/occupied/low/thermal-air-processing-skew",
+  "pilot-v1/occupied/nominal/crew-metabolic-humidity-skew",
+  "pilot-v1/occupied/nominal/reduced-resource-inventory"
+ ]
+}
