@@ -22,7 +22,7 @@ REPLAY_ARTIFACT = (
     REPO_ROOT
     / "artifacts/demo-only/habitat-v2-forecast/paired-live-replay-v1.json"
 )
-REPLAY_SHA256 = "9bbff09dd36ea7f647c542145b631b574a46b55ae2a8a2d9d4b87fc6ef407460"
+REPLAY_SHA256 = "63c91397b7f33782c96d11de5c33296a76d0a42d68c1b51ac24d44556884d062"
 
 INTRO = """\
 ======================================================================
@@ -136,7 +136,9 @@ def replay_paired_experiment() -> None:
     import hashlib
 
     raw = REPLAY_ARTIFACT.read_bytes()
-    if hashlib.sha256(raw).hexdigest() != REPLAY_SHA256:
+    # Git may materialize LF blobs as CRLF on Windows checkouts; the pinned
+    # hash covers the canonical LF bytes.
+    if hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest() != REPLAY_SHA256:
         print("The replay artifact does not match its recorded hash — refusing.")
         return
     data = json.loads(raw)
