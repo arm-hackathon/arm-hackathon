@@ -15,8 +15,10 @@ authority in both arms.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -24,7 +26,7 @@ REPO_ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from aeolus_closed_loop import HistoricalAdviser, run_closed_loop
+from aeolus_closed_loop import HistoricalAdviser, StepRecord, run_closed_loop
 
 # Fixed demo scenario: one held-out cluster, one fault member, one repetition.
 DEMO_SCENARIO = (
@@ -34,7 +36,54 @@ DEMO_SCENARIO = (
 )
 
 
+def _live_printer(arm: str, delay: float):
+    def print_step(record: StepRecord) -> None:
+        event = ""
+        if record.adviser_abstained_unavailable:
+            event = " | adviser ABSTAINED (incomplete sensor evidence)"
+        elif record.proposed_candidate is not None:
+            if record.validation_outcome != "VALID":
+                event = (
+                    f" | adviser proposed {record.proposed_candidate} -> "
+                    f"HMC {record.validation_outcome}"
+                )
+            elif record.final_command_sha256 != record.requested_command_sha256:
+                event = (
+                    f" | adviser proposed {record.proposed_candidate} -> "
+                    "HMC OVERRIDDEN (canonical command kept)"
+                )
+            else:
+                event = (
+                    f" | adviser proposed {record.proposed_candidate} -> "
+                    "HMC ACCEPTED"
+                )
+        print(
+            f"[{arm}] step {record.application_step:3d} | "
+            f"CO2 {record.max_co2_ppm:8.1f} ppm | "
+            f"T {record.max_temperature_k - 273.15:5.2f} C | "
+            f"O2 {record.min_o2_mole_fraction * 100:5.2f}% | "
+            f"exceed {record.step_exceedance:7.3f}{event}"
+        )
+        if delay > 0.0:
+            time.sleep(delay)
+
+    return print_step
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Print every simulation step as it happens (metrics + decisions).",
+    )
+    parser.add_argument(
+        "--live-delay",
+        type=float,
+        default=0.0,
+        help="Seconds to pause between live steps (e.g. 0.1 for recordings).",
+    )
+    arguments = parser.parse_args()
     checkpoint = HERE / "action-aware-mlp-v1.pt"
     if not checkpoint.is_file():
         print(f"missing model checkpoint: {checkpoint}", file=sys.stderr)
@@ -59,13 +108,21 @@ def main() -> int:
         repo_root=REPO_ROOT, design=design, contracts=contracts,
         cluster_id=cluster, member_id=member, repetition_id=repetition,
         adviser=None,
+        on_step=_live_printer("control ", arguments.live_delay) if arguments.live else None,
+        live_metrics=arguments.live,
     )
+    if arguments.live:
+        print()
     print("running advised arm (model proposes, HMC arbitrates) ...")
     advised = run_closed_loop(
         repo_root=REPO_ROOT, design=design, contracts=contracts,
         cluster_id=cluster, member_id=member, repetition_id=repetition,
         adviser=adviser,
+        on_step=_live_printer("advised ", arguments.live_delay) if arguments.live else None,
+        live_metrics=arguments.live,
     )
+    if arguments.live:
+        print()
 
     summary = {
         "pairing_verified": control["scenario_sha256"] == advised["scenario_sha256"],
