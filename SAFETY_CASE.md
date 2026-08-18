@@ -76,3 +76,74 @@ Any change that weakens a sub-claim (new bypass path, weakened guard,
 edited pinned artifact, weakened baseline) invalidates this case and must
 be recorded here before merge — the same "record the result rather than
 weaken the baseline" rule the evaluation follows.
+
+## Related work and references
+
+The architectural patterns in this case are not novel inventions; they are
+deliberate implementations of established safety and evaluation practice.
+
+**Authority boundary (C1).** The HMC-plus-adviser split is a run-time
+assurance / safety-filter architecture: a complex, unverified component is
+supervised by a simpler verified controller with a backup policy.
+Hobbs, Mote, Abate, Coogan & Feron, "Run Time Assurance for Safety-Critical
+Systems: An Introduction to Safety Filtering Approaches for Complex Control
+Systems," *IEEE Control Systems Magazine*, 2023
+(<https://arxiv.org/abs/2110.03506>). Domain precedent for advisory-only
+fault management on life support: Pachura, Suleiman & Mendler, "ARGES: an
+Expert System for Fault Diagnosis Within Space-Based ECLS Systems," NASA,
+1988 (<https://ntrs.nasa.gov/citations/19880019996>).
+
+**Forecast-and-propose mechanism (C3).** Scoring candidate actions by
+simulated future outcomes is model-predictive control with learned
+dynamics; the adviser is a greedy, safety-gated instance over the fixed
+action catalogue. Nagabandi, Kahn, Fearing & Levine, "Neural Network
+Dynamics for Model-Based Deep Reinforcement Learning with Model-Free
+Fine-Tuning," *ICRA*, 2018 (<https://arxiv.org/abs/1708.02596>); Chua,
+Calandra, McAllister & Levine, "Deep Reinforcement Learning in a Handful
+of Trials using Probabilistic Dynamics Models" (PETS), *NeurIPS*, 2018
+(<https://arxiv.org/abs/1805.12114>) — PETS's probabilistic ensembles are
+the reference design for the planned uncertainty-aware forecaster.
+
+**Abstention (C2).** The guard is rule-based selective classification; the
+availability-aware successor should learn the reject option and be reported
+as a risk–coverage trade-off. Geifman & El-Yaniv, "Selective Classification
+for Deep Neural Networks," *NeurIPS*, 2017
+(<https://arxiv.org/abs/1705.08500>); Geifman & El-Yaniv, "SelectiveNet:
+A Deep Neural Network with an Integrated Reject Option," *ICML*, 2019
+(<https://arxiv.org/abs/1901.09192>).
+
+**Missing-sensor forecasting (C2/C5, future work).** Availability-aware
+forecasting should treat missingness as evidence (masks, age of
+observation), never silently imputed away. Cao et al., "BRITS: Bidirectional
+Recurrent Imputation for Time Series," *NeurIPS*, 2018
+(<https://arxiv.org/abs/1805.10572>); Che et al., "Recurrent Neural
+Networks for Multivariate Time Series with Missing Values" (GRU-D),
+*Scientific Reports* 8:6085, 2018
+(<https://doi.org/10.1038/s41598-018-24271-9>).
+
+**Documentation practice.** `MODEL_CARD.md` and `CORPUS_DATASHEET.md`
+follow Mitchell et al., "Model Cards for Model Reporting," *FAT\**, 2019
+(<https://arxiv.org/abs/1810.03993>) and Gebru et al., "Datasheets for
+Datasets," *CACM* 64(12), 2021 (<https://arxiv.org/abs/1803.09010>).
+Safety-roadmap framing follows EASA, "Artificial Intelligence Roadmap 1.0,"
+2020 (bounded operational domain, traceability, human oversight, and a
+clear line between simulation evidence and deployment assurance).
+
+**Evaluation methodology (C3/C4).** Frozen preregistrations follow the
+registered-reports pattern (Chambers, "Registered Reports: A New Publishing
+Initiative at Cortex," *Cortex* 49(3), 2013,
+<https://doi.org/10.1016/j.cortex.2012.12.016>) and the NeurIPS
+reproducibility program (Pineau et al., "Improving Reproducibility in
+Machine Learning Research," *JMLR* 22(164), 2021,
+<https://www.jmlr.org/papers/v22/20-303.html>). The one-command
+reproduction path and independently re-executed trace validation are
+aligned with ACM artifact review and badging, v1.1
+(<https://www.acm.org/publications/policies/artifact-review-and-badging-current>).
+
+**Domain grounding.** Katipamula & Brambley, "Methods for Fault Detection,
+Diagnostics, and Prognostics for Building Systems — A Review, Part I,"
+*HVAC&R Research* 11(1), 2005
+(<https://doi.org/10.1080/10789669.2005.10391123>); Lance & Malin, "An
+Expert Systems Approach to Automated Fault Diagnostics" (CS-1 FIXER,
+regenerative ECLSS), SAE 851380, 1985
+(<https://ntrs.nasa.gov/citations/19860038824>).
