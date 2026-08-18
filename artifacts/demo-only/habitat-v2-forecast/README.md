@@ -87,7 +87,7 @@ python -m pip install -e . \
   "ruff==0.12.12"
 export PYTHONPATH=src
 python -m pytest -q tests/habitat_v2/test_forecast_*.py
-python scripts/run_habitat_v2_live_forecast_demo.py \
+python scripts/run_habitat_v2_live_forecast.py \
   --output out/habitat-v2-live-forecast-demo/manual-arm64-run
 python scripts/verify_habitat_v2_live_forecast_demo.py \
   --report out/habitat-v2-live-forecast-demo/manual-arm64-run

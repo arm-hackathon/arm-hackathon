@@ -4,8 +4,8 @@ import argparse
 import base64
 import hashlib
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 
 import numpy as np
 
@@ -44,7 +44,7 @@ _EXPECTED_SOURCE_PATHS = frozenset(
         "artifacts/demo-only/habitat-v2-forecast/README.md",
         "artifacts/demo-only/habitat-v2-forecast/training-receipt.json",
         "artifacts/demo-only/habitat-v2-forecast/training-report.json",
-        "scripts/run_habitat_v2_live_forecast_demo.py",
+        "scripts/run_habitat_v2_live_forecast.py",
         "scripts/verify_habitat_v2_live_forecast_demo.py",
         "src/aeolus/habitat_v2/forecast/live_demo.py",
         "src/aeolus/habitat_v2/forecast/live_demo_report.py",

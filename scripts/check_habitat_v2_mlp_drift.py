@@ -12,15 +12,6 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "src"))
-
-from aeolus.habitat_v2.forecast.drift_monitor import (  # noqa: E402
-    assess_window,
-    build_demo_window,
-    load_window_stats,
-    render_report,
-)
-from aeolus.habitat_v2.forecast.live_mlp_demo import load_live_mlp_model  # noqa: E402
 
 ARTIFACT = (
     REPO_ROOT
@@ -32,6 +23,15 @@ ARTIFACT_SHA256 = (
 
 
 def main() -> int:
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    from aeolus.habitat_v2.forecast.drift_monitor import (
+        assess_window,
+        build_demo_window,
+        load_window_stats,
+        render_report,
+    )
+    from aeolus.habitat_v2.forecast.live_mlp_demo import load_live_mlp_model
+
     model = load_live_mlp_model(ARTIFACT, expected_sha256=ARTIFACT_SHA256)
     mean, std = load_window_stats(ARTIFACT)
     window = build_demo_window(REPO_ROOT, model)

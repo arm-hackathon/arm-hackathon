@@ -1,25 +1,16 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
 import hashlib
 import json
 import re
 import subprocess
-from pathlib import Path
 import tempfile
+from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from aeolus.habitat_v2.control_trace import parse_control_trace, replay_control_trace
-from aeolus.habitat_v2.hmc import HabitatManagementComputer
-from aeolus.habitat_v2.hmc_contract import canonical_json_bytes, load_hmc_contract
-from aeolus.habitat_v2.physics import (
-    advance_one_step_with_command,
-    initial_state,
-    validate_external_command,
-)
-from aeolus.habitat_v2.scenario import Scenario
-from aeolus.habitat_v2.telemetry import derive_observable_topology
 from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
 from aeolus.habitat_v2.forecast.pipeline import (
     generate_development_fixture,
@@ -30,6 +21,15 @@ from aeolus.habitat_v2.forecast.timing import (
     emit_baseline_gate_receipt,
     emit_timing_receipt,
 )
+from aeolus.habitat_v2.hmc import HabitatManagementComputer
+from aeolus.habitat_v2.hmc_contract import canonical_json_bytes, load_hmc_contract
+from aeolus.habitat_v2.physics import (
+    advance_one_step_with_command,
+    initial_state,
+    validate_external_command,
+)
+from aeolus.habitat_v2.scenario import Scenario
+from aeolus.habitat_v2.telemetry import derive_observable_topology
 
 RELEASE_TIER = "DEVELOPMENT_FIXTURE_ONLY"
 FINAL_HMC_COMMIT_SHA = "79d6a718e0d44122a763bb72f9c8ed929f39fd23"

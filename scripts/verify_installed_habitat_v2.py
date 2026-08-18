@@ -6,10 +6,10 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
-from pathlib import Path
 import subprocess
 import sys
-from typing import Sequence
+from collections.abc import Sequence
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
