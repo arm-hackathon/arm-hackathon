@@ -21,10 +21,7 @@ from typing import Any
 
 import numpy as np
 
-QUAL_REPO = Path(r"C:\Users\Nxiss\code\aeolus-v2-qualified-model-20260816")
-MODEL_RUN = Path(
-    r"C:\Users\Nxiss\code\aeolus-v2-full-training-20260818\full-v1-20260818-a"
-)
+# Everything resolves relative to the repository; no absolute paths.
 
 # ---------------------------------------------------------------------------
 # Pre-registered risk functional (preregistration-v1, frozen before outcomes)

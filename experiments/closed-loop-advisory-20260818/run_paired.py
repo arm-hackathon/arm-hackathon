@@ -7,22 +7,19 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from aeolus_closed_loop import (
-    MODEL_RUN,
-    QUAL_REPO,
-    HistoricalAdviser,
-    run_closed_loop,
-)
+from aeolus_closed_loop import HistoricalAdviser, run_closed_loop
 
 MEMBERS_V1 = ("T01", "T07")
 MEMBERS_V2 = ("T01", "T07", "T12")
 
 
 def held_out_clusters() -> tuple[str, ...]:
-    report = json.loads((MODEL_RUN / "report.json").read_text())
-    return tuple(sorted(report["splits"]["held_out"]))
+    roster = json.loads((HERE / "held-out-clusters.json").read_text())
+    return tuple(roster["clusters"])
 
 
 def main() -> int:
@@ -37,13 +34,12 @@ def main() -> int:
         print(f"refusing to overwrite existing output: {args.output}", file=sys.stderr)
         return 2
 
-    sys.path.insert(0, str(QUAL_REPO / "src"))
     from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
     from aeolus.habitat_v2.forecast.pilot import load_approved_pilot_design
 
-    design = load_approved_pilot_design(QUAL_REPO)
-    contracts = load_forecast_contracts(QUAL_REPO)
-    adviser = HistoricalAdviser(MODEL_RUN / "action_aware" / "checkpoint.pt")
+    design = load_approved_pilot_design(REPO_ROOT)
+    contracts = load_forecast_contracts(REPO_ROOT)
+    adviser = HistoricalAdviser(HERE / "action-aware-mlp-v1.pt")
 
     scenarios: list[tuple[str, str, str]] = []
     if args.smoke:
@@ -71,7 +67,7 @@ def main() -> int:
         arms = ("control-a", "control-b") if args.smoke else ("control", "advised")
         for arm in arms:
             results.append(run_closed_loop(
-                repo_root=QUAL_REPO, design=design, contracts=contracts,
+                repo_root=REPO_ROOT, design=design, contracts=contracts,
                 cluster_id=cluster, member_id=member, repetition_id=repetition,
                 adviser=None if arm.startswith("control") else adviser,
             ))
