@@ -59,13 +59,13 @@ jobs:
           python -m ruff check \
             src/aeolus/habitat_v2/forecast/live_demo.py \
             src/aeolus/habitat_v2/forecast/live_demo_report.py \
-            scripts/run_habitat_v2_live_forecast_demo.py \
+            scripts/run_habitat_v2_live_forecast.py \
             scripts/verify_habitat_v2_live_forecast_demo.py \
             tests/habitat_v2/test_forecast_live_demo.py
           python -m py_compile \
             src/aeolus/habitat_v2/forecast/live_demo.py \
             src/aeolus/habitat_v2/forecast/live_demo_report.py \
-            scripts/run_habitat_v2_live_forecast_demo.py \
+            scripts/run_habitat_v2_live_forecast.py \
             scripts/verify_habitat_v2_live_forecast_demo.py \
             tests/habitat_v2/test_forecast_live_demo.py
           git show --check --oneline --format=fuller "$GITHUB_SHA"
@@ -84,7 +84,7 @@ jobs:
           set -euo pipefail
           output=out/habitat-v2-live-forecast-demo/arm64-evidence/live-run-arm64
           start_ns=$(date +%s%N)
-          python scripts/run_habitat_v2_live_forecast_demo.py \
+          python scripts/run_habitat_v2_live_forecast.py \
             --output "$output" \
             --integration-source-commit "$GITHUB_SHA" \
             | tee out/habitat-v2-live-forecast-demo/arm64-evidence/run-summary.json

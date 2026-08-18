@@ -101,7 +101,7 @@ result, and no historical model is qualified to control the reserve path. The
 final suite was used only for the frozen deterministic policy's one-time
 verification, not for model training, selection, or tuning.
 
-## Judge demo: one reproducible local command
+## Try it: the verified forecast report
 
 **New here? Take the guided tour instead** — an interactive walkthrough that
 explains the project in plain language and lets you run the pieces yourself:
@@ -117,7 +117,7 @@ verification, and a plain-English explanation of the architecture.
 From a clean source checkout with [uv](https://docs.astral.sh/uv/) available:
 
 ```bash
-uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_forecast_judge_demo.py
+uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_forecast_report.py
 ```
 
 The command creates a new ignored receipt directory, runs the local simulated
@@ -132,7 +132,7 @@ For a separate browser-local fixture explorer, open
 It operates offline, exposes four fixed scenarios, makes no hardware/controller
 claim, and every row has `actionAuthority: "none"`.
 
-## Judge demo: the trained closed-loop MLP (development evidence)
+## Try it: the trained forecaster (development evidence)
 
 The repository also carries the action-aware MLP trained on the Historical V2
 pilot archive (training run `full-v1-20260818-a`; 23,400 simulator examples;
@@ -140,7 +140,7 @@ held-out normalized MAE 0.1146 on 17 unseen scenario clusters). From a source
 checkout:
 
 ```bash
-uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_mlp_forecast_demo.py
+uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_mlp_forecast.py
 ```
 
 The command forecasts all four catalogue actions at step 16 with the trained

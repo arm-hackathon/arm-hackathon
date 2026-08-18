@@ -25,11 +25,11 @@ jobs:
       - name: Static checks and focused forecast tests
         run: |
           uv sync --locked --python 3.11 --extra dev
-          uv run --locked ruff check scripts/run_habitat_v2_forecast_judge_demo.py
-          uv run --locked python -m py_compile scripts/run_habitat_v2_forecast_judge_demo.py
+          uv run --locked ruff check scripts/run_habitat_v2_forecast_report.py
+          uv run --locked python -m py_compile scripts/run_habitat_v2_forecast_report.py
           uv run --locked pytest -q tests/habitat_v2/test_forecast_*.py
       - name: Produce and independently verify a fresh receipt
-        run: uv run --locked python scripts/run_habitat_v2_forecast_judge_demo.py
+        run: uv run --locked python scripts/run_habitat_v2_forecast_report.py
       - name: Verify browser-local simulator contract
         run: node --test demo/browser-simulator/simulator.test.mjs
       - name: Upload local judge receipts

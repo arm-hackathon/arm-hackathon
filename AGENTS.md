@@ -127,7 +127,7 @@ Run the local judge receipt from the repository root:
 
 ```bash
 uv run --locked --python 3.11 --extra dev python \
-  scripts/run_habitat_v2_forecast_judge_demo.py
+  scripts/run_habitat_v2_forecast_report.py
 ```
 
 The wrapper allocates a new directory below `out/judge-demo-runs/`, runs the forecast, and invokes independent report verification. It accepts only the listed local action choices and requires the output parent to remain inside the repository. Do not redirect it to a tracked location or reuse a previous receipt directory.
@@ -148,9 +148,9 @@ When changing forecast, receipt, or judge-demo code, run the focused suite as us
 uv run --locked --python 3.11 --extra dev python -m pytest -q \
   tests/habitat_v2/test_forecast_*.py
 uv run --locked --python 3.11 --extra dev ruff check \
-  scripts/run_habitat_v2_forecast_judge_demo.py
+  scripts/run_habitat_v2_forecast_report.py
 uv run --locked --python 3.11 --extra dev python -m py_compile \
-  scripts/run_habitat_v2_forecast_judge_demo.py
+  scripts/run_habitat_v2_forecast_report.py
 node --test demo/browser-simulator/simulator.test.mjs
 ```
 

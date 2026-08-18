@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from aeolus.habitat_v2.qualification_packet import build_qualification_packet
 

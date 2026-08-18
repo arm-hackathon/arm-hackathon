@@ -217,7 +217,7 @@ def verify_a_run() -> None:
     completed = subprocess.run(
         [
             sys.executable,
-            str(REPO_ROOT / "scripts/run_habitat_v2_forecast_judge_demo.py"),
+            str(REPO_ROOT / "scripts/run_habitat_v2_forecast_report.py"),
         ],
         cwd=REPO_ROOT,
         check=False,
