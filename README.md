@@ -103,6 +103,17 @@ verification, not for model training, selection, or tuning.
 
 ## Judge demo: one reproducible local command
 
+**New here? Take the guided tour instead** — an interactive walkthrough that
+explains the project in plain language and lets you run the pieces yourself:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/aeolus_tour.py
+```
+
+The tour offers: a live run of the trained forecaster (you pick the action),
+a step-by-step replay of the recorded paired experiment, independent receipt
+verification, and a plain-English explanation of the architecture.
+
 From a clean source checkout with [uv](https://docs.astral.sh/uv/) available:
 
 ```bash

@@ -1,0 +1,1182 @@
+{
+ "schema": "aeolus_closed_loop_replay_v1",
+ "provenance": {
+  "scenario_cluster": "pilot-v1/contingency/nominal/crew-metabolic-humidity-skew",
+  "member": "T01",
+  "repetition": "R01",
+  "model": "action-aware-mlp-v1 (run full-v1-20260818-a)",
+  "model_npz_sha256": "a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd",
+  "evidence_pr": "https://github.com/arm-hackathon/arm-hackathon/pull/40",
+  "note": "Recorded from a real deterministic paired run; identical scenario, noise and reset in both arms."
+ },
+ "control": {
+  "arm": "control",
+  "steps": [
+   {
+    "step": 0,
+    "co2_ppm": 903.2,
+    "temperature_c": 23.0,
+    "o2_percent": 29.91,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 1,
+    "co2_ppm": 936.2,
+    "temperature_c": 23.01,
+    "o2_percent": 29.9,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 2,
+    "co2_ppm": 969.2,
+    "temperature_c": 23.01,
+    "o2_percent": 29.9,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 3,
+    "co2_ppm": 1002.2,
+    "temperature_c": 23.02,
+    "o2_percent": 29.89,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 4,
+    "co2_ppm": 1035.1,
+    "temperature_c": 23.02,
+    "o2_percent": 29.88,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 5,
+    "co2_ppm": 1068.1,
+    "temperature_c": 23.03,
+    "o2_percent": 29.87,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 6,
+    "co2_ppm": 1101.0,
+    "temperature_c": 23.03,
+    "o2_percent": 29.86,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 7,
+    "co2_ppm": 1133.9,
+    "temperature_c": 23.04,
+    "o2_percent": 29.85,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 8,
+    "co2_ppm": 1166.9,
+    "temperature_c": 23.04,
+    "o2_percent": 29.84,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 9,
+    "co2_ppm": 1199.8,
+    "temperature_c": 23.05,
+    "o2_percent": 29.84,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 10,
+    "co2_ppm": 1232.7,
+    "temperature_c": 23.05,
+    "o2_percent": 29.83,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 11,
+    "co2_ppm": 1265.6,
+    "temperature_c": 23.06,
+    "o2_percent": 29.82,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 12,
+    "co2_ppm": 1298.4,
+    "temperature_c": 23.06,
+    "o2_percent": 29.81,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 13,
+    "co2_ppm": 1331.3,
+    "temperature_c": 23.07,
+    "o2_percent": 29.8,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 14,
+    "co2_ppm": 1364.2,
+    "temperature_c": 23.07,
+    "o2_percent": 29.79,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 15,
+    "co2_ppm": 1397.0,
+    "temperature_c": 23.08,
+    "o2_percent": 29.79,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 16,
+    "co2_ppm": 1429.9,
+    "temperature_c": 23.08,
+    "o2_percent": 29.78,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 17,
+    "co2_ppm": 1462.7,
+    "temperature_c": 23.09,
+    "o2_percent": 29.77,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 18,
+    "co2_ppm": 1495.5,
+    "temperature_c": 23.09,
+    "o2_percent": 29.76,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 19,
+    "co2_ppm": 1528.3,
+    "temperature_c": 23.1,
+    "o2_percent": 29.75,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 20,
+    "co2_ppm": 1561.1,
+    "temperature_c": 23.1,
+    "o2_percent": 29.74,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 21,
+    "co2_ppm": 1593.9,
+    "temperature_c": 23.11,
+    "o2_percent": 29.73,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 22,
+    "co2_ppm": 1626.7,
+    "temperature_c": 23.11,
+    "o2_percent": 29.73,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 23,
+    "co2_ppm": 1659.4,
+    "temperature_c": 23.12,
+    "o2_percent": 29.72,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 24,
+    "co2_ppm": 1692.2,
+    "temperature_c": 23.12,
+    "o2_percent": 29.71,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 25,
+    "co2_ppm": 1725.0,
+    "temperature_c": 23.13,
+    "o2_percent": 29.7,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 26,
+    "co2_ppm": 1757.7,
+    "temperature_c": 23.13,
+    "o2_percent": 29.69,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 27,
+    "co2_ppm": 1790.4,
+    "temperature_c": 23.14,
+    "o2_percent": 29.68,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 28,
+    "co2_ppm": 1823.1,
+    "temperature_c": 23.14,
+    "o2_percent": 29.67,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 29,
+    "co2_ppm": 1855.9,
+    "temperature_c": 23.15,
+    "o2_percent": 29.67,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 30,
+    "co2_ppm": 1888.6,
+    "temperature_c": 23.15,
+    "o2_percent": 29.66,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 31,
+    "co2_ppm": 1921.2,
+    "temperature_c": 23.16,
+    "o2_percent": 29.65,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 32,
+    "co2_ppm": 1953.9,
+    "temperature_c": 23.16,
+    "o2_percent": 29.64,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 33,
+    "co2_ppm": 1986.6,
+    "temperature_c": 23.17,
+    "o2_percent": 29.63,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 34,
+    "co2_ppm": 2019.3,
+    "temperature_c": 23.17,
+    "o2_percent": 29.62,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 35,
+    "co2_ppm": 2051.9,
+    "temperature_c": 23.18,
+    "o2_percent": 29.62,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 36,
+    "co2_ppm": 2084.5,
+    "temperature_c": 23.18,
+    "o2_percent": 29.61,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 37,
+    "co2_ppm": 2117.2,
+    "temperature_c": 23.19,
+    "o2_percent": 29.6,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 38,
+    "co2_ppm": 2149.8,
+    "temperature_c": 23.19,
+    "o2_percent": 29.59,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 39,
+    "co2_ppm": 2182.4,
+    "temperature_c": 23.2,
+    "o2_percent": 29.58,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 40,
+    "co2_ppm": 2215.0,
+    "temperature_c": 23.2,
+    "o2_percent": 29.57,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 41,
+    "co2_ppm": 2247.6,
+    "temperature_c": 23.21,
+    "o2_percent": 29.57,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 42,
+    "co2_ppm": 2280.2,
+    "temperature_c": 23.21,
+    "o2_percent": 29.56,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 43,
+    "co2_ppm": 2312.7,
+    "temperature_c": 23.22,
+    "o2_percent": 29.55,
+    "exceedance": 0.0064,
+    "event": null
+   },
+   {
+    "step": 44,
+    "co2_ppm": 2345.3,
+    "temperature_c": 23.22,
+    "o2_percent": 29.54,
+    "exceedance": 0.0496,
+    "event": null
+   },
+   {
+    "step": 45,
+    "co2_ppm": 2377.9,
+    "temperature_c": 23.22,
+    "o2_percent": 29.53,
+    "exceedance": 0.0928,
+    "event": null
+   },
+   {
+    "step": 46,
+    "co2_ppm": 2410.4,
+    "temperature_c": 23.23,
+    "o2_percent": 29.52,
+    "exceedance": 0.136,
+    "event": null
+   },
+   {
+    "step": 47,
+    "co2_ppm": 2442.9,
+    "temperature_c": 23.23,
+    "o2_percent": 29.51,
+    "exceedance": 0.1792,
+    "event": null
+   },
+   {
+    "step": 48,
+    "co2_ppm": 2475.4,
+    "temperature_c": 23.24,
+    "o2_percent": 29.51,
+    "exceedance": 0.2224,
+    "event": null
+   },
+   {
+    "step": 49,
+    "co2_ppm": 2508.0,
+    "temperature_c": 23.24,
+    "o2_percent": 29.5,
+    "exceedance": 0.2688,
+    "event": null
+   },
+   {
+    "step": 50,
+    "co2_ppm": 2540.5,
+    "temperature_c": 23.25,
+    "o2_percent": 29.49,
+    "exceedance": 0.325,
+    "event": null
+   },
+   {
+    "step": 51,
+    "co2_ppm": 2573.0,
+    "temperature_c": 23.25,
+    "o2_percent": 29.48,
+    "exceedance": 0.3812,
+    "event": null
+   },
+   {
+    "step": 52,
+    "co2_ppm": 2605.4,
+    "temperature_c": 23.26,
+    "o2_percent": 29.47,
+    "exceedance": 0.4373,
+    "event": null
+   },
+   {
+    "step": 53,
+    "co2_ppm": 2637.9,
+    "temperature_c": 23.26,
+    "o2_percent": 29.46,
+    "exceedance": 0.4935,
+    "event": null
+   },
+   {
+    "step": 54,
+    "co2_ppm": 2670.4,
+    "temperature_c": 23.27,
+    "o2_percent": 29.46,
+    "exceedance": 0.5497,
+    "event": null
+   },
+   {
+    "step": 55,
+    "co2_ppm": 2702.8,
+    "temperature_c": 23.27,
+    "o2_percent": 29.45,
+    "exceedance": 0.6059,
+    "event": null
+   },
+   {
+    "step": 56,
+    "co2_ppm": 2735.3,
+    "temperature_c": 23.28,
+    "o2_percent": 29.44,
+    "exceedance": 0.662,
+    "event": null
+   },
+   {
+    "step": 57,
+    "co2_ppm": 2767.7,
+    "temperature_c": 23.28,
+    "o2_percent": 29.43,
+    "exceedance": 0.7182,
+    "event": null
+   },
+   {
+    "step": 58,
+    "co2_ppm": 2800.1,
+    "temperature_c": 23.29,
+    "o2_percent": 29.42,
+    "exceedance": 0.7744,
+    "event": null
+   },
+   {
+    "step": 59,
+    "co2_ppm": 2832.5,
+    "temperature_c": 23.29,
+    "o2_percent": 29.41,
+    "exceedance": 0.8305,
+    "event": null
+   },
+   {
+    "step": 60,
+    "co2_ppm": 2864.9,
+    "temperature_c": 23.3,
+    "o2_percent": 29.41,
+    "exceedance": 0.8866,
+    "event": null
+   },
+   {
+    "step": 61,
+    "co2_ppm": 2897.3,
+    "temperature_c": 23.3,
+    "o2_percent": 29.4,
+    "exceedance": 0.9428,
+    "event": null
+   },
+   {
+    "step": 62,
+    "co2_ppm": 2929.7,
+    "temperature_c": 23.31,
+    "o2_percent": 29.39,
+    "exceedance": 0.9989,
+    "event": null
+   },
+   {
+    "step": 63,
+    "co2_ppm": 2962.1,
+    "temperature_c": 23.31,
+    "o2_percent": 29.38,
+    "exceedance": 1.0551,
+    "event": null
+   },
+   {
+    "step": 64,
+    "co2_ppm": 2994.5,
+    "temperature_c": 23.32,
+    "o2_percent": 29.37,
+    "exceedance": 1.1112,
+    "event": null
+   },
+   {
+    "step": 65,
+    "co2_ppm": 3026.8,
+    "temperature_c": 23.32,
+    "o2_percent": 29.36,
+    "exceedance": 1.1673,
+    "event": null
+   },
+   {
+    "step": 66,
+    "co2_ppm": 3059.2,
+    "temperature_c": 23.33,
+    "o2_percent": 29.36,
+    "exceedance": 1.2234,
+    "event": null
+   },
+   {
+    "step": 67,
+    "co2_ppm": 3091.5,
+    "temperature_c": 23.33,
+    "o2_percent": 29.35,
+    "exceedance": 1.2795,
+    "event": null
+   },
+   {
+    "step": 68,
+    "co2_ppm": 3123.8,
+    "temperature_c": 23.34,
+    "o2_percent": 29.34,
+    "exceedance": 1.3398,
+    "event": null
+   },
+   {
+    "step": 69,
+    "co2_ppm": 3065.1,
+    "temperature_c": 23.34,
+    "o2_percent": 29.36,
+    "exceedance": 1.2144,
+    "event": null
+   },
+   {
+    "step": 70,
+    "co2_ppm": 2997.4,
+    "temperature_c": 23.35,
+    "o2_percent": 29.38,
+    "exceedance": 1.0643,
+    "event": null
+   },
+   {
+    "step": 71,
+    "co2_ppm": 2935.9,
+    "temperature_c": 23.35,
+    "o2_percent": 29.41,
+    "exceedance": 0.9243,
+    "event": null
+   }
+  ],
+  "integrated_exceedance": 19.940622253227232,
+  "exceedance_steps": 29,
+  "trace_sha256": "aa5496e302426b67a711b4587dec75e711759f39c8921fa21c8767495b11f4ba",
+  "terminal_status": "COMPLETED"
+ },
+ "advised": {
+  "arm": "advised",
+  "steps": [
+   {
+    "step": 0,
+    "co2_ppm": 903.2,
+    "temperature_c": 23.0,
+    "o2_percent": 29.91,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 1,
+    "co2_ppm": 936.2,
+    "temperature_c": 23.01,
+    "o2_percent": 29.9,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 2,
+    "co2_ppm": 969.2,
+    "temperature_c": 23.01,
+    "o2_percent": 29.9,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 3,
+    "co2_ppm": 1002.2,
+    "temperature_c": 23.02,
+    "o2_percent": 29.89,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 4,
+    "co2_ppm": 1035.1,
+    "temperature_c": 23.02,
+    "o2_percent": 29.88,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 5,
+    "co2_ppm": 1068.1,
+    "temperature_c": 23.03,
+    "o2_percent": 29.87,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 6,
+    "co2_ppm": 1101.0,
+    "temperature_c": 23.03,
+    "o2_percent": 29.86,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 7,
+    "co2_ppm": 1133.9,
+    "temperature_c": 23.04,
+    "o2_percent": 29.85,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 8,
+    "co2_ppm": 1166.9,
+    "temperature_c": 23.04,
+    "o2_percent": 29.84,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 9,
+    "co2_ppm": 1199.8,
+    "temperature_c": 23.05,
+    "o2_percent": 29.84,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 10,
+    "co2_ppm": 1232.7,
+    "temperature_c": 23.05,
+    "o2_percent": 29.83,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 11,
+    "co2_ppm": 1265.6,
+    "temperature_c": 23.06,
+    "o2_percent": 29.82,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 12,
+    "co2_ppm": 1298.4,
+    "temperature_c": 23.06,
+    "o2_percent": 29.81,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 13,
+    "co2_ppm": 1331.3,
+    "temperature_c": 23.07,
+    "o2_percent": 29.8,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 14,
+    "co2_ppm": 1364.2,
+    "temperature_c": 23.07,
+    "o2_percent": 29.79,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 15,
+    "co2_ppm": 1397.0,
+    "temperature_c": 23.08,
+    "o2_percent": 29.79,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 16,
+    "co2_ppm": 1429.9,
+    "temperature_c": 23.08,
+    "o2_percent": 29.78,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 17,
+    "co2_ppm": 1462.7,
+    "temperature_c": 23.09,
+    "o2_percent": 29.77,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 18,
+    "co2_ppm": 1495.5,
+    "temperature_c": 23.09,
+    "o2_percent": 29.76,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 19,
+    "co2_ppm": 1528.3,
+    "temperature_c": 23.1,
+    "o2_percent": 29.75,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 20,
+    "co2_ppm": 1561.1,
+    "temperature_c": 23.1,
+    "o2_percent": 29.74,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 21,
+    "co2_ppm": 1593.9,
+    "temperature_c": 23.11,
+    "o2_percent": 29.73,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 22,
+    "co2_ppm": 1626.7,
+    "temperature_c": 23.11,
+    "o2_percent": 29.73,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 23,
+    "co2_ppm": 1659.4,
+    "temperature_c": 23.12,
+    "o2_percent": 29.72,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 24,
+    "co2_ppm": 1692.2,
+    "temperature_c": 23.12,
+    "o2_percent": 29.71,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 25,
+    "co2_ppm": 1725.0,
+    "temperature_c": 23.13,
+    "o2_percent": 29.7,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 26,
+    "co2_ppm": 1757.7,
+    "temperature_c": 23.13,
+    "o2_percent": 29.69,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 27,
+    "co2_ppm": 1790.4,
+    "temperature_c": 23.14,
+    "o2_percent": 29.68,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 28,
+    "co2_ppm": 1823.1,
+    "temperature_c": 23.14,
+    "o2_percent": 29.67,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 29,
+    "co2_ppm": 1855.9,
+    "temperature_c": 23.15,
+    "o2_percent": 29.67,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 30,
+    "co2_ppm": 1888.6,
+    "temperature_c": 23.15,
+    "o2_percent": 29.66,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 31,
+    "co2_ppm": 1921.2,
+    "temperature_c": 23.16,
+    "o2_percent": 29.65,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 32,
+    "co2_ppm": 1953.9,
+    "temperature_c": 23.16,
+    "o2_percent": 29.64,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 33,
+    "co2_ppm": 1986.6,
+    "temperature_c": 23.17,
+    "o2_percent": 29.63,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 34,
+    "co2_ppm": 2019.3,
+    "temperature_c": 23.17,
+    "o2_percent": 29.62,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 35,
+    "co2_ppm": 2051.9,
+    "temperature_c": 23.18,
+    "o2_percent": 29.62,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 36,
+    "co2_ppm": 2084.5,
+    "temperature_c": 23.18,
+    "o2_percent": 29.61,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 37,
+    "co2_ppm": 2032.7,
+    "temperature_c": 23.18,
+    "o2_percent": 29.62,
+    "exceedance": 0.0,
+    "event": "proposed normal-occupied-v1 -> HMC ACCEPTED"
+   },
+   {
+    "step": 38,
+    "co2_ppm": 1966.6,
+    "temperature_c": 23.18,
+    "o2_percent": 29.64,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 39,
+    "co2_ppm": 1904.4,
+    "temperature_c": 23.18,
+    "o2_percent": 29.66,
+    "exceedance": 0.0,
+    "event": "proposed normal-contingency-v1 -> HMC OVERRIDDEN"
+   },
+   {
+    "step": 40,
+    "co2_ppm": 1845.7,
+    "temperature_c": 23.18,
+    "o2_percent": 29.67,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 41,
+    "co2_ppm": 1790.2,
+    "temperature_c": 23.18,
+    "o2_percent": 29.69,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 42,
+    "co2_ppm": 1737.6,
+    "temperature_c": 23.18,
+    "o2_percent": 29.7,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 43,
+    "co2_ppm": 1687.6,
+    "temperature_c": 23.18,
+    "o2_percent": 29.71,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 44,
+    "co2_ppm": 1640.0,
+    "temperature_c": 23.18,
+    "o2_percent": 29.72,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 45,
+    "co2_ppm": 1594.6,
+    "temperature_c": 23.18,
+    "o2_percent": 29.73,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 46,
+    "co2_ppm": 1551.1,
+    "temperature_c": 23.17,
+    "o2_percent": 29.74,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 47,
+    "co2_ppm": 1509.4,
+    "temperature_c": 23.17,
+    "o2_percent": 29.75,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 48,
+    "co2_ppm": 1469.4,
+    "temperature_c": 23.17,
+    "o2_percent": 29.76,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 49,
+    "co2_ppm": 1430.8,
+    "temperature_c": 23.17,
+    "o2_percent": 29.77,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 50,
+    "co2_ppm": 1393.6,
+    "temperature_c": 23.17,
+    "o2_percent": 29.77,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 51,
+    "co2_ppm": 1357.7,
+    "temperature_c": 23.17,
+    "o2_percent": 29.78,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 52,
+    "co2_ppm": 1322.9,
+    "temperature_c": 23.17,
+    "o2_percent": 29.79,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 53,
+    "co2_ppm": 1289.1,
+    "temperature_c": 23.17,
+    "o2_percent": 29.79,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 54,
+    "co2_ppm": 1256.3,
+    "temperature_c": 23.17,
+    "o2_percent": 29.8,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 55,
+    "co2_ppm": 1224.3,
+    "temperature_c": 23.17,
+    "o2_percent": 29.8,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 56,
+    "co2_ppm": 1193.2,
+    "temperature_c": 23.17,
+    "o2_percent": 29.81,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 57,
+    "co2_ppm": 1162.8,
+    "temperature_c": 23.17,
+    "o2_percent": 29.81,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 58,
+    "co2_ppm": 1133.0,
+    "temperature_c": 23.17,
+    "o2_percent": 29.82,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 59,
+    "co2_ppm": 1103.9,
+    "temperature_c": 23.16,
+    "o2_percent": 29.82,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 60,
+    "co2_ppm": 1075.3,
+    "temperature_c": 23.16,
+    "o2_percent": 29.82,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 61,
+    "co2_ppm": 1047.2,
+    "temperature_c": 23.16,
+    "o2_percent": 29.83,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 62,
+    "co2_ppm": 1019.7,
+    "temperature_c": 23.16,
+    "o2_percent": 29.83,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 63,
+    "co2_ppm": 992.5,
+    "temperature_c": 23.16,
+    "o2_percent": 29.83,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 64,
+    "co2_ppm": 965.8,
+    "temperature_c": 23.16,
+    "o2_percent": 29.84,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 65,
+    "co2_ppm": 939.5,
+    "temperature_c": 23.16,
+    "o2_percent": 29.84,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 66,
+    "co2_ppm": 913.5,
+    "temperature_c": 23.16,
+    "o2_percent": 29.84,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 67,
+    "co2_ppm": 889.2,
+    "temperature_c": 23.16,
+    "o2_percent": 29.85,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 68,
+    "co2_ppm": 866.8,
+    "temperature_c": 23.16,
+    "o2_percent": 29.85,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 69,
+    "co2_ppm": 846.1,
+    "temperature_c": 23.16,
+    "o2_percent": 29.85,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 70,
+    "co2_ppm": 827.0,
+    "temperature_c": 23.16,
+    "o2_percent": 29.85,
+    "exceedance": 0.0,
+    "event": null
+   },
+   {
+    "step": 71,
+    "co2_ppm": 809.4,
+    "temperature_c": 23.16,
+    "o2_percent": 29.85,
+    "exceedance": 0.0,
+    "event": null
+   }
+  ],
+  "integrated_exceedance": 0.0,
+  "exceedance_steps": 0,
+  "trace_sha256": "e10a64f3e12e8f49e6029f5767994764e7feb2b808499a172d3403f066561db1",
+  "terminal_status": "COMPLETED"
+ }
+}
