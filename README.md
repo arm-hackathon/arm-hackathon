@@ -101,6 +101,48 @@ result, and no historical model is qualified to control the reserve path. The
 final suite was used only for the frozen deterministic policy's one-time
 verification, not for model training, selection, or tuning.
 
+## Judge demo: one reproducible local command
+
+From a clean source checkout with [uv](https://docs.astral.sh/uv/) available:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_forecast_judge_demo.py
+```
+
+The command creates a new ignored receipt directory, runs the local simulated
+forecast, and independently verifies a fresh deterministic HMC replay before it
+prints the `file:` URL for the self-contained report. It never overwrites an
+older receipt. The report is advisory-only: it does not execute model inference
+in the browser, does not control hardware, and does not qualify or validate a
+model. The deterministic HMC remains the sole command authority.
+
+For a separate browser-local fixture explorer, open
+[`demo/browser-simulator/index.html`](demo/browser-simulator/index.html) locally.
+It operates offline, exposes four fixed scenarios, makes no hardware/controller
+claim, and every row has `actionAuthority: "none"`.
+
+## Judge demo: the trained closed-loop MLP (development evidence)
+
+The repository also carries the action-aware MLP trained on the Historical V2
+pilot archive (training run `full-v1-20260818-a`; 23,400 simulator examples;
+held-out normalized MAE 0.1146 on 17 unseen scenario clusters). From a source
+checkout:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_mlp_forecast_demo.py
+```
+
+The command forecasts all four catalogue actions at step 16 with the trained
+model, lets HMC execute one operator-selected action, and prints each
+candidate's forecast error against the realized simulator truth alongside the
+trace and replay identities. The model is pure NumPy at inference (no torch
+install needed) and advisory-only; deterministic HMC remains the sole command
+authority. The full closed-loop paired campaign (238 runs; 78 better / 24
+equal / 0 worse on pre-registered safety-exceedance metrics) is documented in
+merged PR
+[#40](https://github.com/arm-hackathon/arm-hackathon/pull/40). This is
+development evidence only — not qualification, not deployment.
+
 ## Source-checkout verification
 
 ```bash

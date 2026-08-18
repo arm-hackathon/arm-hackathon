@@ -1,0 +1,41 @@
+name: Judge demo
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replayable-local-demo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.9.23"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Static checks and focused forecast tests
+        run: |
+          uv sync --locked --python 3.11 --extra dev
+          uv run --locked ruff check scripts/run_habitat_v2_forecast_judge_demo.py
+          uv run --locked python -m py_compile scripts/run_habitat_v2_forecast_judge_demo.py
+          uv run --locked pytest -q tests/habitat_v2/test_forecast_*.py
+      - name: Produce and independently verify a fresh receipt
+        run: uv run --locked python scripts/run_habitat_v2_forecast_judge_demo.py
+      - name: Verify browser-local simulator contract
+        run: node --test demo/browser-simulator/simulator.test.mjs
+      - name: Upload local judge receipts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: judge-demo-receipt
+          path: out/judge-demo-runs
+          if-no-files-found: error
+          retention-days: 14
