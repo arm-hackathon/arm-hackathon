@@ -154,6 +154,16 @@ merged PR
 [#40](https://github.com/arm-hackathon/arm-hackathon/pull/40). This is
 development evidence only — not qualification, not deployment.
 
+**Native Arm64 evidence.** The same trained-MLP forecast runs natively on
+Arm server silicon (GitHub-hosted `ubuntu-24.04-arm` runner: Arm Neoverse-N2,
+4 vCPUs, `aarch64` verified via `uname`/`lscpu` — no emulation). A 1000-rep
+pure-NumPy inference benchmark there measured a median of **192.7 µs** per full
+8-step forecast (min 188.5 µs; model SHA-256 pinned in the hashed evidence
+manifest). See the
+[Arm64 evidence workflow](.github/workflows/habitat-v2-live-forecast-arm64.yml)
+and merged PR [#56](https://github.com/arm-hackathon/arm-hackathon/pull/56).
+Development evidence only — not a qualification benchmark.
+
 ## What the experiment found
 
 Model documentation and assurance:
