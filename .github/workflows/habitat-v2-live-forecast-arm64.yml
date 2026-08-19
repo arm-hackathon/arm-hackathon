@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - ben/habitat-v2-live-forecast-demo
+      - ben/arm64-mlp-evidence
   workflow_dispatch:
 
 permissions:
@@ -150,6 +151,75 @@ jobs:
           ).encode("utf-8")
           (root / "arm64-environment.json").write_bytes(raw)
           print(json.dumps(receipt, indent=2, sort_keys=True))
+          PY
+
+      - name: Run the trained MLP forecast demo on Arm64
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          start_ns=$(date +%s%N)
+          python scripts/run_habitat_v2_mlp_forecast.py \
+            | tee out/habitat-v2-live-forecast-demo/arm64-evidence/mlp-forecast-arm64.txt
+          end_ns=$(date +%s%N)
+          echo "mlp_forecast_elapsed_ns=$((end_ns-start_ns))" \
+            | tee out/habitat-v2-live-forecast-demo/arm64-evidence/mlp-forecast-elapsed.txt
+
+      - name: Benchmark trained-MLP inference latency on Arm64
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import math
+          import platform
+          import time
+          from pathlib import Path
+
+          import numpy as np
+
+          artifact = Path("artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz")
+          blob = np.load(artifact)
+          weights = [np.asarray(blob[f"w{i}"]) for i in range(4)]
+          biases = [np.asarray(blob[f"b{i}"]) for i in range(4)]
+          erf = np.vectorize(math.erf, otypes=[np.float64])
+
+          def gelu_exact(value):
+              return (0.5 * value * (1.0 + erf(value / math.sqrt(2.0)))).astype(np.float32)
+
+          rng = np.random.default_rng(20260819)
+          x0 = rng.standard_normal(weights[0].shape[1]).astype(np.float32)
+
+          def forward(x):
+              hidden = x
+              for index, (weight, bias) in enumerate(zip(weights, biases)):
+                  hidden = hidden @ weight.T + bias
+                  if index < len(weights) - 1:
+                      hidden = gelu_exact(hidden)
+              return hidden
+
+          forward(x0)  # warmup
+          reps = 1000
+          samples = []
+          for _ in range(reps):
+              start = time.perf_counter_ns()
+              forward(x0)
+              samples.append(time.perf_counter_ns() - start)
+          samples.sort()
+          result = {
+              "schema_version": "aeolus_habitat_v2_mlp_arm64_latency_v1",
+              "platform_machine": platform.machine(),
+              "model_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+              "parameters": int(sum(w.size + b.size for w, b in zip(weights, biases))),
+              "reps": reps,
+              "median_us": round(samples[reps // 2] / 1000.0, 1),
+              "p95_us": round(samples[int(reps * 0.95)] / 1000.0, 1),
+              "min_us": round(samples[0] / 1000.0, 1),
+              "note": "pure NumPy float32 forward pass of the frozen action-aware MLP; "
+                      "development evidence only, not a qualification benchmark",
+          }
+          out = Path("out/habitat-v2-live-forecast-demo/arm64-evidence/mlp-latency-arm64.json")
+          out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+          print(json.dumps(result, indent=2, sort_keys=True))
           PY
 
       - name: Write evidence manifest
