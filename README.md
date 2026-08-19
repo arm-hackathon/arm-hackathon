@@ -174,6 +174,10 @@ Model documentation and assurance:
   split discipline, and known biases of the training archive.
 - [`SAFETY_CASE.md`](SAFETY_CASE.md) — the claims–argument–evidence case
   for the learned advisory path, including its residual risks.
+- [`DESIGN_TRADEOFFS.md`](DESIGN_TRADEOFFS.md) — the nine engineering
+  tradeoffs we made (authority, resources, portability, model size,
+  determinism, quantization, abstention, scoping), what each cost, and why
+  we chose safety and verifiability at every fork.
 - `scripts/check_habitat_v2_mlp_drift.py` — scores live telemetry against
   the training distribution and flags drift (diagnostic only).
 
