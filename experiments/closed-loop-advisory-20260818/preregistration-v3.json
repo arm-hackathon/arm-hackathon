@@ -1,0 +1,47 @@
+{
+ "arms": {
+  "advised_ensemble": "NEW: ensemble adviser, 119 runs, identical scenarios/seeds",
+  "advised_single": "frozen v2 single-model adviser results (119 runs)",
+  "control": "frozen v2 canonical-HMC results (119 runs)"
+ },
+ "authority_boundary": "HMC remains sole actuator authority in every arm. The adviser only proposes; abstention on unavailable telemetry is unchanged.",
+ "determinism_guard": "Before the ensemble campaign, a smoke run repeats one v2 scenario control arm twice and requires identical integrated_exceedance to the frozen v2 record.",
+ "frozen_utc": "2026-08-19T15:15:00Z",
+ "members": {
+  "base_checkpoint_sha16": "873cb77bb82a06b4",
+  "ensemble_seed_checkpoint_sha16": {
+   "20260819": "9bdfd27fe5f96f8f",
+   "20260820": "303c32ed1dba3ecf",
+   "20260821": "618dfdcac35c8d35",
+   "20260822": "5049473489f7c6f3"
+  },
+  "training_split": "frozen outer-train only; 17 outer-held-out clusters untouched in training"
+ },
+ "motivation": "Five-member action-aware ensemble scored NMAE 0.1049 on the frozen outer holdout vs 0.1146 for the single base model, and member disagreement correlates with error (Pearson r = 0.653, ensemble_eval.json). This campaign tests whether penalizing candidate actions by forecast disagreement improves closed-loop outcomes versus the v2 single-model adviser.",
+ "primary_success_criteria": [
+  "P1: ensemble arm is never worse than BOTH control and single-model arms in any scenario (no dominated regression)",
+  "P2: ensemble arm beats or ties the single-model arm's paired record vs control (v2 record: 78 better / 24 equal / 0 worse on fault pairs)"
+ ],
+ "roster": {
+  "name": "v2 (identical scenario configs and seeds as preregistration-v2)",
+  "scenario_count": 119,
+  "scenarios": "17 held-out clusters x members T01/T07/T12 x repetitions R01/R02, plus 17 healthy R01",
+  "seed_note": "nonce and noise seeds derive deterministically from the same design anchors; control and single-model arms are the frozen v2 results, not re-run"
+ },
+ "schema_version": "aeolus_habitat_v2_closed_loop_preregistration_v3",
+ "scoring_rule": {
+  "LAMBDA": 2.0,
+  "disagreement_definition": "mean over the [8,51] target grid of (std across 5 members / target_std), NaN-safe",
+  "formula": "penalized_risk(c) = trajectory_risk(mean_member_prediction(c)) * (1 + LAMBDA * disagreement(c))",
+  "lambda_derivation": "From frozen-holdout disagreement stats (mean 0.0546, p95 0.0999): typical risk inflation ~11%, p95 ~20%. Penalty is proportional to the candidate's own predicted risk, so uncertainty only reorders candidates when predicted risk is nonzero. No ensemble closed-loop outcome was observed before freezing.",
+  "tie_break": "earliest candidate in frozen design order (identical to v2)"
+ },
+ "secondary_measures": [
+  "HMC override rate vs single-model's 81/793",
+  "resource deltas (battery Wh, oxygen mol, sorbent mol) vs single-model arm",
+  "healthy no-harm rate (v2: 16/17 zero-exceedance, one 0.038 case)",
+  "disagreement penalty firing statistics (how often ranking changed vs unpenalized)"
+ ],
+ "status": "development evidence only; not qualification, deployment, or safety proof",
+ "title": "Ensemble adviser with disagreement-penalized risk ranking"
+}
