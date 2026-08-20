@@ -27,8 +27,11 @@ jobs:
       - name: Synchronize locked development environment
         run: uv sync --locked --python 3.11 --extra dev
 
+      - name: Install pinned benchmark-only dependency
+        run: uv pip install --python .venv/bin/python "psutil==7.2.2"
+
       - name: Run full locked test suite
-        run: uv run --locked --python 3.11 --extra dev python -m pytest -q
+        run: .venv/bin/python -m pytest -q
 
       - name: Rebuild tracked Habitat V2 observability packet
         shell: bash

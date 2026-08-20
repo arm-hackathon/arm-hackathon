@@ -13,7 +13,10 @@ from aeolus.habitat_v2.forecast.contracts import (
     canonical_json_bytes,
     load_forecast_contracts,
 )
-from aeolus.habitat_v2.forecast.pilot import load_approved_pilot_design
+from aeolus.habitat_v2.forecast.pilot import (
+    PilotResourcePreflight,
+    load_approved_pilot_design,
+)
 from aeolus.habitat_v2.forecast.pilot_campaign import PilotCampaignError
 from aeolus.habitat_v2.forecast.qualified_runtime_guard import QualifiedRuntimeGuard, QualifiedRuntimeGuardError, QualifiedRuntimeLimits
 from aeolus.habitat_v2.forecast.qualification_split import (
@@ -52,6 +55,25 @@ def _arrays(n: int = 2) -> launcher.CorpusArrays:
     )
 
 
+def _preflight() -> PilotResourcePreflight:
+    """Return a valid in-memory preflight for tests that do not test loading."""
+    return PilotResourcePreflight(
+        preflight_sha256="0" * 64,
+        preflight_bytes_sha256="1" * 64,
+        planned_hmc_runs=23_400,
+        benchmark_hmc_runs=2,
+        measured_wall_time_seconds=1.0,
+        measured_peak_rss_bytes=1,
+        measured_artifact_bytes=1,
+        projected_wall_time_seconds=1.0,
+        projected_peak_rss_bytes=1,
+        projected_artifact_bytes=1,
+        verdict="PASS",
+        schema_version="aeolus_habitat_v2_forecast_pilot_resource_preflight_v2",
+        v2_binding_sha256="2" * 64,
+    )
+
+
 def test_dry_run_verifies_protocol_and_never_creates_or_accesses_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(launcher, "_assert_source_provenance", lambda *_: "sealed")
     launcher.run(ROOT, tmp_path / "never-created", dry_run=True)
@@ -62,7 +84,7 @@ def test_resume_preserves_existing_custody_validated_output_and_uses_exact_allow
     design = load_approved_pilot_design(ROOT)
     contracts = load_forecast_contracts(ROOT)
     split = build_qualification_split(design, load_qualified_protocol(ROOT))
-    preflight = launcher._load_pinned_resource_preflight(ROOT)
+    preflight = _preflight()
     corpus = tmp_path / "corpus"; corpus.mkdir(); sentinel = corpus / "validated-pair"; sentinel.mkdir()
     received: dict[str, object] = {}
     def runner(*args: object, **kwargs: object) -> dict[str, object]:
@@ -79,7 +101,7 @@ def test_resume_preserves_existing_custody_validated_output_and_uses_exact_allow
 def test_corrupt_partial_pair_fails_closed_without_deletion(tmp_path: Path) -> None:
     design = load_approved_pilot_design(ROOT); contracts = load_forecast_contracts(ROOT)
     split = build_qualification_split(design, load_qualified_protocol(ROOT))
-    preflight = launcher._load_pinned_resource_preflight(ROOT)
+    preflight = _preflight()
     corpus = tmp_path / "corpus"; bad = corpus / "corrupt-pair"; bad.mkdir(parents=True); (bad / "partial").write_text("do not delete", encoding="utf-8")
     with pytest.raises(PilotCampaignError):
         launcher._generate_or_resume_corpus(ROOT, corpus, design=design, contracts=contracts, preflight=preflight, allowed_cluster_ids=split.authorized_cluster_ids)
@@ -133,7 +155,7 @@ def test_caller_selected_cluster_roster_is_refused_before_pair_execution(monkeyp
     design = load_approved_pilot_design(ROOT); contracts = load_forecast_contracts(ROOT)
     monkeypatch.setattr(pilot_campaign, "run_pilot_pair", lambda *args: pytest.fail("must not execute HMC"))
     with pytest.raises(PilotCampaignError, match="unknown roster IDs"):
-        pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=launcher._load_pinned_resource_preflight(ROOT), output_root=tmp_path, allowed_cluster_ids=frozenset({"validation"}), pair_limit=1, worker_count=1, resume=False)
+        pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=_preflight(), output_root=tmp_path, allowed_cluster_ids=frozenset({"validation"}), pair_limit=1, worker_count=1, resume=False)
 
 
 def test_guard_lock_is_cleaned_after_injected_body_exception(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,7 +183,7 @@ def test_campaign_health_check_aborts_between_pairs_and_preserves_partial(tmp_pa
         return {"pair_id": pair, "manifest_sha256": "0" * 64, "training_packet_sha256": "1" * 64, "training_packet_byte_length": 1}
     monkeypatch.setattr(pilot_campaign, "_execute_and_stage_pair", fake_pair)
     with pytest.raises(QualifiedRuntimeGuardError, match="reserve"):
-        pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=launcher._load_pinned_resource_preflight(ROOT), output_root=tmp_path / "corpus", pair_limit=2, worker_count=1, resume=False, health_check=stop)
+        pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=_preflight(), output_root=tmp_path / "corpus", pair_limit=2, worker_count=1, resume=False, health_check=stop)
     assert any(phase.startswith("before-pair-") for phase in calls)
     assert (tmp_path / "corpus").exists()
     assert any(path.name == "partial-evidence" and path.read_text(encoding="utf-8") == "retain" for path in (tmp_path / "corpus").rglob("partial-evidence"))
