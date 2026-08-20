@@ -374,6 +374,8 @@ def _train_candidate(
     target_mean: np.ndarray, target_scale: np.ndarray, seed: int,
     health_check: Callable[[str], None] | None = None,
 ) -> tuple[dict[str, Any], bytes]:
+    if health_check:
+        health_check(f"training-{name}-epoch-0")
     torch = _seed_deterministic(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = torch.nn.Sequential(torch.nn.Linear(fit_x.shape[1], 512), torch.nn.GELU(), torch.nn.Linear(512, 512), torch.nn.GELU(), torch.nn.Linear(512, 256), torch.nn.GELU(), torch.nn.Linear(256, 408)).to(device)
@@ -382,7 +384,8 @@ def _train_candidate(
     cal_xt = torch.from_numpy(cal_x).to(device)
     best_metric = float("inf"); best_epoch = -1; best_state: dict[str, Any] | None = None; stale = 0
     for epoch in range(80):
-        if health_check: health_check(f"training-{name}-epoch-{epoch}")
+        if epoch and health_check:
+            health_check(f"training-{name}-epoch-{epoch}")
         model.train()
         generator = torch.Generator().manual_seed(seed + epoch)
         for batch, index in enumerate(torch.randperm(len(x), generator=generator).split(128)):

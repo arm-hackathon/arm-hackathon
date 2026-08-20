@@ -161,30 +161,30 @@ def test_canonical_lineage_rejects_pilot_namespace_and_ancestor() -> None:
 
 
 def test_resource_preflight_requires_exact_independent_identity(tmp_path: Path) -> None:
+    from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
     from aeolus.habitat_v2.forecast.pilot import (
         PilotContractError,
+        load_approved_pilot_design,
         load_resource_preflight,
     )
+    from aeolus.habitat_v2.forecast.pilot_benchmark import (
+        RunMeasurement,
+        V2_RESOURCE_CEILINGS,
+        build_v2_preflight_receipt,
+    )
 
-    body: dict[str, object] = {
-        "schema_version": "aeolus_habitat_v2_forecast_pilot_resource_preflight_v1",
-        "roster_sha256": "9514a25548d95047f3e707d1f2b27c76c3b09378653ecd270cdc9ae2845b06d1",
-        "profile_action_sha256": "535cde8c397b115d5dd0b46c257462527f1e3eedfa3fb8560f02e45520854141",
-        "planned_hmc_runs": 23_400,
-        "benchmark_hmc_runs": 25,
-        "measured_wall_time_seconds": 10.0,
-        "measured_peak_rss_bytes": 100_000_000,
-        "measured_artifact_bytes": 1_000_000,
-        "projected_wall_time_seconds": 9_360.0,
-        "projected_peak_rss_bytes": 100_000_000,
-        "projected_artifact_bytes": 936_000_000,
-        "runtime_within_ceiling": True,
-        "memory_within_ceiling": True,
-        "disk_reserve_preserved": True,
-        "verdict": "PASS",
-    }
-    body["preflight_sha256"] = hashlib.sha256(canonical(body)).hexdigest()
-    raw = canonical(body) + b"\n"
+    body = build_v2_preflight_receipt(
+        ROOT,
+        load_approved_pilot_design(ROOT),
+        load_forecast_contracts(ROOT),
+        measurements=(
+            RunMeasurement(1.0, 100_000_000, 1_000_000),
+            RunMeasurement(1.0, 100_000_000, 1_000_000),
+        ),
+        ceilings=V2_RESOURCE_CEILINGS,
+        free_disk_bytes=600_000_000_000,
+    )
+    raw = canonical(body)
     expected_semantic = body["preflight_sha256"]
     expected_raw = hashlib.sha256(raw).hexdigest()
     path = tmp_path / "preflight.json"
@@ -192,6 +192,7 @@ def test_resource_preflight_requires_exact_independent_identity(tmp_path: Path) 
 
     receipt = load_resource_preflight(
         path,
+        repo_root=ROOT,
         expected_preflight_sha256=expected_semantic,
         expected_preflight_bytes_sha256=expected_raw,
     )
@@ -206,6 +207,7 @@ def test_resource_preflight_requires_exact_independent_identity(tmp_path: Path) 
     with pytest.raises(PilotContractError, match="expected preflight identity"):
         load_resource_preflight(
             path,
+            repo_root=ROOT,
             expected_preflight_sha256=expected_semantic,
             expected_preflight_bytes_sha256=expected_raw,
         )
