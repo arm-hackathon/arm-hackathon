@@ -8,10 +8,12 @@ cannot mint runtime authority objects or issue proposals outside the replay.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import dataclass, fields, is_dataclass
 import hashlib
+import json
 import math
 from typing import Any
+from types import MappingProxyType
 
 import numpy as np
 
@@ -31,7 +33,7 @@ from .forecast_issue52 import (
     targets_from_measurement,
 )
 from .hmc import HabitatManagementComputer
-from .health import HealthReduction, HealthTracker, reduce_health
+from .health import AlarmTrack, HealthReduction, HealthTracker, reduce_health
 from .hmc_contract import HMCContract, canonical_json_bytes
 from .instrumentation import (
     OperationalMeasurement,
@@ -52,7 +54,7 @@ from .scenario import (
     ScenarioValidationError,
 )
 from .snapshot import OperationalSnapshot, SnapshotVerificationReceipt
-from .state import PlantState
+from .state import PlantState, UtilityState, ZoneState
 from .telemetry import derive_observable_topology
 
 
@@ -85,6 +87,15 @@ def _array_payload(value: np.ndarray) -> list[list[float | None]]:
         [None if not math.isfinite(float(item)) else float(item) for item in row]
         for row in array
     ]
+
+
+def _validate_array_cells(
+    values: np.ndarray, mask: np.ndarray, *, label: str
+) -> None:
+    if not np.isfinite(values[mask]).all():
+        raise Issue52RolloutError(f"available {label} cells are non-finite")
+    if np.any(~mask) and not np.isnan(values[~mask]).all():
+        raise Issue52RolloutError(f"unavailable {label} cells must be NaN")
 
 
 def _segment_for_step(scenario: Scenario, step: int) -> Mapping[str, Any]:
@@ -121,6 +132,89 @@ def _health_mapping(reduction: HealthReduction) -> dict[str, Any]:
 
 def _state_mapping(state: PlantState) -> dict[str, Any]:
     return _jsonable(state)
+
+
+def _freeze_checkpoint_state(state: PlantState) -> PlantState:
+    utility = state.utility
+    return PlantState(
+        step=state.step,
+        zones=MappingProxyType(dict(state.zones)),
+        utility=UtilityState(
+            co2_sorbent_remaining_mol=utility.co2_sorbent_remaining_mol,
+            captured_co2_mol=utility.captured_co2_mol,
+            condensed_water_mol=utility.condensed_water_mol,
+            oxygen_store_mol=utility.oxygen_store_mol,
+            battery_energy_wh=utility.battery_energy_wh,
+            actual_airflow_m3_s=MappingProxyType(dict(utility.actual_airflow_m3_s)),
+            actual_scrubber_duty=utility.actual_scrubber_duty,
+            actual_condenser_duty=utility.actual_condenser_duty,
+            external_heat_rejected_j=utility.external_heat_rejected_j,
+            external_heat_received_j=utility.external_heat_received_j,
+            actual_fan_speed_fraction=utility.actual_fan_speed_fraction,
+            actual_damper_position_by_id=MappingProxyType(
+                dict(utility.actual_damper_position_by_id)
+            ),
+            actual_cooling_removed_w=MappingProxyType(
+                dict(utility.actual_cooling_removed_w)
+            ),
+            actual_oxygen_injection_mol_s=MappingProxyType(
+                dict(utility.actual_oxygen_injection_mol_s)
+            ),
+            effective_scrubber_capture_ability=utility.effective_scrubber_capture_ability,
+            effective_condenser_removal_ability=(
+                utility.effective_condenser_removal_ability
+            ),
+            effective_cooling_delivery_by_zone=MappingProxyType(
+                dict(utility.effective_cooling_delivery_by_zone)
+            ),
+            effective_oxygen_delivery_by_zone=MappingProxyType(
+                dict(utility.effective_oxygen_delivery_by_zone)
+            ),
+            last_operational_feedback=(
+                None
+                if utility.last_operational_feedback is None
+                else MappingProxyType(dict(utility.last_operational_feedback))
+            ),
+        ),
+    )
+
+
+def _restore_state(state: PlantState) -> PlantState:
+    payload = _state_mapping(state)
+    utility = payload["utility"]
+    return PlantState(
+        step=int(payload["step"]),
+        zones={
+            str(zone_id): ZoneState(**values)
+            for zone_id, values in payload["zones"].items()
+        },
+        utility=UtilityState(
+            **{
+                **utility,
+                "actual_airflow_m3_s": dict(utility["actual_airflow_m3_s"]),
+                "actual_damper_position_by_id": dict(
+                    utility["actual_damper_position_by_id"]
+                ),
+                "actual_cooling_removed_w": dict(utility["actual_cooling_removed_w"]),
+                "actual_oxygen_injection_mol_s": dict(
+                    utility["actual_oxygen_injection_mol_s"]
+                ),
+                "effective_cooling_delivery_by_zone": dict(
+                    utility["effective_cooling_delivery_by_zone"]
+                ),
+                "effective_oxygen_delivery_by_zone": dict(
+                    utility["effective_oxygen_delivery_by_zone"]
+                ),
+            }
+        ),
+    )
+
+
+def _restore_health_tracker(tracker: HealthTracker) -> HealthTracker:
+    return HealthTracker(
+        completed_step=tracker.completed_step,
+        tracks={track_id: AlarmTrack(**_jsonable(track)) for track_id, track in tracker.tracks.items()},
+    )
 
 
 def _hidden_targets(
@@ -186,6 +280,10 @@ class RolloutCheckpoint:
     def __post_init__(self) -> None:
         if type(self.scenario) is not Scenario or type(self.contract) is not HMCContract:
             raise Issue52RolloutError("checkpoint requires exact scenario and contract")
+        try:
+            self.scenario.validate_contract_identities()
+        except ScenarioValidationError as error:
+            raise Issue52RolloutError("checkpoint scenario identity is inconsistent") from error
         if self.scenario.scenario_schema_version != SCENARIO_SCHEMA_VERSION_V5:
             raise Issue52RolloutError("checkpoint requires a V5 scenario")
         if type(self.manifest) is not TargetManifest:
@@ -247,7 +345,29 @@ class RolloutCheckpoint:
         return _checkpoint_payload(self)
 
     def clone(self) -> "RolloutCheckpoint":
-        clone = replace(self)
+        clone = object.__new__(RolloutCheckpoint)
+        for field_name, value in {
+            "scenario": Scenario.from_mapping(_jsonable(self.scenario.data)),
+            "contract": HMCContract.from_mapping(json.loads(self.contract.canonical_bytes)),
+            "manifest": self.manifest,
+            "manifest_sha256": self.manifest_sha256,
+            "family_id": self.family_id,
+            "decision_step": self.decision_step,
+            "state": _restore_state(self.state),
+            "sensor_memory": self.sensor_memory,
+            "health_tracker": _restore_health_tracker(self.health_tracker),
+            "last_measurement": self.last_measurement,
+            "last_final_command": self.last_final_command,
+            "history_records": self.history_records,
+            "scenario_sha256": self.scenario_sha256,
+            "topology_sha256": self.topology_sha256,
+            "hmc_contract_sha256": self.hmc_contract_sha256,
+            "snapshot_schema_sha256": self.snapshot_schema_sha256,
+            "deterministic_seed": self.deterministic_seed,
+            "checkpoint_sha256": self.checkpoint_sha256,
+        }.items():
+            object.__setattr__(clone, field_name, value)
+        clone.__post_init__()
         if _checkpoint_digest(clone) != self.checkpoint_sha256:
             raise Issue52RolloutError("checkpoint clone changed canonical identity")
         return clone
@@ -378,17 +498,19 @@ def build_offline_checkpoint(
     command = validate_external_command(
         scenario, history_records[-1].command
     )
+    checkpoint_scenario = Scenario.from_mapping(_jsonable(scenario.data))
+    checkpoint_manifest = TargetManifest.from_scenario(checkpoint_scenario)
     checkpoint = object.__new__(RolloutCheckpoint)
     for field_name, value in {
-        "scenario": scenario,
-        "contract": contract,
-        "manifest": manifest,
-        "manifest_sha256": manifest.manifest_sha256,
+        "scenario": checkpoint_scenario,
+        "contract": HMCContract.from_mapping(json.loads(contract.canonical_bytes)),
+        "manifest": checkpoint_manifest,
+        "manifest_sha256": checkpoint_manifest.manifest_sha256,
         "family_id": family_id,
         "decision_step": decision_step,
-        "state": state,
+        "state": _freeze_checkpoint_state(state),
         "sensor_memory": measurement.sensor_memory,
-        "health_tracker": hmc._health_tracker,
+        "health_tracker": _restore_health_tracker(hmc._health_tracker),
         "last_measurement": measurement,
         "last_final_command": command,
         "history_records": history_records,
@@ -443,8 +565,8 @@ class RolloutResult:
             raise Issue52RolloutError("rollout target shape is invalid")
         if mask.shape != targets.shape or hidden.shape != targets.shape:
             raise Issue52RolloutError("rollout target masks do not match")
-        if not np.isfinite(targets[mask]).all() or not np.isfinite(hidden[mask]).all():
-            raise Issue52RolloutError("available rollout targets are non-finite")
+        _validate_array_cells(targets, mask, label="rollout target")
+        _validate_array_cells(hidden, mask, label="hidden truth")
         if (
             type(self.command_digests) is not tuple
             or type(self.state_digests) is not tuple
@@ -491,6 +613,11 @@ class RolloutResult:
         if self.rollout_sha256 != _digest(payload):
             raise Issue52RolloutError("rollout result digest is inconsistent")
 
+    def validate_integrity(self) -> None:
+        """Revalidate content-addressed rollout evidence before consuming labels."""
+
+        self.__post_init__()
+
 
 def rollout_candidate(
     checkpoint: RolloutCheckpoint,
@@ -500,6 +627,7 @@ def rollout_candidate(
 ) -> RolloutResult:
     if type(checkpoint) is not RolloutCheckpoint or type(candidate) is not CandidateSchedule:
         raise Issue52RolloutError("rollout requires exact checkpoint and candidate")
+    checkpoint.__post_init__()
     bound_manifest = checkpoint.manifest if manifest is None else manifest
     if bound_manifest.manifest_sha256 != checkpoint.manifest.manifest_sha256:
         raise Issue52RolloutError("rollout manifest does not bind checkpoint")
@@ -512,12 +640,10 @@ def rollout_candidate(
     command_digests: list[str | None] = [None] * HORIZON_STEPS
     state_digests: list[str | None] = [None] * HORIZON_STEPS
     feasibility: list[str] = ["UNAVAILABLE"] * HORIZON_STEPS
-    # These values are frozen and the physics/instrumentation seams return new
-    # successor objects, so sharing the checkpoint references is safe and keeps
-    # reconstruction independent of pickle/deepcopy support for mappingproxy.
-    state = checkpoint.state
-    sensor_memory = checkpoint.sensor_memory
-    health_tracker = checkpoint.health_tracker
+    reconstructed = checkpoint.clone()
+    state = reconstructed.state
+    sensor_memory = reconstructed.sensor_memory
+    health_tracker = reconstructed.health_tracker
     previous_measurement = checkpoint.last_measurement
     previous_command = checkpoint.last_final_command
     termination_reason: str | None = None
@@ -615,6 +741,7 @@ def rollout_catalogue(
 ) -> tuple[RolloutResult, ...]:
     if type(checkpoint) is not RolloutCheckpoint or type(catalogue) is not CandidateCatalogue:
         raise Issue52RolloutError("catalogue rollout requires exact inputs")
+    checkpoint.__post_init__()
     if catalogue.scenario_sha256 != checkpoint.scenario_sha256:
         raise Issue52RolloutError("catalogue scenario does not bind checkpoint")
     if catalogue.topology_sha256 != checkpoint.topology_sha256:
@@ -640,6 +767,7 @@ def training_samples_from_rollouts(
 ) -> tuple[TrainingSample, ...]:
     if split not in {"TRAIN", "VALIDATION", "FINAL"}:
         raise Issue52RolloutError("training split is invalid")
+    checkpoint.__post_init__()
     history = ForecastHistory.from_records(checkpoint.history_records)
     by_id = {item.candidate_id: item for item in rollouts}
     if len(by_id) != len(tuple(rollouts)):
@@ -654,6 +782,7 @@ def training_samples_from_rollouts(
             )
         if not rollout.eligible:
             raise Issue52RolloutError("training requires a complete decision group")
+        rollout.validate_integrity()
         if (
             rollout.checkpoint_sha256 != checkpoint.checkpoint_sha256
             or rollout.schedule_sha256 != candidate.schedule_sha256

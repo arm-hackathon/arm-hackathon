@@ -9,9 +9,8 @@
 - Short note: `docs/plans/2026-08-19-issue-52-long-horizon-actions-design.md`
 - Machine-readable preregistration: `contracts/habitat_v2_forecast_issue_52_preregistration_v1.json`
 - Preregistration SHA-256: `E0A24B2FD9309ED551DCD6D4FB98EFF1FDDA6B364DE2DBE73584CCF1ADA7E61F`
-- Status: `PROPOSED_AWAITING_BEN_SIGN_OFF`
-- `BEN_SIGN_OFF=false`
-- `CODE_AUTHORISED=false`
+- Status: `BEN_APPROVED_CONTRACT_IMPLEMENTATION_AND_BOUNDED_PILOT`
+- Approval status is recorded below; the frozen preregistration bytes remain unchanged.
 - `DATA_GENERATION_AUTHORISED=false`
 - `TRAINING_AUTHORISED=false`
 - `EXPERIMENTS_AUTHORISED=false`
@@ -368,17 +367,18 @@ Ben's approval must identify the Git commit containing this appendix, the short 
 
 > I, Ben (`bbeennyy860-cyber`), approve the Issue #52 design package at the identified commit. I authorize contract implementation and the bounded raw feasibility pilot under the attached HMC authority boundary. Comparative fitting, ranking power calculation, model training, experiments, and deployment remain blocked until I approve the required commit-bound metric amendment. Any safety-core change requires my separate review before merge.
 
-- Approver: `PENDING`
-- Approval link: `PENDING`
-- Approval timestamp: `PENDING`
-- Approved Git commit: `PENDING`
-- Scope exceptions: `NONE / PENDING`
-- `BEN_SIGN_OFF=false`
-- `CODE_AUTHORISED=false`
+- Approver: `Ben (bbeennyy860-cyber)`
+- Approval link: `Repository-owner-provided approval record; no public URL`
+- Approval timestamp: `2026-08-21T20:04:24+01:00`
+- Approved Git commit: `9531acd44797bff2531c451d7609e8c0b8c6710b`
+- Scope exceptions: `Implementation and bounded raw feasibility pilot only; safety-core diff remains subject to separate PR review`
+- Test-fixture boundary: `Current Issue #52 tests use a repeated short V5 fixture for contract/replay coverage only; no qualified long-horizon scenario family or corpus is claimed`
+- `BEN_SIGN_OFF=true`
+- `CODE_AUTHORISED=true`
 - `DATA_GENERATION_AUTHORISED=false`
 - `TRAINING_AUTHORISED=false`
 - `EXPERIMENTS_AUTHORISED=false`
 - `DEPLOYMENT_AUTHORISED=false`
 - `METRIC_AMENDMENT_APPROVED=false`
 
-Until initial approval is recorded, no runtime implementation, pilot execution, corpus generation, model training, comparative experiment, push, PR, or deployment is authorized by this package. Initial approval opens only contract implementation and the bounded raw feasibility pilot; training and experiments remain unauthorized until the metric amendment is separately approved and their authorization flags are explicitly changed.
+Initial approval authorizes contract implementation and the bounded raw feasibility pilot only. Comparative fitting, model training, experiments, sealed-final evaluation, and deployment remain unauthorized until the metric amendment is separately approved and their authorization flags are explicitly changed. Any `hmc.py` safety-core change remains subject to Ben's separate PR review before merge.

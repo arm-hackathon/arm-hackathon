@@ -1,6 +1,6 @@
 # Issue #52: Longer Forecasts and a Wider Action Menu
 
-Status: proposed, awaiting Ben sign-off
+Status: Ben approved contract implementation and the bounded raw feasibility pilot; training, experiments, and deployment remain blocked
 Issue: https://github.com/arm-hackathon/arm-hackathon/issues/52
 Design base: `843a5c1485de841462cbb47e486c2185099b71a2`
 Normative appendix: `2026-08-19-issue-52-long-horizon-actions-plan.md`
@@ -62,4 +62,4 @@ Ben can approve by replying with the exact local commit and this statement:
 
 > I, Ben (`bbeennyy860-cyber`), approve the Issue #52 design package at the identified commit. I authorize contract implementation and the bounded raw feasibility pilot under the attached HMC authority boundary. Comparative fitting, ranking power calculation, model training, experiments, and deployment remain blocked until I approve the required commit-bound metric amendment. Any safety-core change requires my separate review before merge.
 
-Until that approval is recorded: `BEN_SIGN_OFF=false`, `CODE_AUTHORISED=false`, `DATA_GENERATION_AUTHORISED=false`, `TRAINING_AUTHORISED=false`, `EXPERIMENTS_AUTHORISED=false`, `DEPLOYMENT_AUTHORISED=false`, and `METRIC_AMENDMENT_APPROVED=false`.
+Approval is recorded in the normative appendix. It authorizes contract implementation and the bounded raw feasibility pilot only. The preregistration is intentionally byte-frozen at its approved digest and retains the original proposed-state flags; the approval record is the authoritative status update. Data generation, training, experiments, deployment, and metric-amendment approval remain false.

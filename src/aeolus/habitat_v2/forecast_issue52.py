@@ -162,13 +162,16 @@ def _stable_damper_factor(damper_id: str) -> float:
 
 
 def _validate_live_hmc_binding(hmc: Any, scenario: Scenario) -> None:
-    """Refuse an advisory/HMC pairing unless the exact scenario is exposed."""
+    """Refuse an advisory/HMC pairing unless immutable identities agree."""
 
-    live_scenario = getattr(hmc, "scenario", None)
-    if type(live_scenario) is not Scenario:
-        raise Issue52HistoryError("HMC does not expose an exact live Scenario")
-    if live_scenario.scenario_sha256 != scenario.scenario_sha256:
+    binding = getattr(hmc, "advisory_binding", lambda: None)()
+    if not isinstance(binding, Mapping):
+        raise Issue52HistoryError("HMC does not expose advisory identities")
+    if binding.get("scenario_sha256") != scenario.scenario_sha256:
         raise Issue52HistoryError("advisory scenario does not bind the issuing HMC")
+    hmc_contract_sha256 = binding.get("hmc_contract_sha256")
+    if not _is_sha256(hmc_contract_sha256):
+        raise Issue52HistoryError("HMC advisory contract identity is invalid")
 
 
 def _validate_adviser_input_types(
@@ -185,16 +188,15 @@ def _validate_adviser_input_types(
 
 
 def _safety_bounds_for_descriptor(
-    descriptor: "TargetDescriptor", contract: Any | None
+    descriptor: "TargetDescriptor", health_policy: Any | None
 ) -> tuple[float, float]:
     lower = descriptor.crossing_lower
     upper = descriptor.crossing_upper
-    if contract is None:
+    if health_policy is None:
         return (
             descriptor.lower if lower is None else float(lower),
             descriptor.upper if upper is None else float(upper),
         )
-    health_policy = getattr(contract, "data", {}).get("health_policy")
     if not isinstance(health_policy, Mapping):
         raise Issue52ContractError("ranker contract has no health policy")
     environmental = health_policy.get("environmental")
@@ -949,6 +951,27 @@ def _blend_command(
     return result
 
 
+def _validate_candidate_command(
+    scenario: Scenario, command: Mapping[str, Any]
+) -> CanonicalExternalCommand:
+    """Canonicalize generated commands without rejecting round-off at a shared cap."""
+
+    adjusted = _copy_json(command)
+    oxygen = adjusted["oxygen_injection_mol_s"]
+    capacity = float(scenario.data["equipment"]["oxygen_injection_max_total_mol_s"])
+    total = sum(float(value) for value in oxygen.values())
+    if total > capacity:
+        excess = total - capacity
+        for zone_id in sorted(oxygen, reverse=True):
+            value = float(oxygen[zone_id])
+            reduction = min(value, excess)
+            oxygen[zone_id] = value - reduction
+            excess -= reduction
+            if excess <= 0.0:
+                break
+    return validate_external_command(scenario, adjusted)
+
+
 def _goal_command(base: Mapping[str, Any], spec: Mapping[str, float]) -> dict[str, Any]:
     goal = _copy_json(base)
     goal["fan_speed_fraction"] = min(1.0, max(0.0, float(base["fan_speed_fraction"]) + spec["fan"]))
@@ -988,6 +1011,15 @@ def _goal_command(base: Mapping[str, Any], spec: Mapping[str, float]) -> dict[st
                 excess -= reduction
                 if excess <= 0.0:
                     break
+        remaining = maximum - sum(
+            float(value) for value in goal["oxygen_injection_mol_s"].values()
+        )
+        if remaining < 0.0:
+            final_zone = sorted(goal["oxygen_injection_mol_s"])[-1]
+            goal["oxygen_injection_mol_s"][final_zone] = max(
+                0.0,
+                float(goal["oxygen_injection_mol_s"][final_zone]) + remaining,
+            )
     return goal
 
 
@@ -1095,7 +1127,7 @@ class CandidateCatalogue:
         for candidate_id, purpose, spec in (("candidate_hold", "retain achieved actuator state", {"fan": 0.0, "damper": 0.0, "scrubber": 0.0, "condenser": 0.0, "cooling": 0.0, "oxygen": 0.0}), *specs):
             goal = _goal_command(goal_base, spec)
             commands = tuple(
-                validate_external_command(
+                _validate_candidate_command(
                     scenario,
                     _blend_command(
                         {key: value for key, value in base_mapping.items() if key != "_issue52_oxygen_capacity"},
@@ -1123,6 +1155,12 @@ class CandidateCatalogue:
             )
         if len(candidates) != CATALOGUE_SIZE:
             raise AssertionError("issue 52 candidate catalogue size drift")
+        command_sequences = {
+            tuple(command.sha256 for command in candidate.commands)
+            for candidate in candidates
+        }
+        if len(command_sequences) != CATALOGUE_SIZE:
+            raise Issue52ContractError("candidate catalogue contains duplicate schedules")
         catalogue_payload = {
             "schema_version": f"{ISSUE52_SCHEMA_VERSION}.candidate_catalogue",
             "scenario_sha256": scenario.scenario_sha256,
@@ -1146,6 +1184,8 @@ class CandidateCatalogue:
             raise Issue52ContractError("catalogue candidate IDs are not unique")
         if any(len(candidate.commands) != HORIZON_STEPS for candidate in self.candidates):
             raise Issue52ContractError("every candidate must contain 32 commands")
+        if len({tuple(command.sha256 for command in candidate.commands) for candidate in self.candidates}) != CATALOGUE_SIZE:
+            raise Issue52ContractError("catalogue candidate schedules are not unique")
         _require_sha256(self.scenario_sha256, label="catalogue scenario identity")
         _require_sha256(self.topology_sha256, label="catalogue topology identity")
         _require_sha256(self.base_command_sha256, label="catalogue base command identity")
@@ -1622,7 +1662,7 @@ def score_trajectory(
     candidate: CandidateSchedule,
     trajectory: ForecastTrajectory,
     scenario: Scenario,
-    contract: Any | None = None,
+    health_policy: Any | None = None,
 ) -> CandidateScore:
     if trajectory.status != "PREDICTION" or trajectory.mean is None or trajectory.lower is None or trajectory.upper is None:
         return CandidateScore(candidate.candidate_id, math.inf, True, math.inf, math.inf, math.inf, math.inf, trajectory.reason)
@@ -1646,7 +1686,7 @@ def score_trajectory(
     for index, descriptor in enumerate(manifest.descriptors):
         scale = max(descriptor.scale, 1e-9)
         safety_lower, safety_upper = _safety_bounds_for_descriptor(
-            descriptor, contract
+            descriptor, health_policy
         )
         tracking += float(np.mean(np.abs(mean[:, index] - descriptor.nominal) / scale))
         lower_crossing = np.maximum(0.0, safety_lower - lower[:, index]) / scale
@@ -1688,7 +1728,7 @@ def rank_candidates(
     scenario: Scenario,
     *,
     ambiguity_margin: float = AMBIGUITY_MARGIN,
-    contract: Any | None = None,
+    health_policy: Any | None = None,
 ) -> RankedDecision:
     if not math.isfinite(float(ambiguity_margin)) or ambiguity_margin < 0.0:
         raise Issue52ForecastError("candidate ambiguity margin is invalid")
@@ -1723,7 +1763,7 @@ def rank_candidates(
             candidate,
             trajectories[candidate.candidate_id],
             scenario,
-            contract,
+            health_policy,
         )
         for candidate in catalogue.candidates
     )
@@ -1929,20 +1969,13 @@ class Issue52AdvisorySource:
                 trajectories,
                 self.scenario,
                 ambiguity_margin=self.ambiguity_margin,
-                contract=getattr(hmc, "hmc_contract", None),
+                health_policy=getattr(hmc, "advisory_safety_policy", lambda: None)(),
             )
             proposal = build_control_proposal(hmc, snapshot, ranked, self.catalogue)
             if proposal is not None:
-                state = getattr(hmc, "plant_state", None)
-                if state is None:
-                    raise Issue52HistoryError("HMC does not expose plant state")
                 completed_step = snapshot.to_mapping().get("completed_step")
                 try:
-                    from .physics import preflight_external_command
-
-                    preflight = preflight_external_command(
-                        self.scenario,
-                        state,
+                    preflight = hmc.preflight_advisory_command(
                         proposal["proposed_command"],
                         int(completed_step),
                     )

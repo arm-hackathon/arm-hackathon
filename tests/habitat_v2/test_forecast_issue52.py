@@ -24,6 +24,7 @@ from aeolus.habitat_v2.forecast_issue52 import (
 from aeolus.habitat_v2.forecast_issue52_rollout import (
     assess_rollout_feasibility,
     build_offline_checkpoint,
+    rollout_candidate,
     rollout_catalogue,
     training_samples_from_rollouts,
 )
@@ -33,6 +34,8 @@ from aeolus.habitat_v2.scenario import Scenario
 
 
 def _scenario() -> Scenario:
+    """Build a synthetic long-horizon contract fixture, not a corpus family."""
+
     path = Path(__file__).parents[2] / "scenarios" / "habitat_v2_actuator_feedback.json"
     parsed = Scenario.from_mapping(json.loads(path.read_text(encoding="utf-8")))
     return extend_scenario_for_issue52(parsed)
@@ -76,6 +79,38 @@ def test_manifest_and_catalogue_are_topology_bound_and_deterministic() -> None:
     assert catalogue.catalogue_sha256 == CandidateCatalogue.from_scenario(
         scenario
     ).catalogue_sha256
+    assert len(
+        {tuple(command.sha256 for command in candidate.commands) for candidate in catalogue.candidates}
+    ) == CATALOGUE_SIZE
+
+
+def test_catalogue_rejects_saturated_duplicate_schedules() -> None:
+    scenario = _scenario()
+    base = deepcopy(scenario.data["timeline"][0]["command"])
+    base["fan_speed_fraction"] = 1.0
+    base["scrubber_duty"] = 1.0
+    base["condenser_duty"] = 1.0
+    base["damper_position_by_id"] = {
+        damper_id: 1.0 for damper_id in base["damper_position_by_id"]
+    }
+    base["cooling_removed_w"] = {
+        zone_id: 1_000.0 for zone_id in base["cooling_removed_w"]
+    }
+
+    with pytest.raises(ValueError, match="duplicate schedules"):
+        CandidateCatalogue.from_scenario(scenario, base_command=base)
+
+
+def test_catalogue_handles_exact_oxygen_capacity_without_roundoff_rejection() -> None:
+    scenario = _scenario()
+    base = deepcopy(scenario.data["timeline"][0]["command"])
+    oxygen = {zone_id: 0.0 for zone_id in base["oxygen_injection_mol_s"]}
+    oxygen[sorted(oxygen)[0]] = 0.00295
+    base["oxygen_injection_mol_s"] = oxygen
+
+    catalogue = CandidateCatalogue.from_scenario(scenario, base_command=base)
+
+    assert len(catalogue.candidates) == CATALOGUE_SIZE
 
 
 def test_offline_checkpoint_rollout_is_deterministic_and_complete() -> None:
@@ -102,6 +137,85 @@ def test_offline_checkpoint_rollout_is_deterministic_and_complete() -> None:
         result.rollout_status
         for result in assess_rollout_feasibility(catalogue, rollouts)
     } == {"ROLLOUT_FEASIBLE"}
+
+
+def test_rollout_rejects_mutated_checkpoint_inputs() -> None:
+    scenario = _scenario()
+    checkpoint = build_offline_checkpoint(scenario, _contract())
+    catalogue = CandidateCatalogue.from_scenario(
+        scenario, base_command=checkpoint.last_final_command
+    )
+    cooling = checkpoint.state.utility.actual_cooling_removed_w
+    zone_id = next(iter(cooling))
+    with pytest.raises(TypeError):
+        cooling[zone_id] += 1.0  # type: ignore[index]
+
+    assert rollout_candidate(checkpoint, catalogue.candidates[0]).eligible
+
+
+def test_rollout_rejects_mutated_checkpoint_scenario() -> None:
+    scenario = _scenario()
+    checkpoint = build_offline_checkpoint(scenario, _contract())
+    catalogue = CandidateCatalogue.from_scenario(
+        scenario, base_command=checkpoint.last_final_command
+    )
+    checkpoint.scenario.data["timeline"][0]["generation_w"] += 1.0
+
+    with pytest.raises(ValueError, match="checkpoint scenario identity is inconsistent"):
+        rollout_candidate(checkpoint, catalogue.candidates[0])
+
+
+def test_rollout_uses_a_reconstructed_checkpoint_state() -> None:
+    scenario = _scenario()
+    checkpoint = build_offline_checkpoint(scenario, _contract())
+    catalogue = CandidateCatalogue.from_scenario(
+        scenario, base_command=checkpoint.last_final_command
+    )
+
+    result = rollout_candidate(checkpoint, catalogue.candidates[0])
+    cooling = checkpoint.state.utility.actual_cooling_removed_w
+    with pytest.raises(TypeError):
+        cooling[next(iter(cooling))] += 1.0  # type: ignore[index]
+
+    assert result.eligible
+    assert rollout_candidate(checkpoint, catalogue.candidates[0]).eligible
+
+
+def test_training_rejects_tampered_rollout_labels() -> None:
+    scenario = _scenario()
+    checkpoint = build_offline_checkpoint(scenario, _contract())
+    catalogue = CandidateCatalogue.from_scenario(
+        scenario, base_command=checkpoint.last_final_command
+    )
+    rollouts = list(rollout_catalogue(checkpoint, catalogue))
+    rollouts[0].targets.setflags(write=True)
+    rollouts[0].targets[0, 0] += 1.0
+    rollouts[0].targets.setflags(write=False)
+
+    with pytest.raises(ValueError, match="rollout result digest is inconsistent"):
+        training_samples_from_rollouts(checkpoint, catalogue, rollouts)
+
+
+def test_training_rejects_non_nan_unavailable_rollout_cells() -> None:
+    scenario = _scenario()
+    checkpoint = build_offline_checkpoint(scenario, _contract())
+    catalogue = CandidateCatalogue.from_scenario(
+        scenario, base_command=checkpoint.last_final_command
+    )
+    rollouts = list(rollout_catalogue(checkpoint, catalogue))
+    rollout = rollouts[0]
+    rollout.available_mask.setflags(write=True)
+    rollout.targets.setflags(write=True)
+    rollout.hidden_truth.setflags(write=True)
+    rollout.available_mask[0, 0] = False
+    rollout.targets[0, 0] = np.inf
+    rollout.hidden_truth[0, 0] = np.inf
+    rollout.available_mask.setflags(write=False)
+    rollout.targets.setflags(write=False)
+    rollout.hidden_truth.setflags(write=False)
+
+    with pytest.raises(ValueError, match="unavailable rollout target cells must be NaN"):
+        training_samples_from_rollouts(checkpoint, catalogue, rollouts)
 
 
 def test_training_and_metric_bind_complete_rollouts() -> None:
@@ -267,6 +381,23 @@ def test_adviser_rejects_same_topology_different_scenario() -> None:
     assert proposal.attempt_class == "NONE"
 
 
+def test_advisory_interface_does_not_expose_mutable_hmc_state() -> None:
+    scenario = _scenario()
+    hmc = HabitatManagementComputer.reset(scenario, _contract(), b"m" * 32)
+
+    assert not hasattr(hmc, "scenario")
+    assert not hasattr(hmc, "plant_state")
+    assert not hasattr(hmc, "hmc_contract")
+    binding = hmc.advisory_binding()
+    with pytest.raises(TypeError):
+        binding["scenario_sha256"] = "0" * 64  # type: ignore[index]
+    policy = hmc.advisory_safety_policy()
+    with pytest.raises(TypeError):
+        policy["environmental"] = {}  # type: ignore[index]
+    with pytest.raises(TypeError):
+        policy["environmental"]["high_co2"]["critical_enter"] = 0.0  # type: ignore[index]
+
+
 def test_ranker_rejects_safety_interval_crossing_and_partial_invalid_batch() -> None:
     scenario = _scenario()
     checkpoint = build_offline_checkpoint(scenario, _contract())
@@ -302,7 +433,7 @@ def test_ranker_rejects_safety_interval_crossing_and_partial_invalid_batch() -> 
         history,
         trajectories,
         scenario,
-        contract=_contract(),
+        health_policy=_contract().data["health_policy"],
     )
 
     assert decision.outcome == "ABSTAINED"
