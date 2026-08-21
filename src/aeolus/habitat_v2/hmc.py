@@ -188,6 +188,24 @@ class HabitatManagementComputer:
         return self._observable_topology.sha256
 
     @property
+    def scenario(self) -> Scenario:
+        """Read-only live scenario identity for in-process advisory binding."""
+
+        return self._scenario
+
+    @property
+    def hmc_contract(self) -> HMCContract:
+        """Read-only contract identity for advisory safety-bound projection."""
+
+        return self._contract
+
+    @property
+    def plant_state(self) -> PlantState:
+        """Read-only current plant state for advisory first-step preflight."""
+
+        return self._state
+
+    @property
     def control_run_id(self) -> str:
         return self._control_run_id
 
