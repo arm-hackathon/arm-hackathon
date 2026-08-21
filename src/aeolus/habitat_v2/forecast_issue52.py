@@ -1438,7 +1438,7 @@ class ActionConditionedLinearForecaster:
         cls,
         samples: Sequence[TrainingSample],
         *,
-        scenario: Scenario | None = None,
+        scenario: Scenario,
         manifest: TargetManifest | None = None,
         alpha: float = 1e-6,
     ) -> "ActionConditionedLinearForecaster":

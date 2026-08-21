@@ -241,6 +241,11 @@ def test_training_and_metric_bind_complete_rollouts() -> None:
         )
 
 
+def test_linear_fit_requires_an_explicit_scenario() -> None:
+    with pytest.raises(TypeError, match="missing 1 required keyword-only argument"):
+        ActionConditionedLinearForecaster.fit(())  # type: ignore[call-arg]
+
+
 def test_ranker_fails_closed_for_invalid_or_ambiguous_forecasts() -> None:
     scenario = _scenario()
     checkpoint = build_offline_checkpoint(scenario, _contract())
