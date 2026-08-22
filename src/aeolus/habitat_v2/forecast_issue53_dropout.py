@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -91,20 +91,37 @@ class DropoutConfig:
     config_sha256: str = field(default="")
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.p_uniform) or not 0.0 <= self.p_uniform < 1.0:
+        if (
+            isinstance(self.p_uniform, bool)
+            or not isinstance(self.p_uniform, (int, float))
+            or not math.isfinite(float(self.p_uniform))
+            or not 0.0 <= float(self.p_uniform) < 1.0
+        ):
             raise Issue53ContractError("p_uniform must be in [0,1)")
-        if self.mode not in {"independent", "per_zone_head_burst", "mixed"}:
+        if type(self.mode) is not str or self.mode not in {
+            "independent",
+            "per_zone_head_burst",
+            "mixed",
+        }:
             raise Issue53ContractError("dropout mode is invalid")
-        if not isinstance(self.burst_min, int) or not isinstance(self.burst_max, int):
+        if (
+            type(self.burst_min) is not int
+            or type(self.burst_max) is not int
+        ):
             raise Issue53ContractError("burst bounds must be integers")
         if self.burst_min < 1 or self.burst_max < self.burst_min:
             raise Issue53ContractError("burst bounds are invalid")
-        if not math.isfinite(self.p_burst_onset) or not 0.0 <= self.p_burst_onset <= 1.0:
+        if (
+            isinstance(self.p_burst_onset, bool)
+            or not isinstance(self.p_burst_onset, (int, float))
+            or not math.isfinite(float(self.p_burst_onset))
+            or not 0.0 <= float(self.p_burst_onset) <= 1.0
+        ):
             raise Issue53ContractError("p_burst_onset must be in [0,1]")
         if type(self.resource_gauge_dropout) is not bool:
             raise Issue53ContractError("resource_gauge_dropout must be bool")
         if self.max_missing_per_row is not None:
-            if not isinstance(self.max_missing_per_row, int) or self.max_missing_per_row < 0:
+            if type(self.max_missing_per_row) is not int or self.max_missing_per_row < 0:
                 raise Issue53ContractError("max_missing_per_row is invalid")
         if not isinstance(self.seed, int) or isinstance(self.seed, bool):
             raise Issue53ContractError("seed must be int")
@@ -130,16 +147,25 @@ class DropoutConfig:
     def from_mapping(cls, value: Mapping[str, Any]) -> "DropoutConfig":
         if not isinstance(value, Mapping):
             raise Issue53ContractError("dropout config must be a mapping")
+        schema_version = value.get("schema_version", DROPOUT_SCHEMA_VERSION)
+        if schema_version != DROPOUT_SCHEMA_VERSION:
+            raise Issue53ContractError("dropout config schema is invalid")
+        resource_gauge_dropout = value.get("resource_gauge_dropout", False)
+        if type(resource_gauge_dropout) is not bool:
+            raise Issue53ContractError("resource_gauge_dropout must be bool")
+        config_sha256 = value.get("config_sha256", "")
+        if type(config_sha256) is not str:
+            raise Issue53ContractError("config digest must be a string")
         return cls(
-            p_uniform=float(value.get("p_uniform", 0.05)),
-            mode=str(value.get("mode", "independent")),
-            burst_min=int(value.get("burst_min", 2)),
-            burst_max=int(value.get("burst_max", 8)),
-            p_burst_onset=float(value.get("p_burst_onset", 0.02)),
-            resource_gauge_dropout=bool(value.get("resource_gauge_dropout", False)),
+            p_uniform=value.get("p_uniform", 0.05),
+            mode=value.get("mode", "independent"),
+            burst_min=value.get("burst_min", 2),
+            burst_max=value.get("burst_max", 8),
+            p_burst_onset=value.get("p_burst_onset", 0.02),
+            resource_gauge_dropout=resource_gauge_dropout,
             max_missing_per_row=value.get("max_missing_per_row", 6),
-            seed=int(value.get("seed", 530053)),
-            config_sha256=str(value.get("config_sha256", "")),
+            seed=value.get("seed", 530053),
+            config_sha256=config_sha256,
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -177,6 +203,38 @@ def _should_drop(u64: int, p: float) -> bool:
     return u64 < threshold
 
 
+def _burst_group(descriptor: object) -> str:
+    """Bind a burst to one zone's environmental sensor head."""
+
+    descriptor_id = str(descriptor.descriptor_id)
+    return descriptor_id.split("/", 1)[0] if "/" in descriptor_id else descriptor_id
+
+
+def _burst_active(
+    config: DropoutConfig,
+    *,
+    family_id: str,
+    decision_step: int,
+    step_offset: int,
+    group_id: str,
+) -> bool:
+    for onset in range(HISTORY_STEPS):
+        onset_u64 = _sampler_u64(
+            config.seed, family_id, decision_step, onset, f"{group_id}:burst-onset"
+        )
+        if not _should_drop(onset_u64, config.p_burst_onset):
+            continue
+        duration_u64 = _sampler_u64(
+            config.seed, family_id, decision_step, onset, f"{group_id}:burst-duration"
+        )
+        duration = config.burst_min + duration_u64 % (
+            config.burst_max - config.burst_min + 1
+        )
+        if onset <= step_offset < onset + duration:
+            return True
+    return False
+
+
 def dropout_mask_for_history(
     history: ForecastHistory,
     manifest: TargetManifest,
@@ -184,12 +242,19 @@ def dropout_mask_for_history(
     *,
     family_id: str,
     decision_step: int,
+    latest_missing_count: int | None = None,
 ) -> np.ndarray:
     """Deterministic boolean mask: True = keep (AVAILABLE), False = drop."""
     if type(history) is not ForecastHistory or type(manifest) is not TargetManifest or type(config) is not DropoutConfig:
         raise Issue53ContractError("dropout mask requires exact contract types")
     if history.target_values.shape[1] != manifest.width:
         raise Issue53ContractError("history width does not bind manifest")
+    if latest_missing_count is not None and (
+        not isinstance(latest_missing_count, int)
+        or isinstance(latest_missing_count, bool)
+        or latest_missing_count < 0
+    ):
+        raise Issue53ContractError("latest_missing_count is invalid")
     # Native missing (pre-existing UNAVAILABLE) stays dropped — dropout is additive
     base_available = history.available_mask.copy()
     # Resource gauges are the last 3 descriptors when resource_gauge_dropout is False
@@ -203,39 +268,85 @@ def dropout_mask_for_history(
     mask = np.ones_like(base_available, dtype=bool)
     for t in range(HISTORY_STEPS):
         for c in range(manifest.width):
-            if c in gauge_indices:
-                # never drop gauges unless explicitly enabled
-                continue
             if not base_available[t, c]:
                 mask[t, c] = False
                 continue
+            if c in gauge_indices:
+                # Never drop gauges unless explicitly enabled.
+                continue
             u64 = _sampler_u64(config.seed, family_id, decision_step, t, manifest.descriptors[c].descriptor_id)
-            if _should_drop(u64, config.p_uniform):
+            independent = config.mode in {"independent", "mixed"} and _should_drop(
+                u64, config.p_uniform
+            )
+            burst = config.mode in {"per_zone_head_burst", "mixed"} and _burst_active(
+                config,
+                family_id=family_id,
+                decision_step=decision_step,
+                step_offset=t,
+                group_id=_burst_group(manifest.descriptors[c]),
+            )
+            if independent or burst:
                 mask[t, c] = False
-            # burst mode omitted in this slice — deterministic via same sampler seeded per burst
-            # burst is observable via correlated drops on same zone/head; left for future amendment
 
-    # Optional cap — if more than max_missing_per_row dropped on a row, keep lexicographically smallest descriptors
+    if latest_missing_count is not None:
+        native_missing = int(np.sum(~base_available[-1]))
+        if latest_missing_count < native_missing:
+            raise Issue53ContractError(
+                "latest_missing_count cannot remove native unavailable channels"
+            )
+        eligible = [
+            c
+            for c in range(manifest.width)
+            if base_available[-1, c] and c not in gauge_indices
+        ]
+        required_dropout = latest_missing_count - native_missing
+        if required_dropout > len(eligible):
+            raise Issue53ContractError(
+                "latest_missing_count exceeds eligible observable channels"
+            )
+        if config.max_missing_per_row is not None and required_dropout > config.max_missing_per_row:
+            raise Issue53ContractError(
+                "latest_missing_count exceeds max_missing_per_row"
+            )
+        mask[-1, :] = base_available[-1, :]
+        eligible.sort(
+            key=lambda c: (
+                _sampler_u64(
+                    config.seed,
+                    family_id,
+                    decision_step,
+                    HISTORY_STEPS - 1,
+                    f"{manifest.descriptors[c].descriptor_id}:target-k",
+                ),
+                manifest.descriptors[c].descriptor_id,
+            )
+        )
+        for c in eligible[:required_dropout]:
+            mask[-1, c] = False
+
+    # Optional cap — deterministically retain at most this many new drops per row.
     if config.max_missing_per_row is not None:
         cap = int(config.max_missing_per_row)
         for t in range(HISTORY_STEPS):
             dropped = int(np.sum(~mask[t] & base_available[t]))
             # count only dropout-induced drops, ignore pre-existing unavailable
             if dropped > cap:
-                # revert excess drops: keep the lexicographically earliest descriptor_ids
                 dropout_cols = [c for c in range(manifest.width) if not mask[t, c] and base_available[t, c]]
-                dropout_cols.sort(key=lambda c: manifest.descriptors[c].descriptor_id)
-                # keep exactly `cap` dropped, revert the tail tail
-                # We dropped `dropped` items; we need to keep `cap` of them → revert `dropped-cap` earliest
-                # Simpler: re-enable all then drop only first `cap` lexicographically — ensures cap respected
+                dropout_cols.sort(
+                    key=lambda c: (
+                        _sampler_u64(
+                            config.seed,
+                            family_id,
+                            decision_step,
+                            t,
+                            f"{manifest.descriptors[c].descriptor_id}:cap",
+                        ),
+                        manifest.descriptors[c].descriptor_id,
+                    )
+                )
                 mask[t, :] = base_available[t, :]
-                # re-drop cap smallest
-                for c in sorted(dropout_cols)[:cap]:
+                for c in dropout_cols[:cap]:
                     mask[t, c] = False
-                # remaining columns stay available
-                # For rows where we re-enabled, need to recompute from base_available
-                # but we just set mask[t]=base_available[t] then dropped cap, so correct
-                pass
 
     mask.setflags(write=False)
     return mask
@@ -248,9 +359,17 @@ def apply_dropout_to_history(
     *,
     family_id: str,
     decision_step: int,
+    latest_missing_count: int | None = None,
 ) -> ForecastHistory:
     """Return a new ForecastHistory with dropout mask applied (observation-only)."""
-    mask = dropout_mask_for_history(history, manifest, config, family_id=family_id, decision_step=decision_step)
+    mask = dropout_mask_for_history(
+        history,
+        manifest,
+        config,
+        family_id=family_id,
+        decision_step=decision_step,
+        latest_missing_count=latest_missing_count,
+    )
     # New target_values: NaN where newly masked
     new_values = history.target_values.astype(np.float32).copy()
     new_values[~mask] = np.nan
@@ -429,6 +548,12 @@ class DropoutAwareLinearForecaster:
             raise Issue53ForecastError("fit inputs are not exact contract types")
         if manifest.scenario_sha256 != scenario.scenario_sha256:
             raise Issue53ForecastError("fit manifest does not bind scenario")
+        if any(
+            item.scenario_sha256 != scenario.scenario_sha256
+            or item.manifest_sha256 != manifest.manifest_sha256
+            for item in items
+        ):
+            raise Issue53ForecastError("fit samples do not bind scenario or manifest")
         if not math.isfinite(float(alpha)) or alpha <= 0.0:
             raise Issue53ForecastError("fit regularization must be positive and finite")
         # Augment each sample's history with deterministic dropout (same family/decision binding)
@@ -470,27 +595,65 @@ class DropoutAwareLinearForecaster:
         coeffs = coeffs.astype(np.float32)
         coeffs.setflags(write=False)
         model_id = "issue53-dropout-linear-" + hashlib.sha256(coeffs.tobytes()).hexdigest()[:16]
-        # per-k interval scale: conformal residuals binned by k (missing count on latest row)
-        # For initial fit, calibrate on augmented TRAIN residuals grouped by k
-        per_k_scale: dict[int, float] = {}
-        # simple residual scale per k: mean abs residual * 1.5 (approx 90% under Gaussian) — refined on VALIDATION
-        for k in range(0, 7):
-            subset = [s for s in augmented if int(np.sum(~s.history.available_mask[-1])) == k]
-            if not subset:
-                continue
-            feats = np.concatenate([_masked_feature_matrix(s.history, s.schedule, scenario, manifest) for s in subset], axis=0).astype(np.float64)
-            preds = feats @ coeffs.astype(np.float64)
-            truth = np.concatenate([s.targets for s in subset], axis=0).astype(np.float64)
-            scales = np.asarray([d.scale for d in manifest.descriptors], dtype=np.float64)
-            norm_resid = np.abs(preds - truth) / scales[None, :]
-            per_k_scale[k] = float(np.quantile(norm_resid, 0.90)) if norm_resid.size else 0.02
-        # ensure monotone non-decreasing with k
-        sorted_ks = sorted(per_k_scale)
-        for i in range(1, len(sorted_ks)):
-            prev, cur = sorted_ks[i - 1], sorted_ks[i]
-            if per_k_scale[cur] < per_k_scale[prev]:
-                per_k_scale[cur] = per_k_scale[prev]
-        return cls(scenario, manifest, dropout_config, coeffs, model_id, per_k_scale)
+        # Calibration is deliberately separate and must consume VALIDATION data.
+        return cls(scenario, manifest, dropout_config, coeffs, model_id, {})
+
+    def calibrate(
+        self,
+        samples: Sequence[TrainingSample],
+        *,
+        quantile: float = 0.90,
+    ) -> "DropoutAwareLinearForecaster":
+        """Calibrate normalized interval scales on VALIDATION only."""
+
+        if (
+            isinstance(quantile, bool)
+            or not isinstance(quantile, (int, float))
+            or not math.isfinite(float(quantile))
+            or not 0.0 < float(quantile) < 1.0
+        ):
+            raise Issue53ForecastError("calibration quantile must be in (0,1)")
+        items = tuple(samples)
+        if not items or any(item.split != "VALIDATION" for item in items):
+            raise Issue53ForecastError("interval calibration accepts VALIDATION samples only")
+        if self.coefficients is None:
+            raise Issue53ForecastError("calibration requires fitted coefficients")
+        scales = np.asarray(
+            [descriptor.scale for descriptor in self.manifest.descriptors],
+            dtype=np.float64,
+        )
+        residuals: dict[int, list[float]] = {}
+        for item in items:
+            if (
+                item.scenario_sha256 != self.scenario.scenario_sha256
+                or item.manifest_sha256 != self.manifest.manifest_sha256
+            ):
+                raise Issue53ForecastError(
+                    "calibration sample scenario or manifest does not bind model"
+                )
+            features = _masked_feature_matrix(
+                item.history, item.schedule, self.scenario, self.manifest
+            )
+            predicted = features @ self.coefficients.astype(np.float64)
+            normalized = np.abs(predicted - item.targets.astype(np.float64)) / scales[None, :]
+            k = int(np.sum(~item.history.available_mask[-1]))
+            residuals.setdefault(k, []).extend(normalized.ravel().tolist())
+        calibrated = {
+            k: max(0.02, float(np.quantile(values, quantile)))
+            for k, values in residuals.items()
+            if values
+        }
+        previous_scale: float | None = None
+        for k in sorted(calibrated):
+            if previous_scale is not None:
+                calibrated[k] = max(calibrated[k], previous_scale)
+            previous_scale = calibrated[k]
+        digest = hashlib.sha256(canonical_json_bytes(calibrated)).hexdigest()[:16]
+        return replace(
+            self,
+            per_k_interval_scale=calibrated,
+            model_id=f"{self.model_id}-cal-{digest}",
+        )
 
     def forecast(self, history: ForecastHistory, schedule: CandidateSchedule) -> ForecastTrajectory:
         if history.target_values.shape[1] != self.manifest.width:
@@ -581,6 +744,80 @@ class DropoutDatasetManifest:
     family_ids: tuple[str, ...]
     family_split: Mapping[str, str]
     dataset_sha256: str
+    samples_sha256: str | None = None
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "DropoutDatasetManifest":
+        if not isinstance(value, Mapping):
+            raise Issue53ContractError("dataset manifest must be a mapping")
+        if value.get("schema_version") != f"{ISSUE53_SCHEMA_VERSION}.dropout_dataset_manifest":
+            raise Issue53ContractError("dataset manifest schema is invalid")
+        family_ids = value.get("family_ids")
+        family_split = value.get("family_split")
+        if not isinstance(family_ids, list) or not isinstance(family_split, Mapping):
+            raise Issue53ContractError("dataset manifest family fields are invalid")
+        parent_artifact_sha256 = value.get("parent_artifact_sha256")
+        samples_sha256 = value.get("samples_sha256")
+        if parent_artifact_sha256 is not None and type(parent_artifact_sha256) is not str:
+            raise Issue53ContractError("dataset parent artifact identity is invalid")
+        if samples_sha256 is not None and type(samples_sha256) is not str:
+            raise Issue53ContractError("dataset samples identity is invalid")
+        for key in ("dropout_config_sha256", "dataset_sha256"):
+            if type(value.get(key)) is not str:
+                raise Issue53ContractError(f"dataset {key} identity is invalid")
+        return cls(
+            dropout_config_sha256=value["dropout_config_sha256"],
+            parent_artifact_sha256=parent_artifact_sha256,
+            family_ids=tuple(family_ids),
+            family_split=dict(family_split),
+            dataset_sha256=value["dataset_sha256"],
+            samples_sha256=samples_sha256,
+        )
+
+    def __post_init__(self) -> None:
+        _require_sha256(self.dropout_config_sha256, label="dataset dropout config")
+        if self.parent_artifact_sha256 is not None:
+            _require_sha256(self.parent_artifact_sha256, label="dataset parent artifact")
+        if type(self.family_ids) is not tuple:
+            raise Issue53ContractError("dataset family IDs must be sorted")
+        if any(type(family_id) is not str or not family_id for family_id in self.family_ids):
+            raise Issue53ContractError("dataset family IDs are invalid")
+        if tuple(sorted(self.family_ids)) != self.family_ids:
+            raise Issue53ContractError("dataset family IDs must be sorted")
+        if len(set(self.family_ids)) != len(self.family_ids):
+            raise Issue53ContractError("dataset family IDs must be unique")
+        if not isinstance(self.family_split, Mapping):
+            raise Issue53ContractError("dataset split must be a mapping")
+        if set(self.family_split) != set(self.family_ids):
+            raise Issue53ContractError("dataset split must cover every family")
+        if any(
+            type(family_id) is not str or type(split) is not str
+            for family_id, split in self.family_split.items()
+        ):
+            raise Issue53ContractError("dataset split identities are invalid")
+        if any(
+            split not in {"TRAIN", "VALIDATION", "FINAL"}
+            for split in self.family_split.values()
+        ):
+            raise Issue53ContractError("dataset split contains an invalid partition")
+        object.__setattr__(
+            self,
+            "family_split",
+            MappingProxyType(dict(sorted(self.family_split.items()))),
+        )
+        _require_sha256(self.dataset_sha256, label="dataset identity")
+        if self.samples_sha256 is not None:
+            _require_sha256(self.samples_sha256, label="dataset samples identity")
+        payload = {
+            "schema_version": f"{ISSUE53_SCHEMA_VERSION}.dropout_dataset_manifest",
+            "dropout_config_sha256": self.dropout_config_sha256,
+            "parent_artifact_sha256": self.parent_artifact_sha256,
+            "family_ids": list(self.family_ids),
+            "family_split": dict(sorted(self.family_split.items())),
+            "samples_sha256": self.samples_sha256,
+        }
+        if self.dataset_sha256 != hashlib.sha256(canonical_json_bytes(payload)).hexdigest():
+            raise Issue53ContractError("dataset manifest digest is inconsistent")
 
     def to_mapping(self) -> dict[str, Any]:
         return {
@@ -590,6 +827,7 @@ class DropoutDatasetManifest:
             "family_ids": list(self.family_ids),
             "family_split": dict(self.family_split),
             "dataset_sha256": self.dataset_sha256,
+            "samples_sha256": self.samples_sha256,
         }
 
 
@@ -599,23 +837,43 @@ def build_dropout_dataset_manifest(
     family_split: Mapping[str, str],
     *,
     parent_artifact_sha256: str | None = None,
+    samples_sha256: str | None = None,
 ) -> DropoutDatasetManifest:
     if type(dropout_config) is not DropoutConfig:
         raise Issue53ContractError("dataset manifest requires DropoutConfig")
+    if not isinstance(family_ids, Sequence) or isinstance(family_ids, (str, bytes)):
+        raise Issue53ContractError("dataset family IDs must be a sequence")
+    ids = tuple(family_ids)
+    if any(type(family_id) is not str or not family_id for family_id in ids):
+        raise Issue53ContractError("dataset family IDs are invalid")
+    if len(set(ids)) != len(ids):
+        raise Issue53ContractError("dataset family IDs must be unique")
+    if not isinstance(family_split, Mapping):
+        raise Issue53ContractError("dataset split must be a mapping")
+    split = dict(family_split)
+    if set(split) != set(ids):
+        raise Issue53ContractError("dataset split must cover every family")
+    if any(
+        type(family_id) is not str or type(partition) is not str
+        for family_id, partition in split.items()
+    ) or any(partition not in {"TRAIN", "VALIDATION", "FINAL"} for partition in split.values()):
+        raise Issue53ContractError("dataset split contains an invalid partition")
     payload = {
         "schema_version": f"{ISSUE53_SCHEMA_VERSION}.dropout_dataset_manifest",
         "dropout_config_sha256": dropout_config.config_sha256,
         "parent_artifact_sha256": parent_artifact_sha256,
-        "family_ids": sorted(family_ids),
-        "family_split": dict(sorted(family_split.items())),
+        "family_ids": sorted(ids),
+        "family_split": dict(sorted(split.items())),
+        "samples_sha256": samples_sha256,
     }
     sha = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
     return DropoutDatasetManifest(
         dropout_config_sha256=dropout_config.config_sha256,
         parent_artifact_sha256=parent_artifact_sha256,
-        family_ids=tuple(sorted(family_ids)),
-        family_split=MappingProxyType(dict(sorted(family_split.items()))),
+        family_ids=tuple(sorted(ids)),
+        family_split=MappingProxyType(dict(sorted(split.items()))),
         dataset_sha256=sha,
+        samples_sha256=samples_sha256,
     )
 
 
@@ -683,25 +941,31 @@ def interval_coverage_at_k(
 def abstention_pr(
     forecaster: DropoutAwareLinearForecaster,
     samples: Sequence[TrainingSample],
-    manifest: TargetManifest,
     *,
+    oracle_errors: Sequence[float],
     high_error_quantile: float = 0.9,
 ) -> dict[str, float]:
-    """Precision/recall of ABSTAIN vs oracle high-error decisions."""
-    # Determine high-error threshold from k=0 samples or own samples
-    errors: list[float] = []
+    """Precision/recall of ABSTAIN vs externally supplied oracle errors."""
+    if (
+        isinstance(high_error_quantile, bool)
+        or not isinstance(high_error_quantile, (int, float))
+        or not math.isfinite(float(high_error_quantile))
+        or not 0.0 < float(high_error_quantile) < 1.0
+    ):
+        raise Issue53ForecastError("high-error quantile must be in (0,1)")
+    items = tuple(samples)
+    if not isinstance(oracle_errors, Sequence) or isinstance(oracle_errors, (str, bytes)):
+        raise Issue53ForecastError("oracle_errors must be a numeric sequence")
+    errors = [float(value) for value in oracle_errors]
+    if len(errors) != len(items):
+        raise Issue53ForecastError("oracle_errors must align with samples")
+    if not all(math.isfinite(value) for value in errors):
+        raise Issue53ForecastError("oracle_errors must be finite")
     statuses: list[str] = []
-    for s in samples:
+    for s in items:
         traj = forecaster.forecast(s.history, s.schedule)
         statuses.append(traj.status)
-        if traj.status == "PREDICTION" and traj.mean is not None:
-            errors.append(_nmae_for_k(traj.mean, s.targets, manifest))
-        else:
-            errors.append(math.nan)
-    finite = [e for e in errors if math.isfinite(e)]
-    if not finite:
-        return {"precision": math.nan, "recall": math.nan, "threshold": math.nan}
-    thresh = float(np.quantile(np.asarray(finite), high_error_quantile))
+    thresh = float(np.quantile(np.asarray(errors), high_error_quantile))
     # oracle high-error = NMAE > thresh
     tp = fp = fn = tn = 0
     for err, status in zip(errors, statuses):

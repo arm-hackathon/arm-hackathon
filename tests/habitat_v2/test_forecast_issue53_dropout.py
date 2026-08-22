@@ -9,6 +9,8 @@ working with 1–3 missing sensors while saying how unsure it is.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
+import json
 import math
 from pathlib import Path
 
@@ -22,7 +24,10 @@ from aeolus.habitat_v2.forecast_issue52 import (
 from aeolus.habitat_v2.forecast_issue53_dropout import (
     DropoutAwareLinearForecaster,
     DropoutConfig,
+    Issue53ContractError,
+    Issue53ForecastError,
     apply_dropout_to_history,
+    abstention_pr,
     build_dropout_dataset_manifest,
     dropout_mask_for_history,
     evaluate_per_k,
@@ -76,6 +81,60 @@ def test_dropout_config_digest_is_canonical() -> None:
 
     expected = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
     assert cfg.config_sha256 == expected
+
+
+def test_dropout_config_rejects_boolean_numeric_coercion() -> None:
+    with __import__("pytest").raises(Issue53ContractError):
+        DropoutConfig.from_mapping({"p_uniform": True})
+    with __import__("pytest").raises(Issue53ContractError):
+        DropoutConfig.from_mapping({"burst_min": True})
+
+
+def test_burst_mode_correlates_channels_and_respects_cap() -> None:
+    cp, manifest, _ = _checkpoint_and_manifest()
+    history = ForecastHistory.from_records(cp.history_records)
+    cfg = DropoutConfig(
+        mode="per_zone_head_burst",
+        p_burst_onset=1.0,
+        burst_min=2,
+        burst_max=2,
+        max_missing_per_row=None,
+        seed=530053,
+    )
+    mask = dropout_mask_for_history(
+        history, manifest, cfg, family_id="burst-family", decision_step=15
+    )
+    # With a single burst group, all environmental heads in that zone share loss.
+    for row in mask:
+        for zone_id in {
+            descriptor.descriptor_id.split("/", 1)[0]
+            for descriptor in manifest.descriptors
+            if descriptor.scope == "zone"
+        }:
+            cols = [
+                index
+                for index, descriptor in enumerate(manifest.descriptors)
+                if descriptor.descriptor_id.startswith(f"{zone_id}/")
+            ]
+            dropped = [not bool(row[index]) for index in cols]
+            assert len(set(dropped)) == 1 or not any(dropped)
+
+    capped = dropout_mask_for_history(
+        history,
+        manifest,
+        DropoutConfig(
+            mode="per_zone_head_burst",
+            p_burst_onset=1.0,
+            burst_min=2,
+            burst_max=2,
+            max_missing_per_row=2,
+            seed=530053,
+        ),
+        family_id="burst-family",
+        decision_step=15,
+    )
+    for row in capped:
+        assert int(np.sum(~row & history.available_mask[0])) <= 2
 
 
 def test_dropout_mask_is_deterministic() -> None:
@@ -178,6 +237,138 @@ def test_masked_forecaster_keeps_working_with_missing() -> None:
     assert traj.status == "PREDICTION", f"dropout forecaster should predict with k=3, got {traj.status}: {traj.reason}"
     assert traj.mean is not None and np.isfinite(traj.mean).all()
     assert traj.lower is not None and traj.upper is not None and np.all(traj.lower <= traj.upper)
+
+
+def test_interval_calibration_requires_validation_and_is_monotone() -> None:
+    cp, manifest, scenario = _checkpoint_and_manifest()
+    from aeolus.habitat_v2.forecast_issue52_rollout import (
+        rollout_catalogue,
+        training_samples_from_rollouts,
+    )
+    from aeolus.habitat_v2.forecast_issue52 import TrainingSample
+
+    catalogue = CandidateCatalogue.from_scenario(scenario, base_command=cp.last_final_command)
+    rollouts = rollout_catalogue(cp, catalogue)
+    train = training_samples_from_rollouts(cp, catalogue, rollouts, split="TRAIN")
+    validation = training_samples_from_rollouts(cp, catalogue, rollouts, split="VALIDATION")
+    train2 = tuple(
+        TrainingSample(
+            family_id=f"cal-train-{index}",
+            split=item.split,
+            scenario_sha256=item.scenario_sha256,
+            manifest_sha256=item.manifest_sha256,
+            checkpoint_sha256=item.checkpoint_sha256,
+            schedule_sha256=item.schedule_sha256,
+            history=item.history,
+            schedule=item.schedule,
+            targets=item.targets,
+        )
+        for index, item in enumerate(train * 2)
+    )
+    validation2 = tuple(
+        TrainingSample(
+            family_id=f"cal-validation-{index}",
+            split=item.split,
+            scenario_sha256=item.scenario_sha256,
+            manifest_sha256=item.manifest_sha256,
+            checkpoint_sha256=item.checkpoint_sha256,
+            schedule_sha256=item.schedule_sha256,
+            history=apply_dropout_to_history(
+                item.history,
+                manifest,
+                DropoutConfig(p_uniform=0.0),
+                family_id=f"cal-validation-{index}",
+                decision_step=15,
+                latest_missing_count=(index % 4),
+            ),
+            schedule=item.schedule,
+            targets=item.targets,
+        )
+        for index, item in enumerate(validation * 2)
+    )
+    forecaster = DropoutAwareLinearForecaster.fit_for_scenario(
+        scenario,
+        manifest,
+        train2,
+        dropout_config=DropoutConfig(p_uniform=0.0),
+        alpha=1e-4,
+    )
+    with __import__("pytest").raises(Issue53ForecastError):
+        forecaster.calibrate(train2)
+    calibrated = forecaster.calibrate(validation2)
+    scales = calibrated.per_k_interval_scale
+    assert scales
+    assert list(scales.values()) == sorted(scales.values())
+
+
+def test_abstention_pr_requires_truth_backed_oracle_errors() -> None:
+    class StubForecaster:
+        def __init__(self, statuses: tuple[str, ...], width: int) -> None:
+            self.statuses = statuses
+            self.width = width
+            self.index = 0
+
+        def forecast(self, history, schedule):
+            status = self.statuses[self.index]
+            self.index += 1
+            from aeolus.habitat_v2.forecast_issue52 import ForecastTrajectory
+
+            if status == "PREDICTION":
+                values = np.zeros((32, self.width), dtype=np.float32)
+                return ForecastTrajectory(status, values, values, values, "stub")
+            return ForecastTrajectory(status, None, None, None, "stub")
+
+    cp, manifest, scenario = _checkpoint_and_manifest()
+    from aeolus.habitat_v2.forecast_issue52 import TrainingSample
+
+    catalogue = CandidateCatalogue.from_scenario(scenario, base_command=cp.last_final_command)
+    samples = tuple(
+        TrainingSample(
+            family_id=f"oracle-{index}",
+            split="FINAL",
+            scenario_sha256=scenario.scenario_sha256,
+            manifest_sha256=manifest.manifest_sha256,
+            checkpoint_sha256=cp.checkpoint_sha256,
+            schedule_sha256=catalogue.candidates[0].schedule_sha256,
+            history=ForecastHistory.from_records(cp.history_records),
+            schedule=catalogue.candidates[0],
+            targets=np.zeros((32, manifest.width), dtype=np.float32),
+        )
+        for index in range(4)
+    )
+    with __import__("pytest").raises(Issue53ForecastError):
+        abstention_pr(
+            StubForecaster(("ABSTAIN",) * 4, manifest.width),
+            samples,
+            oracle_errors=[0.1],
+        )
+    result = abstention_pr(
+        StubForecaster(
+            ("ABSTAIN", "PREDICTION", "ABSTAIN", "PREDICTION"), manifest.width
+        ),
+        samples,
+        oracle_errors=[0.1, 0.2, 0.9, 0.3],
+    )
+    assert math.isclose(result["threshold"], 0.72)
+    assert result["recall"] == 1.0
+
+
+def test_collector_writes_replayed_masked_samples(tmp_path: Path) -> None:
+    script_path = Path(__file__).parents[2] / "scripts" / "collect_issue53_dropout_dataset.py"
+    spec = importlib.util.spec_from_file_location("issue53_collector", script_path)
+    assert spec is not None and spec.loader is not None
+    collector = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(collector)
+    result = collector.collect(families=1, output=tmp_path, pilot=True)
+    assert result["samples"] == 48
+    manifest = json.loads((tmp_path / "dataset_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["samples_sha256"]
+    lines = (tmp_path / "samples.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 48
+    sample = json.loads(lines[0])
+    assert sample["dropout_config_sha256"] == result["config_sha256"]
+    assert sample["rollout_sha256"]
+    assert sample["history_records"]
 
 
 def test_per_k_evaluation_shapes_and_honesty() -> None:
