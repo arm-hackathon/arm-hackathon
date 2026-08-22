@@ -30,6 +30,36 @@ serialization path only:
 * Result: deterministic replay-backed samples were written; this is not a pilot
   measurement and is not a qualification corpus
 
+## Qualification Checklist
+
+This lane may be marked `QUALIFIED` only after the following evidence exists
+and all preregistered gates pass:
+
+1. Frozen provenance record: Issue #52 parent preregistration digest, Issue #53
+   preregistration digest, dropout config digest, scenario digest, HMC
+   contract digest, source commit, and isolated runner identity.
+2. Bounded pilot: at most 32 whole families and 12,288 physical candidate
+   transitions, with the dataset manifest, samples digest, split, sample
+   hashes, replay binding, actual runtime/storage, infeasibility rate, and
+   variance report.
+3. Full corpus: the frozen roster within 384 families and 2,000,000 physical
+   candidate transitions, validated for clone families, sample coverage,
+   leakage, replay determinism, and cap compliance.
+4. Frozen artifact: model fitted on TRAIN only; normalizers fitted on TRAIN
+   only; per-k intervals and abstention thresholds calibrated on VALIDATION
+   only; artifact digest and all contract bindings recorded before FINAL.
+5. VALIDATION report: forecast NMAE, per-k degradation, coverage, abstention,
+   observability/action identifiability, safety, replay, provenance, split,
+   and latency evidence.
+6. One sealed FINAL invocation: the frozen artifact evaluated once on FINAL
+   families, including the required `k=0..6` sweep, truth-backed
+   `oracle_errors` for abstention PR, and safety non-regression.
+7. Publication: this table filled with measured values and the dropout card
+   updated with retained and lost capabilities. Deployment remains blocked
+   until the explicit approval record changes the authorization flags.
+
+All seven items are currently incomplete, so the status is `NOT QUALIFIED`.
+
 ## Forecasting Degradation - NMAE Horizons 9-32
 
 Gate: `k=1` vs own `k=0` <=1.15 point / <=1.25 upper; `k=3` <=1.40 / <=1.60.

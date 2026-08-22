@@ -36,6 +36,45 @@ replay only. The required full corpus, trained artifact, sealed FINAL run, per-k
 measurements, safety non-regression report, and deployment qualification do not
 exist in this worktree.
 
+## Required Path to QUALIFIED
+
+The status in this card must remain `NOT QUALIFIED` until every step below has
+a committed artifact or measurement digest and the preregistered gates pass.
+
+1. **Freeze provenance.** Recompute and record the Issue #52 parent
+   preregistration digest, Issue #53 preregistration digest, dropout config
+   digest, scenario digest, HMC contract digest, source commit, and runner
+   identity. Abort if Issue #52 bytes changed.
+2. **Run the bounded pilot.** Collect no more than 32 whole families and
+   12,288 physical candidate transitions with the collector; validate the
+   config, dataset manifest, samples digest, family split, serialized sample
+   digests, tensor shapes, missingness views, and replay binding. Publish
+   actual runtime, storage, infeasibility rate, and variance. Do not train
+   during collection.
+3. **Run the qualified corpus.** Collect the frozen family roster within the
+   384-family / 2,000,000-transition caps on the isolated runner. Publish the
+   dataset manifest SHA-256 and samples SHA-256. Stop on failed validation,
+   duplicate/clone families, leakage, seed reuse, cap violation, or replay
+   mismatch.
+4. **Fit and calibrate once.** Fit the dropout-aware model on TRAIN only; fit
+   normalizers on TRAIN only; select thresholds and calibrate every per-k
+   interval on VALIDATION only; freeze the artifact and all digest bindings
+   before touching FINAL.
+5. **Pass VALIDATION selection.** Check forecast NMAE, per-k degradation,
+   interval coverage, abstention behavior, observability/action
+   identifiability, safety, replay, provenance, and latency gates. Publish a
+   negative result rather than loosening thresholds.
+6. **Run one sealed FINAL.** Evaluate the frozen artifact once on FINAL
+   families, including the full `k=0..6` sweep, external truth-backed
+   `oracle_errors` for abstention PR, and all safety non-regression metrics.
+7. **Publish results.** Fill `issue-53-measurements.md` with actual FINAL
+   values, attach artifact and dataset digests, update the capability card
+   with retained and lost capabilities, then set the evidence status to
+   `QUALIFIED` only if every gate passed.
+8. **Keep deployment blocked.** Even after `QUALIFIED`, deployment remains
+   unauthorized until the explicit approval record and all preregistration
+   authorization flags change under review.
+
 ## Capability Boundaries
 
 These are implementation capabilities, not qualification claims:

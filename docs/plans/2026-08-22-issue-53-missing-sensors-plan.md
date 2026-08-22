@@ -10,16 +10,16 @@
 - Short note: `docs/plans/2026-08-22-issue-53-missing-sensors-design.md`
 - Machine-readable preregistration: `contracts/habitat_v2_forecast_issue_53_preregistration_v1.json` (new; byte-frozen on plan publish)
 - Preregistration SHA-256: `6DFA3E084F1585FB696511C54AB676356406496DDF7A639C6D10721A0D3F41B3`
-- This-lane status: `DRAFT_PLAN_PUBLISHED_BEN_OFFLINE`
+- This-lane status: `IMPLEMENTATION_AUDITED_NOT_QUALIFIED_BEN_OFFLINE`
 - `BEN_SIGN_OFF=false`
-- `CODE_AUTHORISED=false` (plan publication does not authorize implementation; see §20)
+- `CODE_AUTHORISED=false` (the implementation and audit evidence on this branch do not authorize corpus generation, training, experiments, or deployment; see §20)
 - `DATA_GENERATION_AUTHORISED=false`
 - `TRAINING_AUTHORISED=false`
 - `EXPERIMENTS_AUTHORISED=false`
 - `DEPLOYMENT_AUTHORISED=false`
 - `METRIC_AMENDMENT_APPROVED=false`
 
-This appendix is normative. The short note is the plain-English entry point. Creating this branch and commit is planning work only; it does not open implementation, corpus generation, model training, or deployment.
+This appendix is normative. The short note is the plain-English entry point. The original plan publication was planning work only. Implementation later landed on this lane without opening implementation, corpus-generation, training, experiment, or deployment authorization. The current qualification runbook is in `docs/evidence/issue-53-dropout-card.md` and `docs/evidence/issue-53-measurements.md`.
 
 ## 2. Verified baseline and scope correction
 
@@ -206,7 +206,9 @@ Every decision trace now records `dropout_config_sha256`, `dropout_mask_sha256`,
 
 ## 19. Phased execution (Ben offline — no approval gate)
 
-**Phase 0 — Contracts+plan (this commit):** freeze observation/dropout/dataset/artifact trace schemas; publish plan+preregistration as DRAFT.
+Current execution state: the plan, preregistration, implementation, and audit runbook exist; the lane remains `NOT QUALIFIED`, and all authorization flags remain false. The eight-step qualification checklist in `docs/evidence/issue-53-dropout-card.md` is the current gate order.
+
+**Phase 0 — Contracts+plan:** freeze observation/dropout/dataset/artifact trace schemas; publish plan+preregistration as DRAFT.
 
 **Phase 1 — Pilot (≤32 families):** estimate variance at `k=0/1/3`, tune abstention thresholds, freeze ranking/abstention formulas. Publish pilot report.
 
