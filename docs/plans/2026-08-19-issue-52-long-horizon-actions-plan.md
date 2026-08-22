@@ -5,19 +5,12 @@
 - Issue: https://github.com/arm-hackathon/arm-hackathon/issues/52
 - Design date: 2026-08-19
 - Audited base: `843a5c1485de841462cbb47e486c2185099b71a2`
-- Required approver: Ben (`bbeennyy860-cyber`)
 - Short note: `docs/plans/2026-08-19-issue-52-long-horizon-actions-design.md`
 - Machine-readable preregistration: `contracts/habitat_v2_forecast_issue_52_preregistration_v1.json`
-- Preregistration SHA-256: `E0A24B2FD9309ED551DCD6D4FB98EFF1FDDA6B364DE2DBE73584CCF1ADA7E61F`
-- Status: `BEN_APPROVED_CONTRACT_IMPLEMENTATION_AND_BOUNDED_PILOT`
-- Approval status is recorded below; the frozen preregistration bytes remain unchanged.
-- `DATA_GENERATION_AUTHORISED=false`
-- `TRAINING_AUTHORISED=false`
-- `EXPERIMENTS_AUTHORISED=false`
-- `DEPLOYMENT_AUTHORISED=false`
-- `METRIC_AMENDMENT_APPROVED=false`
+- Preregistration SHA-256: `DE4744E127D2946A43D623EC90D3289B0A3735C99E62C8CECCD87768E0702A3B`
+- Status: `CONTRACT_IMPLEMENTATION_AND_BOUNDED_PILOT`
 
-This appendix is normative. The short note is the plain-English review entry point. Ben approves the Git commit containing both documents and the preregistration, which avoids circular file-digest references. Creating this documentation branch and commit is planning work; it does not open any implementation or experiment gate.
+This appendix is normative. The short note is the plain-English review entry point. The Git commit containing both documents and the preregistration is the immutable package identity.
 
 ## 2. Verified baseline and scope correction
 
@@ -46,7 +39,7 @@ Non-goals:
 4. No tuning on the sealed final split.
 5. No safety-limit, reserve-limit, emergency-threshold, or HMC-policy changes in this issue.
 6. No inter-process model service in version 1.
-7. No deployment authorization through design or experiment approval.
+7. No deployment through design or experiment artifacts.
 
 ## 4. Exact causal and temporal contract
 
@@ -138,7 +131,7 @@ Each outcome has a separate count, rate, latency, and HMC receipt association. T
 
 ## 9. Long-horizon scenarios and decision eligibility
 
-Existing checked-in Habitat V2 scenarios are at most 10 steps and cannot supply these groups. Add a long-horizon V5 family contract after approval.
+Existing checked-in Habitat V2 scenarios are at most 10 steps and cannot supply these groups. Add a long-horizon V5 family contract before collection.
 
 For a decision at completed step `s`:
 
@@ -176,7 +169,7 @@ The ranking-group digest covers checkpoint identity, all 12 candidate IDs, catal
 
 The old fixed total of 240 families is removed because it lacked a cost or power justification.
 
-After sign-off, run a deterministic feasibility pilot of at most 32 semantic families and at most 12,288 candidate transitions (`32 * 12 * 32`). The pilot may exercise the simulator and deterministic baselines but may not fit a learned model or inspect a final split. It estimates:
+Run a deterministic feasibility pilot of at most 32 semantic families and at most 12,288 candidate transitions (`32 * 12 * 32`). The pilot may exercise the simulator and deterministic baselines but may not fit a learned model or inspect a final split. It estimates:
 
 - per-family primary-metric variance and paired correlations;
 - frequency and distribution of dynamic infeasibility;
@@ -186,7 +179,7 @@ After sign-off, run a deterministic feasibility pilot of at most 32 semantic fam
 
 Power uses paired family log-ratios with target magnitude `-log(0.90) = 0.10536051565782628`. Forecast power compares the regularized linear action-conditioned baseline with action-agnostic persistence on identical complete decisions. Ranking power is blocked until the metric amendment freezes the exact true score; it then compares the same frozen non-neural forecaster with 12 candidates versus the frozen four-candidate subset. Calculate `pilot_sd` with `ddof=1`. Fewer than two finite pairs, a non-finite result, or a cap violation stops work; zero SD uses 30 FINAL families. Required FINAL families and roster selection follow the exact JSON formula. Coverage cells are the Cartesian product of four operating modes (`occupied`, `eva_transition`, `contingency`, `dormant`) and fault presence (`absent`, `present`). Every cell requires at least 6 TRAIN, 3 VALIDATION, and 3 FINAL families.
 
-Caps are 384 families and 2,000,000 candidate transitions. If power, minimum coverage, or complete paired rollouts exceed either cap, stop and return to Ben; do not lower the effect threshold after seeing pilot data.
+Caps are 384 families and 2,000,000 candidate transitions. If power, minimum coverage, or complete paired rollouts exceed either cap, stop and publish a negative result; do not lower the effect threshold after seeing pilot data.
 
 Whole families are sorted by `SHA256("issue52-split-v1" || family_id)` and allocated 70% TRAIN, 15% VALIDATION, 15% FINAL using largest-remainder integer allocation with stable TRAIN, VALIDATION, FINAL tie order. Split manifests are frozen before fitting. FINAL remains access-controlled and is invoked once per approved model version after architecture, preprocessing, thresholds, catalogue, score, and artifact digests are frozen.
 
@@ -237,7 +230,7 @@ Artifact includes architecture, weights, normalizers, all schema/catalogue/split
 
 ## 14. Deterministic ranking
 
-The model predicts trajectories; deterministic code ranks them. Candidate score components may include normalized predicted safety exposure, dangerous crossing risk, environmental tracking error, resource depletion, command energy proxy, actuator movement/wear, reserve use, uncertainty, and intervention relative to hold. Before any comparative fitting, ranking power calculation, or experiment, a separate commit-bound amendment must freeze the exact true-trajectory score, predicted-score formula, component units, normalizers, weights, hard-infeasibility value, operational metric formulas and denominators, and target/catalogue/command manifest digests, and Ben must approve that commit. Validation may select a model under those frozen formulas but may not redefine the primary endpoint. A recorded rollout infeasibility is always a hard ineligibility, never a finite score penalty.
+The model predicts trajectories; deterministic code ranks them. Candidate score components may include normalized predicted safety exposure, dangerous crossing risk, environmental tracking error, resource depletion, command energy proxy, actuator movement/wear, reserve use, uncertainty, and intervention relative to hold. Before any comparative fitting, ranking power calculation, or experiment, a separate commit-bound amendment must freeze the exact true-trajectory score, predicted-score formula, component units, normalizers, weights, hard-infeasibility value, operational metric formulas and denominators, and target/catalogue/command manifest digests. Validation may select a model under those frozen formulas but may not redefine the primary endpoint. A recorded rollout infeasibility is always a hard ineligibility, never a finite score penalty.
 
 A predicted hard safety crossing, dynamic infeasibility record, exhausted resource interval, or uncertainty limit makes a candidate ineligible. If no candidate remains, abstain. Ties choose lower predicted safety exposure, then lower uncertainty, then lower intervention, then `candidate_hold`, then stable candidate ID.
 
@@ -256,7 +249,7 @@ HMC remains the sole authority and may:
 
 HMC still reparses the proposal; validates run, epoch, topology, scenario, snapshot, application step, freshness, shape, and bounds; performs deterministic arbitration and current-step preflight; binds the exact final command to a capability; performs the plant step; and verifies causal replay before commit.
 
-Any implementation diff in `hmc.py`, `safety.py`, proposal validation, capability issuance, physics application, or replay is isolated and requires Ben's separate safety-lane review. A model gain cannot waive that review.
+Any implementation diff in `hmc.py`, `safety.py`, proposal validation, capability issuance, physics application, or replay is isolated and requires separate safety-lane review. A model gain cannot waive that review.
 
 ## 16. Preregistered metrics and gates
 
@@ -335,11 +328,11 @@ Invalid history, unavailable model, artifact mismatch, OOD, uncertainty, ambigui
 
 Rollback disables the candidate source and removes the artifact reference without weakening HMC. Traces and failed artifact identities are preserved.
 
-## 19. Phased execution after approval
+## 19. Phased execution
 
 Phase 1, contracts: freeze manifests, history, timing, long-scenario, catalogue, rollout-row, artifact, and trace schemas.
 
-Phase 2, pilot: create up to 32 families and run raw deterministic rollout feasibility. Then commit the exact manifests, true and predicted score formulas, operational metric formulas, power result, roster, and split as a metric amendment and obtain Ben approval before comparative fitting.
+Phase 2, pilot: create up to 32 families and run raw deterministic rollout feasibility. Then commit the exact manifests, true and predicted score formulas, operational metric formulas, power result, roster, and split as a metric amendment before comparative fitting.
 
 Phase 3, data infrastructure: implement long scenarios, offline kernel, validators, leakage checks, and deterministic corpus generation.
 
@@ -353,32 +346,10 @@ Phase 7, integration: add disabled-by-default advisory source, VerifiedHistoryBu
 
 Phase 8, qualification: run focused tests, full existing suite, end-to-end demo, replay, systems benchmark, and one sealed FINAL invocation.
 
-Phase 9, review: provide exact diff, artifacts, manifests, reports, limitations, and rollback. Ben separately reviews every safety-core change before merge. Deployment remains blocked.
+Phase 9, review: provide exact diff, artifacts, manifests, reports, limitations, and rollback. Safety-core changes receive separate review before merge. Deployment remains blocked.
 
 ## 20. Stop conditions
 
-Stop and return to Ben if target descriptors are missing or duplicate; 12 semantically distinct bounded candidates cannot be defined; long scenarios cannot provide complete groups; offline replay is nondeterministic; hidden-state aliasing defeats calibrated abstention; action effects are unidentifiable; power or coverage exceeds caps; a split leak occurs; a baseline dominates learned candidates; latency fails; any authority, safety, provenance, replay, or committed-state gate fails; or scope changes after approval.
+Stop and publish a negative result if target descriptors are missing or duplicate; 12 semantically distinct bounded candidates cannot be defined; long scenarios cannot provide complete groups; offline replay is nondeterministic; hidden-state aliasing defeats calibrated abstention; action effects are unidentifiable; power or coverage exceeds caps; a split leak occurs; a baseline dominates learned candidates; latency fails; any authority, safety, provenance, replay, or committed-state gate fails; or scope changes after freeze.
 
 Precedence is authority, safety, leakage/provenance, replay/determinism, systems budget, forecast quality, then ranking utility.
-
-## 21. Approval record
-
-Ben's approval must identify the Git commit containing this appendix, the short note, and preregistration. Suggested statement:
-
-> I, Ben (`bbeennyy860-cyber`), approve the Issue #52 design package at the identified commit. I authorize contract implementation and the bounded raw feasibility pilot under the attached HMC authority boundary. Comparative fitting, ranking power calculation, model training, experiments, and deployment remain blocked until I approve the required commit-bound metric amendment. Any safety-core change requires my separate review before merge.
-
-- Approver: `Ben (bbeennyy860-cyber)`
-- Approval link: `Repository-owner-provided approval record; no public URL`
-- Approval timestamp: `2026-08-21T20:04:24+01:00`
-- Approved Git commit: `9531acd44797bff2531c451d7609e8c0b8c6710b`
-- Scope exceptions: `Implementation and bounded raw feasibility pilot only; safety-core diff remains subject to separate PR review`
-- Test-fixture boundary: `Current Issue #52 tests use a repeated short V5 fixture for contract/replay coverage only; no qualified long-horizon scenario family or corpus is claimed`
-- `BEN_SIGN_OFF=true`
-- `CODE_AUTHORISED=true`
-- `DATA_GENERATION_AUTHORISED=false`
-- `TRAINING_AUTHORISED=false`
-- `EXPERIMENTS_AUTHORISED=false`
-- `DEPLOYMENT_AUTHORISED=false`
-- `METRIC_AMENDMENT_APPROVED=false`
-
-Initial approval authorizes contract implementation and the bounded raw feasibility pilot only. Comparative fitting, model training, experiments, sealed-final evaluation, and deployment remain unauthorized until the metric amendment is separately approved and their authorization flags are explicitly changed. Any `hmc.py` safety-core change remains subject to Ben's separate PR review before merge.

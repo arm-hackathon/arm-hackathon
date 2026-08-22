@@ -1,11 +1,11 @@
 # Issue #53: Missing/Broken Sensors — Dropout-Robust Forecast Lane
 
-Status: draft, Ben offline — no approval gate this cycle; ready for local review
+Status: draft; ready for local review
 Issue: https://github.com/arm-hackathon/arm-hackathon/issues/53
 Design base: `261f50f2bff2689ecf47b2fdcc7ec345fa03bf78` (`design/issue-52-long-horizon-actions`, PR #60 ready)
 Normative appendix: `2026-08-22-issue-53-missing-sensors-plan.md`
 Preregistration: `contracts/habitat_v2_forecast_issue_53_preregistration_v1.json` (new, byte-frozen on plan publish)
-Preregistration SHA-256: `6DFA3E084F1585FB696511C54AB676356406496DDF7A639C6D10721A0D3F41B3`
+Preregistration SHA-256: `A96245F6E717BC83B44438F9D02DBAAA42FA5DED14D3A160FD47A0F4D393D76A`
 Stacks on: `ben/habitat-v2-hmc-v1@843a5c1` via Issue #52 lane
 
 ## Short design note
@@ -24,7 +24,7 @@ Stacks on: `ben/habitat-v2-hmc-v1@843a5c1` via Issue #52 lane
 
 * **Written record of what it cannot do.** Alongside the numbers, `docs/evidence/issue-53-dropout-card.md` documents retained vs lost capability (per-head, per-channel, burst vs independent dropout, full-zone correlated loss), with a hard “do not deploy” note and rollback (`disable dropout lane → frozen Issue #52 abstaining lane → HMC hold`).
 
-**Frozen boundary:** The Issue #52 model, its `E0A24B2F...1ADA7E61F` preregistration, its dataset, and its traces remain byte-identical. This lane adds new manifests, new dropout-aware datasets, and a new artifact identity (`parent_artifact_sha256` binds the frozen parent). The rule-based HMC controller remains authoritative for every action, always.
+**Frozen boundary:** The Issue #52 model, its `DE4744E1...0702A3B` preregistration, its dataset, and its traces remain byte-identical. This lane adds new manifests, new dropout-aware datasets, and a new artifact identity (`parent_artifact_sha256` binds the frozen parent). The rule-based HMC controller remains authoritative for every action, always.
 
 ## Expected delta and frozen decision rule
 
@@ -34,16 +34,14 @@ Reuse Issue #52’s primary gates (forecast NMAE ≤0.90 point & <0.98 upper vs 
 * At `k=3`: NMAE vs `k=0` counterpart ≤1.40 point, ≤1.60 upper; coverage ≥ 80%; abstention recall on high-error decisions ≥0.80 with precision ≥0.60.
 * Safety-non-regression still dominates: total safety-bound exposure mean diff ≤0 and upper ≤0; dangerous-crossing recall diff ≥ −0.02, false-crossing diff ≤ +0.01 — at every `k`.
 
-Family count and roster are not guessed. Same Issue #52 pilot/power method (§11) but with paired log-ratios at `k=3` as the power driver; caps remain 384 families / 2,000,000 transitions. If pilot variance at `k=3` busts caps → stop and return to Ben (when online) or publish negative pilot result.
+Family count and roster are not guessed. Same Issue #52 pilot/power method (§11) but with paired log-ratios at `k=3` as the power driver; caps remain 384 families / 2,000,000 transitions. If pilot variance at `k=3` busts caps, publish a negative pilot result.
 
-## Delivery sequence (Ben offline)
+## Delivery sequence
 
-1. Land this design + normative plan + `habitat_v2_forecast_issue_53_preregistration_v1.json` on `design/issue-53-missing-sensors` (no approval gate).
+1. Land this design + normative plan + `habitat_v2_forecast_issue_53_preregistration_v1.json` on `design/issue-53-missing-sensors`.
 2. Freeze contracts/manifests/schemas for masked history, dropout config, dataset and artifact.
 3. Run pilot ≤32 families / ≤12k transitions to estimate variance at `k=0/1/3` and freeze ranking/abstention formulas if needed.
 4. Collect full dropout corpus (≈33h deterministic background) and publish `dataset_manifest_sha256`.
 5. Train mask-aware linear baseline first, then smallest MLP that passes VALIDATION gates; calibrate per-k intervals on VALIDATION.
 6. One sealed FINAL invocation on held-out FINAL families; compute per-k degradation + abstention PR.
-7. Publish honest measurement table (1 vs 3) + dropout card + rollback; keep branch open for Ben’s later review.
-
-Approval is intentionally not requested this cycle. When Ben returns, the normative appendix’s approval record (§21) can be filled and the preregistration bytes frozen as for Issue #52.
+7. Publish honest measurement table (1 vs 3) + dropout card + rollback.

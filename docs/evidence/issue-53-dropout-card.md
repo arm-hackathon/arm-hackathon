@@ -3,10 +3,9 @@
 Date: 2026-08-22
 Lane: `design/issue-53-missing-sensors`
 Preregistration: `contracts/habitat_v2_forecast_issue_53_preregistration_v1.json`
-Preregistration SHA-256, LF-normalized: `6DFA3E084F1585FB696511C54AB676356406496DDF7A639C6D10721A0D3F41B3`
+Preregistration SHA-256, LF-normalized: `A96245F6E717BC83B44438F9D02DBAAA42FA5DED14D3A160FD47A0F4D393D76A`
 Status: **development evidence only - NOT QUALIFIED - do not deploy**
 
-Ben is offline and all Issue #53 approval and authorization flags remain false.
 HMC remains the sole proposal, arbitration, preflight, capability, plant-step,
 and replay authority.
 
@@ -71,9 +70,8 @@ a committed artifact or measurement digest and the preregistered gates pass.
    values, attach artifact and dataset digests, update the capability card
    with retained and lost capabilities, then set the evidence status to
    `QUALIFIED` only if every gate passed.
-8. **Keep deployment blocked.** Even after `QUALIFIED`, deployment remains
-   unauthorized until the explicit approval record and all preregistration
-   authorization flags change under review.
+8. **Keep deployment blocked.** Qualification of the forecast lane does not
+   grant it plant-step, capability, or HMC authority.
 
 ## Capability Boundaries
 
@@ -90,7 +88,7 @@ These are implementation capabilities, not qualification claims:
 2. Correlated burst mode is implemented and contract-tested but not qualified. Do not treat it as a whole-zone outage solver.
 3. Resource gauges are anchors by default. Gauge dropout and adversarial safety-channel dropout are outside current evidence.
 4. Rates above the preregistered pilot setting, burst lengths beyond the configured maximum, and other OOD patterns are unmeasured.
-5. A missing input never authorizes the learned lane to bypass HMC, alter a plant state, mint capability, or weaken a safety limit.
+5. A missing input never permits the learned lane to bypass HMC, alter a plant state, mint capability, or weaken a safety limit.
 6. The collector's 33-hour estimate is a plan estimate, not an observed runtime result.
 
 ## Rollback

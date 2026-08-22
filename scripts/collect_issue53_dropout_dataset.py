@@ -61,7 +61,7 @@ DEFAULT_CONTRACT = Path("contracts/habitat_v2_hmc_v1.json")
 DATASET_SAMPLE_SCHEMA = "aeolus_habitat_v2_forecast_issue_53_sample_v1"
 EVALUATED_K = (0, 1, 3, 6)
 PARENT_ARTIFACT_SHA256 = (
-    "e0a24b2fd9309ed551dcd6d4fb98eff1fdda6b364de2dbe73584ccf1ada7e61f"
+    "de4744e127d2946a43d623ec90d3289b0a3735c99e62c8ceccd87768e0702a3b"
 )
 
 

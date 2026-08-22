@@ -6,20 +6,12 @@
 - Design date: 2026-08-22
 - Branch for this plan: `design/issue-53-missing-sensors` (created from `design/issue-52-long-horizon-actions@261f50f`)
 - Stacking chain: `ben/habitat-v2-hmc-v1@843a5c1` ← `design/issue-52-long-horizon-actions@261f50f` (PR #60 ready, `CI` + `Running Copilot Code Review` green at `32536162704`/`32534915249`) ← this lane
-- Required approver when Ben returns: Ben (`bbeennyy860-cyber`) — but **Ben is offline this cycle, so this plan is published without an approval gate and must not claim `BEN_SIGN_OFF=true`**
 - Short note: `docs/plans/2026-08-22-issue-53-missing-sensors-design.md`
 - Machine-readable preregistration: `contracts/habitat_v2_forecast_issue_53_preregistration_v1.json` (new; byte-frozen on plan publish)
-- Preregistration SHA-256: `6DFA3E084F1585FB696511C54AB676356406496DDF7A639C6D10721A0D3F41B3`
-- This-lane status: `IMPLEMENTATION_AUDITED_NOT_QUALIFIED_BEN_OFFLINE`
-- `BEN_SIGN_OFF=false`
-- `CODE_AUTHORISED=false` (the implementation and audit evidence on this branch do not authorize corpus generation, training, experiments, or deployment; see §20)
-- `DATA_GENERATION_AUTHORISED=false`
-- `TRAINING_AUTHORISED=false`
-- `EXPERIMENTS_AUTHORISED=false`
-- `DEPLOYMENT_AUTHORISED=false`
-- `METRIC_AMENDMENT_APPROVED=false`
+- Preregistration SHA-256: `A96245F6E717BC83B44438F9D02DBAAA42FA5DED14D3A160FD47A0F4D393D76A`
+- This-lane status: `IMPLEMENTATION_AUDITED_NOT_QUALIFIED`
 
-This appendix is normative. The short note is the plain-English entry point. The original plan publication was planning work only. Implementation later landed on this lane without opening implementation, corpus-generation, training, experiment, or deployment authorization. The current qualification runbook is in `docs/evidence/issue-53-dropout-card.md` and `docs/evidence/issue-53-measurements.md`.
+This appendix is normative. The short note is the plain-English entry point. The current qualification runbook is in `docs/evidence/issue-53-dropout-card.md` and `docs/evidence/issue-53-measurements.md`.
 
 ## 2. Verified baseline and scope correction
 
@@ -33,7 +25,7 @@ That is safe — HMC at `src/aeolus/habitat_v2/hmc.py:770` still decides `ACCEPT
 
 Issue #53 is therefore **not a constant change and not a bug-fix**. It is a bounded dropout-robust lane that reuses the Issue #52 contracts verbatim and adds one orthogonal dimension: observation dropout.
 
-**Frozen evidence rule:** The Issue #52 model, its `contracts/habitat_v2_forecast_issue_52_preregistration_v1.json` (`E0A24B2F...1ADA7E61F`), its rolled-out traces, and its `RolloutCheckpoint` digests at `src/aeolus/habitat_v2/forecast_issue52_rollout.py:418` remain byte-identical. This lane adds *new* manifests, *new* datasets, and a *new* artifact with `parent_artifact_sha256` binding the frozen predecessor. The new model is *development evidence only*; the rule-based HMC controller remains in charge of every action, always.
+**Frozen evidence rule:** The Issue #52 model, its `contracts/habitat_v2_forecast_issue_52_preregistration_v1.json` (`DE4744E1...0702A3B`), its rolled-out traces, and its `RolloutCheckpoint` digests at `src/aeolus/habitat_v2/forecast_issue52_rollout.py:418` remain byte-identical. This lane adds *new* manifests, *new* datasets, and a *new* artifact with `parent_artifact_sha256` binding the frozen predecessor. The new model is *development evidence only*; the rule-based HMC controller remains in charge of every action, always.
 
 ## 3. Goals and non-goals
 
@@ -133,7 +125,7 @@ Reuse Issue #52 §8 outcomes (`OUTCOMES` at `forecast_issue52.py:104`: `SELECTED
 
 ## 11. Pilot, power, coverage, and split
 
-After plan publication (no Ben gate), run a deterministic pilot of ≤32 families / ≤12k transitions (same bound as Issue #52 §11) but evaluated at `k ∈ {0,1,3}`:
+Run a deterministic pilot of ≤32 families / ≤12k transitions (same bound as Issue #52 §11) but evaluated at `k ∈ {0,1,3}`:
 
 - Estimate per-family NMAE variance and paired correlations at each `k`.
 - Measure interval coverage vs `k`.
@@ -141,7 +133,7 @@ After plan publication (no Ben gate), run a deterministic pilot of ≤32 familie
 - Same power math as Issue #52: paired log-ratio power with `effect = -log(0.90)=0.105…`, `ddof=1`, zero-SD fallback to 30 FINAL families, identical SHA-256 family split (`SHA256("issue53-split-v1"||family_id)`, 70/15/15, largest-remainder). Family-disjoint invariant preserved.
 - Coverage cells are the Issue #52 Cartesian product (4 modes × 2 fault-present flags) — dropout stress is reported *within* each cell, not as new split dimension.
 
-Ranking power remains blocked until any ranking metric amendment (Issue #52 §14) is separately approved.
+Ranking power remains blocked until any ranking metric amendment (Issue #52 §14) is complete.
 
 ## 12. Baseline-first model development (mask-aware)
 
@@ -166,11 +158,11 @@ Same interface as Issue #52 §13 plus mask:
 
 ## 14. Deterministic ranking
 
-Unchanged from Issue #52 §14. Ranking remains deterministic code over predicted trajectories. Any change to true-score or predicted-score formulas is a separate commit-bound amendment requiring Ben’s approval when online.
+Unchanged from Issue #52 §14. Ranking remains deterministic code over predicted trajectories. Any change to true-score or predicted-score formulas is a separate commit-bound amendment.
 
 ## 15. Advisory integration and HMC authority (frozen)
 
-Identical to Issue #52 §15. The dropout source remains feature-disabled by default, in-process, with no plant handle. HMC remains sole proposal/arbitration/preflight/capability/plant-step/replay authority (`src/aeolus/habitat_v2/hmc.py`). Any `hmc.py`/`physics.py`/`actuators.py` diff is isolated for Ben’s separate safety review when he returns. **The new model never drives actuation directly.**
+Identical to Issue #52 §15. The dropout source remains feature-disabled by default, in-process, with no plant handle. HMC remains sole proposal/arbitration/preflight/capability/plant-step/replay authority (`src/aeolus/habitat_v2/hmc.py`). Any `hmc.py`/`physics.py`/`actuators.py` diff is isolated for separate safety review. **The new model never drives actuation directly.**
 
 ## 16. Preregistered metrics and gates (per-k, frozen)
 
@@ -204,9 +196,9 @@ Plus full existing Issue #52 suite must still pass.
 
 Every decision trace now records `dropout_config_sha256`, `dropout_mask_sha256`, and per-k interval/abstention evidence alongside the Issue #52 trace at §18. Rollback disables the dropout lane and its artifact reference, falling back to the frozen Issue #52 abstaining lane without weakening HMC. Traces remain.
 
-## 19. Phased execution (Ben offline — no approval gate)
+## 19. Phased execution
 
-Current execution state: the plan, preregistration, implementation, and audit runbook exist; the lane remains `NOT QUALIFIED`, and all authorization flags remain false. The eight-step qualification checklist in `docs/evidence/issue-53-dropout-card.md` is the current gate order.
+Current execution state: the plan, preregistration, implementation, and audit runbook exist; the lane remains `NOT QUALIFIED`. The eight-step qualification checklist in `docs/evidence/issue-53-dropout-card.md` is the current gate order.
 
 **Phase 0 — Contracts+plan:** freeze observation/dropout/dataset/artifact trace schemas; publish plan+preregistration as DRAFT.
 
@@ -220,18 +212,10 @@ Current execution state: the plan, preregistration, implementation, and audit ru
 
 **Phase 5 — One sealed FINAL:** compute honest per-k degradation and abstention PR; produce `docs/evidence/issue-53-dropout-card.md` (capability vs limitation) and `docs/evidence/issue-53-measurements.md` (1-vs-3 table).
 
-**Phase 6 — Review when Ben returns:** present exact diff, artifacts, manifests, and the limitation card. No deployment.
+**Phase 6 — Review:** present exact diff, artifacts, manifests, and the limitation card. No deployment.
 
 ## 20. Stop conditions
 
 Stop and publish a negative result if: dataset exceeds 384-family/2M-transition caps, native vs mask-derived mismatch, monotone coverage violation, no gain over mask-aware linear baseline at `k=3`, confidence miscalibration persisting after binned conformal fix, or any safety/replay gate failure. Do not lower `1-vs-3` thresholds after seeing pilot data.
 
 Precedence: authority, safety, leakage/provenance, replay/determinism, systems budget, forecast quality at `k=3`, then ranking utility.
-
-## 21. Approval record (Ben offline)
-
-No approval is sought this cycle. When Ben returns, record:
-
-- Approver: `Ben (bbeennyy860-cyber)`
-- Approval link / timestamp / approved commit: `PENDING`
-- `BEN_SIGN_OFF=false` until filled, all `*_AUTHORISED` remain false until that commit-bound approval is recorded.

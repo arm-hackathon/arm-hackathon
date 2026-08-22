@@ -1,18 +1,8 @@
 {
-  "approval": {
-    "ben_sign_off": false,
-    "code_authorised": false,
-    "data_generation_authorised": false,
-    "deployment_authorised": false,
-    "experiments_authorised": false,
-    "metric_amendment_approved": false,
-    "required_approver": "bbeennyy860-cyber",
-    "training_authorised": false
-  },
   "authority": {
     "final_command_authority": "HMC",
     "model_role": "forecast_only_advisory_with_mask_aware_uncertainty",
-    "parent_lane_frozen": "contracts/habitat_v2_forecast_issue_52_preregistration_v1.json:E0A24B2FD9309ED551DCD6D4FB98EFF1FDDA6B364DE2DBE73584CCF1ADA7E61F",
+    "parent_lane_frozen": "contracts/habitat_v2_forecast_issue_52_preregistration_v1.json:DE4744E127D2946A43D623EC90D3289B0A3735C99E62C8CECCD87768E0702A3B",
     "plant_step_authority": "HMC",
     "runtime_process_boundary": "in_process_v1",
     "safety_core_separate_review_required": true

@@ -5,16 +5,16 @@ collector smoke record. It contains no claimed FINAL metric values.
 
 The Issue #53 preregistration remains authoritative:
 `contracts/habitat_v2_forecast_issue_53_preregistration_v1.json`.
-All authorization flags are false and Ben is offline. The dropout lane is
-development evidence only; HMC remains the sole proposal, arbitration,
+The dropout lane is development evidence only; HMC remains the sole proposal,
+arbitration,
 preflight, capability, plant-step, and replay authority.
 
 ## Run Identity
 
 * Dropout config: `DropoutConfig(p_uniform=0.05, mode=independent, resource_gauge_dropout=false, max_missing_per_row=6, seed=530053)`
 * Dropout config SHA-256: `c288962aa6d5d53018e866ba19b29d951b21bbef8a7c4463b181692472535f7c` (canonical config digest)
-* Issue #53 preregistration SHA-256, LF-normalized: `6DFA3E084F1585FB696511C54AB676356406496DDF7A639C6D10721A0D3F41B3`
-* Frozen Issue #52 parent preregistration SHA-256, LF-normalized: `E0A24B2FD9309ED551DCD6D4FB98EFF1FDDA6B364DE2DBE73584CCF1ADA7E61F`
+* Issue #53 preregistration SHA-256, LF-normalized: `A96245F6E717BC83B44438F9D02DBAAA42FA5DED14D3A160FD47A0F4D393D76A`
+* Frozen Issue #52 parent preregistration SHA-256, LF-normalized: `DE4744E127D2946A43D623EC90D3289B0A3735C99E62C8CECCD87768E0702A3B`
 * Dataset manifest: produced by `build_dropout_dataset_manifest`; no qualification manifest is published here
 * Full corpus: **NOT RUN**; the preregistration target is up to 384 whole families and up to 2,000,000 candidate transitions
 * Sealed FINAL evaluation: **NOT RUN**
@@ -56,7 +56,7 @@ and all preregistered gates pass:
    `oracle_errors` for abstention PR, and safety non-regression.
 7. Publication: this table filled with measured values and the dropout card
    updated with retained and lost capabilities. Deployment remains blocked
-   until the explicit approval record changes the authorization flags.
+   because HMC retains all plant-step and capability authority.
 
 All seven items are currently incomplete, so the status is `NOT QUALIFIED`.
 
@@ -129,7 +129,7 @@ required `k` using the same eligibility and family aggregation as Issue #52.
 
 * It does not prove the 33-hour corpus was collected.
 * It does not prove a trained artifact passed any forecast, calibration, abstention, safety, replay, or latency gate.
-* It does not authorize deployment or soften the frozen Issue #52 abstention behavior.
+* It does not permit deployment or soften the frozen Issue #52 abstention behavior.
 
 ## Reproduction Entry Points
 
