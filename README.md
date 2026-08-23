@@ -101,6 +101,23 @@ result, and no historical model is qualified to control the reserve path. The
 final suite was used only for the frozen deterministic policy's one-time
 verification, not for model training, selection, or tuning.
 
+## Issue #52/#53 integration lineage
+
+The long-horizon forecast and missing-sensor work is intentionally represented
+across three related pull requests rather than by rewriting `main` history:
+
+- PR [#60](https://github.com/arm-hackathon/arm-hackathon/pull/60) contains the
+  five Issue #52 development commits.
+- PR [#61](https://github.com/arm-hackathon/arm-hackathon/pull/61) contains the
+  ten Issue #53 development commits.
+- PR [#62](https://github.com/arm-hackathon/arm-hackathon/pull/62) contains the
+  two semantic integration commits that port the final result onto current
+  `main` and bind the reviewed HMC v2 source package.
+
+Together these related PRs preserve the complete 17-commit development and
+integration lineage. Forecast output remains advisory-only, and HMC remains
+the sole actuator authority.
+
 ## Try it: the verified forecast report
 
 **New here? Take the guided tour instead** — an interactive walkthrough that
