@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 import hashlib
 import json
 import math
@@ -916,6 +917,30 @@ def _strict_ratio(
     return numerator / denominator, sorted(candidate), True
 
 
+@lru_cache(maxsize=16)
+def _bootstrap_indices(seed: int, repetitions: int, count: int) -> np.ndarray:
+    """Return the registered SHA-256 family bootstrap draws, cached per shape."""
+
+    if repetitions < 1 or count < 1:
+        raise ValueError("bootstrap dimensions must be positive")
+    indices = np.empty((repetitions, count), dtype=np.int64)
+    for replicate in range(repetitions):
+        for draw in range(count):
+            indices[replicate, draw] = (
+                int.from_bytes(
+                    hashlib.sha256(
+                        f"issue53-bootstrap-v1|{seed}|{replicate}|{draw}".encode(
+                            "utf-8"
+                        )
+                    ).digest()[:8],
+                    "big",
+                )
+                % count
+            )
+    indices.setflags(write=False)
+    return indices
+
+
 def _bootstrap_ratio(
     candidate: Mapping[str, float | None],
     comparator: Mapping[str, float | None],
@@ -936,22 +961,18 @@ def _bootstrap_ratio(
         return None, None
     left = np.asarray([float(candidate[family_id]) for family_id in family_ids])
     right = np.asarray([float(comparator[family_id]) for family_id in family_ids])
-    ratios = np.empty(repetitions, dtype=np.float64)
     count = len(family_ids)
-    for replicate in range(repetitions):
-        indices = [
-            int.from_bytes(
-                hashlib.sha256(
-                    f"issue53-bootstrap-v1|{seed}|{replicate}|{draw}".encode("utf-8")
-                ).digest()[:8],
-                "big",
-            )
-            % count
-            for draw in range(count)
-        ]
-        numerator = float(np.mean(left[indices]))
-        denominator = float(np.mean(right[indices]))
-        ratios[replicate] = 1.0 if denominator == 0.0 and numerator == 0.0 else numerator / denominator
+    indices = _bootstrap_indices(seed, repetitions, count)
+    numerators = np.mean(left[indices], axis=1)
+    denominators = np.mean(right[indices], axis=1)
+    ratios = np.divide(
+        numerators,
+        denominators,
+        out=np.ones(repetitions, dtype=np.float64),
+        where=denominators != 0.0,
+    )
+    invalid_zero = (denominators == 0.0) & (numerators != 0.0)
+    ratios[invalid_zero] = np.inf
     if not np.isfinite(ratios).all():
         return None, None
     return float(np.quantile(ratios, 0.025)), float(np.quantile(ratios, 0.975))
@@ -1362,19 +1383,10 @@ def _crossing_metrics(
     if family_values:
         differences = np.asarray(family_values, dtype=np.float64)
         rng_count = len(differences)
-        bootstrap = np.empty(bootstrap_repetitions, dtype=np.float64)
-        for replicate in range(bootstrap_repetitions):
-            indices = [
-                int.from_bytes(
-                    hashlib.sha256(
-                        f"issue53-bootstrap-v1|{BOOTSTRAP_SEED}|{replicate}|{draw}".encode()
-                    ).digest()[:8],
-                    "big",
-                )
-                % rng_count
-                for draw in range(rng_count)
-            ]
-            bootstrap[replicate] = float(np.mean(differences[indices]))
+        bootstrap_indices = _bootstrap_indices(
+            BOOTSTRAP_SEED, bootstrap_repetitions, rng_count
+        )
+        bootstrap = np.mean(differences[bootstrap_indices], axis=1)
         exposure_upper = float(np.quantile(bootstrap, 0.975))
 
     learned_recall = (
