@@ -19,7 +19,7 @@ from aeolus.habitat_v2.forecast.live_demo import (
 )
 from aeolus.habitat_v2.forecast.projection import forecast_layout
 
-MODEL_SHA256 = "a6e4ef34fc837bb6539a84e20d015bbd7bbfe4e9fd5a6fc74e3f0217bd978d9a"
+MODEL_SHA256 = "0de4b5cdb6ec2b47be260a06f924d8eb00f1def16d5ae668b3ab5191251f29df"
 SOURCE_FOUNDATION_GIT_COMMIT = "c01dec538a73ce7baaf1ee460fff4ab5f3bbfda3"
 _PAYLOAD_PATTERN = re.compile(rb"atob\('([A-Za-z0-9+/=]+)'\)")
 _EXPECTED_RECEIPT_FIELDS = frozenset(

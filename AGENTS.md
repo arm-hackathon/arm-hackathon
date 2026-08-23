@@ -57,7 +57,7 @@ The active implementation is under `src/`, with checked-in inputs under `scenari
 
 ### Reviewed-contract source snapshot
 
-`contracts/habitat-v2-forecast-reviewed-hmc-v1/` is a copied, reviewed-contract artifact, not an alternate implementation tree:
+`contracts/habitat-v2-forecast-reviewed-hmc-v2/` is the active copied, reviewed-contract artifact, not an alternate implementation tree. The v1 package remains as historical provenance for the earlier binding:
 
 - `manifest.json` binds its content, source paths, byte lengths, and hashes.
 - `sources/` contains reviewed copies of selected HMC source, a scenario, a contract, packaging metadata, and lockfile bytes.

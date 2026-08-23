@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from aeolus.habitat_v2.physics import advance_one_step, initial_state
+from aeolus.habitat_v2.physics import (
+    advance_one_step,
+    advance_one_step_with_command,
+    initial_state,
+)
 from aeolus.habitat_v2.runner import (
     AccountingInvariantError,
     run_scenario,
@@ -126,6 +131,49 @@ def test_v5_achieved_cooling_and_oxygen_are_rate_limited() -> None:
     assert result.state.utility.actual_oxygen_injection_mol_s["laboratory"] == 0.0006
     assert result.receipt["actuators"]["cooling"]["achieved_w"]["air_processing_bay"] == 300.0
     assert result.receipt["actuators"]["oxygen"]["achieved_mol_s"]["laboratory"] == 0.0006
+
+
+def test_v5_achieved_oxygen_respects_shared_capacity_during_reallocation() -> None:
+    mapping = v5_mapping()
+    scenario = Scenario.from_mapping(mapping)
+    state = initial_state(scenario)
+    occupied_zone = sorted(state.utility.actual_oxygen_injection_mol_s)[0]
+    state = type(state)(
+        step=state.step,
+        zones=state.zones,
+        utility=replace(
+            state.utility,
+            actual_oxygen_injection_mol_s={
+                zone_id: (
+                    float(scenario.data["equipment"]["oxygen_injection_max_total_mol_s"])
+                    if zone_id == occupied_zone
+                    else 0.0
+                )
+                for zone_id in state.utility.actual_oxygen_injection_mol_s
+            },
+        ),
+    )
+    command = deepcopy(mapping["timeline"][0]["command"])
+    command["oxygen_injection_mol_s"] = {
+        zone["id"]: 0.0 for zone in mapping["zones"]
+    }
+    for zone_id in sorted(command["oxygen_injection_mol_s"]):
+        if zone_id == occupied_zone:
+            continue
+        command["oxygen_injection_mol_s"][zone_id] = 0.0003
+    result = advance_one_step_with_command(scenario, state, command)
+
+    assert sum(result.state.utility.actual_oxygen_injection_mol_s.values()) <= float(
+        scenario.data["equipment"]["oxygen_injection_max_total_mol_s"]
+    )
+    assert all(
+        abs(
+            result.state.utility.actual_oxygen_injection_mol_s[zone_id]
+            - state.utility.actual_oxygen_injection_mol_s[zone_id]
+        )
+        <= 0.0006 + 1e-12
+        for zone_id in state.utility.actual_oxygen_injection_mol_s
+    )
 
 
 def test_v5_effectiveness_fault_changes_delivery_not_achieved_state() -> None:

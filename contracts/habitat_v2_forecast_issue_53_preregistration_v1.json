@@ -1,0 +1,187 @@
+{
+  "authority": {
+    "final_command_authority": "HMC",
+    "model_role": "forecast_only_advisory_with_mask_aware_uncertainty",
+    "parent_lane_frozen": "contracts/habitat_v2_forecast_issue_52_preregistration_v1.json:DE4744E127D2946A43D623EC90D3289B0A3735C99E62C8CECCD87768E0702A3B",
+    "plant_step_authority": "HMC",
+    "runtime_process_boundary": "in_process_v1",
+    "safety_core_separate_review_required": true
+  },
+  "base_commit": "261f50f2bff2689ecf47b2fdcc7ec345fa03bf78",
+  "candidate_contract": {
+    "ablation_four_selection": "candidate_hold_plus_three_lexicographically_smallest_non_hold_ids",
+    "catalogue_size": 12,
+    "schedule_steps": 32,
+    "statuses": ["STATICALLY_VALID", "ROLLOUT_FEASIBLE", "RUNTIME_FIRST_STEP_FEASIBLE"]
+  },
+  "corpus": {
+    "coverage_cells": {
+      "dimensions": {
+        "fault_presence": ["absent", "present"],
+        "operating_mode": ["occupied", "eva_transition", "contingency", "dormant"]
+      },
+      "minimum_families_per_cell": { "FINAL": 3, "TRAIN": 6, "VALIDATION": 3 }
+    },
+    "family_cap": 384,
+    "family_split": {
+      "algorithm": "sha256_issue53_split_v1_then_largest_remainder",
+      "final_fraction": 0.15,
+      "train_fraction": 0.7,
+      "validation_fraction": 0.15,
+      "split_input": "SHA256('issue53-split-v1|' + family_id)"
+    },
+    "final_invocations_per_approved_model_version": 1,
+    "minimum_power": 0.8,
+    "pilot_family_cap": 32,
+    "pilot_transition_cap": 12288,
+    "total_candidate_transition_cap": 2000000,
+    "whole_family_isolation": true
+  },
+  "dropout_contract": {
+    "schema_version": "aeolus_habitat_v2_dropout_v1",
+    "observation_only": true,
+    "truth_never_masked": true,
+    "sampler": "deterministic_SHA256(seed|family_id|decision_step|step_offset|descriptor_id)_<_p_times_2_64",
+    "modes": ["independent", "per_zone_head_burst", "mixed"],
+    "default_mode_for_pilot": "independent",
+    "p_uniform_pilot": 0.05,
+    "burst_lengths": { "min": 2, "max": 8 },
+    "p_burst_onset": 0.02,
+    "resource_gauge_dropout": false,
+    "max_missing_per_row_evaluated": 6,
+    "primary_missing_gate": "mask_is_applied_after_instrument_v5_operational_measurement_and_before_observation_record; channel_sample_unavailable_mapped_to_nan_plus_available_mask_false",
+    "binding": "dropout_config_sha256_is_part_of_training_sample_rollout_checkpoint_and_dataset_manifest_identities"
+  },
+  "forecast_contract": {
+    "cadence_seconds": 60,
+    "history_steps": 16,
+    "horizon_steps": 32,
+    "target_channels": {
+      "global_unique": ["battery_resource_gauge", "oxygen_reserve_resource_gauge", "sorbent_reserve_resource_gauge"],
+      "per_habitable_zone": ["co2_concentration", "dry_bulb_temperature", "relative_humidity"],
+      "width_formula": "3 * habitable_zone_count + 3"
+    },
+    "target_environmental_head": "primary_telemetry",
+    "target_kind": "runtime_operational_instrumentation_projection",
+    "target_missing_rule": "dropout_never_makes_labels_missing; any_native_missing_in_labels_still_invalidates_entire_12_candidate_decision_as_in_issue_52",
+    "unavailable_after_infeasibility": "masked_from_training_and_all_forecast_metrics; candidate_remains_in_ranking_group_as_ineligible_hard_violation",
+    "history_input": "float32[16,W]_imputed_plus_bool[16,W]_mask_plus_float32[16,W]_age_plus_mask_aware_slope; unknown_fields_fail_closed"
+  },
+  "issue": 53,
+  "metrics": {
+    "authority_violation_count": { "maximum": 0, "priority": "hard" },
+    "provenance_or_split_violation_count": { "maximum": 0, "priority": "hard" },
+    "replay_failure_count": { "maximum": 0, "priority": "hard" },
+    "non_finite_committed_state_count": { "maximum": 0, "priority": "hard" },
+    "inference_all_12_p99_ms": { "maximum": 250, "priority": "hard" },
+    "inference_timeout_rate": { "maximum": 0.0, "priority": "hard" },
+    "safety_bound_exposure_difference": { "point_maximum": 0.0, "upper_95_ci_maximum": 0.0, "priority": "hard", "applies_at": ["k=0", "k=1", "k=3"] },
+    "dangerous_crossing_recall_difference": { "minimum": -0.02, "priority": "hard", "applies_at": ["k=0", "k=1", "k=3"] },
+    "dangerous_crossing_false_rate_difference": { "maximum": 0.01, "priority": "hard", "applies_at": ["k=0", "k=1", "k=3"] },
+    "primary_forecast_h9_h32_nmae_ratio": {
+      "aggregation": "for_each_complete_candidate_trajectory_compute_mean_over_targets_and_horizons_of_abs_error_divided_by_manifest_scale; average_candidates_within_decision; average_decisions_within_family; average_families; point_ratio_is_candidate_aggregate_divided_by_comparator_aggregate",
+      "comparison": "learned_over_best_frozen_non_neural_baseline_at_k0",
+      "eligible_rows": "only_candidate_trajectories_with_all_32_finite_targets; identical_eligibility_mask_for_all_forecasters",
+      "point_maximum": 0.9,
+      "upper_95_ci_maximum_exclusive": 0.98,
+      "weighting": "equal_family_equal_horizon_equal_target"
+    },
+    "short_horizon_h1_h8_nmae_ratio": { "aggregation": "same_as_primary_forecast_with_horizons_1_through_8", "point_maximum": 1.05, "upper_95_ci_maximum": 1.08 },
+    "dropout_k1_nmae_ratio_vs_own_k0": {
+      "aggregation": "equal_weight_family_mean_of_NMAE_h9_h32_at_k1_divided_by_same_model_at_k0_paired_by_family",
+      "point_maximum": 1.15,
+      "upper_95_ci_maximum": 1.25,
+      "k": 1,
+      "priority": "co_primary"
+    },
+    "dropout_k3_nmae_ratio_vs_own_k0": {
+      "aggregation": "equal_weight_family_mean_of_NMAE_h9_h32_at_k3_divided_by_same_model_at_k0_paired_by_family",
+      "point_maximum": 1.4,
+      "upper_95_ci_maximum": 1.6,
+      "k": 3,
+      "priority": "co_primary"
+    },
+    "dropout_k1_interval_coverage_90": {
+      "definition": "empirical_fraction_of_available_target_cells_where_truth_lies_within_predicted_90pct_interval_averaged_equal_weight_over_families_at_k1",
+      "minimum": 0.85,
+      "priority": "co_primary"
+    },
+    "dropout_k3_interval_coverage_90": {
+      "definition": "empirical_fraction_of_available_target_cells_where_truth_lies_within_predicted_90pct_interval_averaged_equal_weight_over_families_at_k3",
+      "minimum": 0.8,
+      "priority": "co_primary"
+    },
+    "dropout_k3_abstention_recall_on_high_error": {
+      "definition": "recall_of_abstained_decisions_against_oracle_high_error_decisions_where_oracle_NMAE_exceeds_p90_of_validation_k0_distribution; paired_by_family",
+      "minimum": 0.8,
+      "priority": "co_primary"
+    },
+    "dropout_k3_abstention_precision_on_high_error": {
+      "definition": "precision_of_abstained_decisions_against_same_oracle_high_error_set_at_k3",
+      "minimum": 0.6,
+      "priority": "co_primary"
+    },
+    "dropout_k0_abstention_rate_delta": {
+      "definition": "abstention_rate_at_k0_minus_baseline_abstention_rate_of_mask_aware_linear_baseline_at_k0",
+      "maximum": 0.02,
+      "priority": "hard"
+    }
+  },
+  "preregistration_version": "habitat_v2_forecast_issue_53_preregistration_v1",
+  "runtime_outcomes": ["SELECTED_HOLD", "SELECTED_CANDIDATE", "ABSTAINED", "WARMUP_NO_PROPOSAL", "INVALID_OUTPUT", "TIMEOUT_NO_PROPOSAL", "HMC_REJECTED_TO_HOLD", "HMC_EMERGENCY_OVERRIDDEN", "DISABLED"],
+  "runtime_outcomes_per_k_accounting": ["k=0", "k=1", "k=3", "k>=4"],
+  "statistics": {
+    "alpha_two_sided": 0.05,
+    "bootstrap_repetitions": 10000,
+    "bootstrap_seed": 530053,
+    "bootstrap_ci": "equal_tailed_percentile_interval_using_sorted_10000_bootstrap_statistics_and_linear_type_7_quantiles_at_0.025_and_0.975",
+    "bootstrap_family_order": "ascending_utf8_family_id",
+    "bootstrap_non_finite_rule": "any_non_finite_family_value_aggregate_or_bootstrap_statistic_invalidates_the_evaluation_and_fails_the_gate",
+    "bootstrap_sampler": "for_replicate_r_and_draw_d_take_uint64_big_endian_of_first_8_bytes_of_sha256(utf8('issue53-bootstrap-v1|'+seed+'|'+r+'|'+d))_modulo_family_count_as_the_with_replacement_index; r_and_d_are_zero_based_decimal_without_padding",
+    "point_estimator": "ratio_of_equal_weight_family_aggregate_means_not_mean_of_family_ratios",
+    "ratio_zero_denominator_rule": "if comparator is zero, candidate must also be zero and the ratio gate passes as equality; if comparator is zero and candidate is positive, the ratio gate fails; bootstrap samples with both values zero contribute ratio 1.0",
+    "resampling_unit": "semantic_scenario_family"
+  },
+  "step_semantics": { "first_command": "A_s", "first_target": "S_s_plus_1", "latest_observation": "S_s", "requested_application_step": "s" },
+  "stop_precedence": ["authority", "safety", "leakage_or_provenance", "replay_or_determinism", "systems_budget", "forecast_quality_at_k3", "ranking_utility"],
+  "systems": {
+    "benchmark_exclusive_workload": true,
+    "inference_deadline_ms": 250,
+    "latency_contract": {
+      "clock": "time.perf_counter_ns_monotonic",
+      "deadline_equality_is_timely": true,
+      "late_completion_rule": "elapsed_ns_greater_than_250000000_is_timeout_no_proposal_and_result_is_discarded_even_if_completion_is_observed_concurrently",
+      "p99_estimator": "nearest_rank_sorted_value_at_index_ceil(0.99*N)_one_based",
+      "start": "immediately_before_history_projection_and_validation_for_a_verified_current_snapshot",
+      "stop": "after_all_12_forecasts_output_validation_deterministic_scoring_selection_and_proposal_adapter_construction_complete"
+    },
+    "qualification_host": {
+      "architecture": "x64",
+      "cpu": "AMD Ryzen 5 4600H with Radeon Graphics",
+      "logical_processors": 12,
+      "machine": "DESKTOP-069U89D",
+      "os": "Windows 11 Pro",
+      "os_build": "26200",
+      "os_version": "10.0.26200",
+      "physical_memory_bytes": 16505847808,
+      "python": "3.14.0"
+    },
+    "warmup_runs": 20,
+    "timed_runs": 1000
+  },
+  "training": {
+    "comparative_fitting_requires_metric_amendment_approved": false,
+    "model_seeds": [530053, 530054, 530055],
+    "normalizers_fit_on": "TRAIN_k0_only",
+    "online_learning": false,
+    "smallest_passing_model_wins": true,
+    "calibration_binned_by_k": true
+  },
+  "honest_measurements_required": {
+    "k_sweep": [0, 1, 3, 6],
+    "primary_table": "NMAE_h9_h32_at_k0_k1_k3_plus_ratio_vs_own_k0_with_95pct_CI",
+    "abstention_table": "precision_recall_PR_curve_of_abstain_vs_oracle_high_error_at_k3_plus_abstention_rate_delta_at_k0",
+    "coverage_table": "interval_coverage_and_width_at_each_k",
+    "limitation_card": "docs/evidence/issue-53-dropout-card.md"
+  }
+}
