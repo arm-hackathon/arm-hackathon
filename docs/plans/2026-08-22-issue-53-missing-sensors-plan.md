@@ -9,7 +9,7 @@
 - Short note: `docs/plans/2026-08-22-issue-53-missing-sensors-design.md`
 - Machine-readable preregistration: `contracts/habitat_v2_forecast_issue_53_preregistration_v1.json` (new; byte-frozen on plan publish)
 - Preregistration SHA-256: `A96245F6E717BC83B44438F9D02DBAAA42FA5DED14D3A160FD47A0F4D393D76A`
-- This-lane status: `IMPLEMENTATION_AUDITED_NOT_QUALIFIED`
+- This-lane status: `QUALIFIED_FORECAST_ONLY_HMC_AUTHORITY_RETAINED`
 
 This appendix is normative. The short note is the plain-English entry point. The current qualification runbook is in `docs/evidence/issue-53-dropout-card.md` and `docs/evidence/issue-53-measurements.md`.
 
@@ -25,7 +25,7 @@ That is safe — HMC at `src/aeolus/habitat_v2/hmc.py:770` still decides `ACCEPT
 
 Issue #53 is therefore **not a constant change and not a bug-fix**. It is a bounded dropout-robust lane that reuses the Issue #52 contracts verbatim and adds one orthogonal dimension: observation dropout.
 
-**Frozen evidence rule:** The Issue #52 model, its `contracts/habitat_v2_forecast_issue_52_preregistration_v1.json` (`DE4744E1...0702A3B`), its rolled-out traces, and its `RolloutCheckpoint` digests at `src/aeolus/habitat_v2/forecast_issue52_rollout.py:418` remain byte-identical. This lane adds *new* manifests, *new* datasets, and a *new* artifact with `parent_artifact_sha256` binding the frozen predecessor. The new model is *development evidence only*; the rule-based HMC controller remains in charge of every action, always.
+**Frozen evidence rule:** The Issue #52 model, its `contracts/habitat_v2_forecast_issue_52_preregistration_v1.json` (`DE4744E1...0702A3B`), its rolled-out traces, and its `RolloutCheckpoint` digests at `src/aeolus/habitat_v2/forecast_issue52_rollout.py:418` remain byte-identical. This lane adds *new* manifests, *new* datasets, and a *new* artifact with `parent_artifact_sha256` binding the frozen predecessor. The new model is *qualified forecast evidence only*; the rule-based HMC controller remains in charge of every action, always.
 
 ## 3. Goals and non-goals
 
@@ -33,7 +33,7 @@ Goals (exact acceptance language from #53):
 
 1.  Produce a **new training dataset** where sensors randomly drop out, via a deterministic background collection of about **33 hours** wall clock (quiet, isolated runner, no interactive training).
 2.  Train a **new model** that keeps forecasting when sensors are missing and emits calibrated uncertainty, abstaining only *when it should*.
-3.  Publish **honest per-k measurements**: degradation at **1 sensor missing** and **3 sensors missing** (plus full sweep `0…6`), and a calibrated answer to *when it correctly gives up*.
+3.  Publish **honest per-k measurements**: degradation at **1 sensor missing** and **3 sensors missing** (plus the preregistered sweep `k=0,1,3,6`), and a calibrated answer to *when it correctly gives up*.
 4.  Publish a **written record of what it cannot do** alongside what it can (capability/limitation card, rollback).
 
 Non-goals (blocked this lane):
@@ -172,7 +172,7 @@ The `habitat_v2_forecast_issue_53_preregistration_v1.json` is authoritative. Sum
 - **Dropout degradation** (new, co-primary):
   * `k=1` NMAE vs own `k=0` ≤1.15 point, ≤1.25 upper.
   * `k=3` NMAE vs own `k=0` ≤1.40 point, ≤1.60 upper.
-  * Full sweep `k=0…6` reported (no gate beyond `k=3` but non-monotonic degradation fails review).
+  * Full preregistered sweep `k=0,1,3,6` reported (no gate beyond `k=3` but non-monotonic degradation fails review).
 - **Interval coverage** (new, co-primary): empirical 90% interval coverage at `k=1` ≥85%, at `k=3` ≥80%; monotone non-increasing with `k` beyond sampling noise.
 - **Abstention quality** (new, co-primary): recall on oracle high-error decisions at `k=3` ≥0.80, precision ≥0.60, with PR curve reported; abstention rate at `k=0` must not exceed frozen baseline +2pp.
 - **Safety non-regression** (hard gate, held): total safety-bound exposure mean diff ≤0 & upper ≤0, dangerous-crossing recall diff ≥−0.02, false-crossing diff ≤+0.01 — evaluated separately at each `k` and must hold at `k=3`.
@@ -198,7 +198,7 @@ Every decision trace now records `dropout_config_sha256`, `dropout_mask_sha256`,
 
 ## 19. Phased execution
 
-Current execution state: the plan, preregistration, implementation, and audit runbook exist; the lane remains `NOT QUALIFIED`. The eight-step qualification checklist in `docs/evidence/issue-53-dropout-card.md` is the current gate order.
+Current execution state: the plan, preregistration, implementation, audit runbook, bounded pilot, full corpus, sealed artifact, and sealed FINAL evidence exist; the independent dropout forecast lane is `QUALIFIED`. The eight-step qualification checklist in `docs/evidence/issue-53-dropout-card.md` records the completed gate order. HMC authority and deployment restrictions remain unchanged.
 
 **Phase 0 — Contracts+plan:** freeze observation/dropout/dataset/artifact trace schemas; publish plan+preregistration as DRAFT.
 
