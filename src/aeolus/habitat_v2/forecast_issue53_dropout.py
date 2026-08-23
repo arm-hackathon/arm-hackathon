@@ -41,6 +41,7 @@ from .scenario import Scenario
 ISSUE53_SCHEMA_VERSION = "aeolus_habitat_v2_forecast_issue_53_v1"
 DROPOUT_SCHEMA_VERSION = "aeolus_habitat_v2_dropout_v1"
 FORECAST_METRIC_START = 8
+MIN_INTERVAL_SCALE = float(np.finfo(np.float32).eps)
 
 
 class Issue53ContractError(ValueError):
@@ -835,7 +836,7 @@ class DropoutAwareLinearForecaster:
             k = int(np.sum(~item.history.available_mask[-1]))
             residuals.setdefault(k, []).extend(normalized.ravel().tolist())
         calibrated = {
-            k: max(0.02, float(np.quantile(values, quantile)))
+            k: max(MIN_INTERVAL_SCALE, float(np.quantile(values, quantile)))
             for k, values in residuals.items()
             if values
         }
@@ -881,10 +882,13 @@ class DropoutAwareLinearForecaster:
                     * max(
                         float(
                             calibrated.get(
-                                k, calibrated.get(max(calibrated, default=0), 0.02)
+                                k,
+                                calibrated.get(
+                                    max(calibrated, default=0), MIN_INTERVAL_SCALE
+                                ),
                             )
                         ),
-                        0.02,
+                        MIN_INTERVAL_SCALE,
                     )
                     * math.sqrt(HORIZON_STEPS)
                 )
@@ -1117,9 +1121,14 @@ class DropoutAwareLinearForecaster:
             return ForecastTrajectory("INVALID_OUTPUT", None, None, None, self.model_id, "forecast_non_finite")
         # per-k uncertainty — look up k = missing on latest row (normalized scale)
         k = int(np.sum(~history.available_mask[-1]))
-        base_norm = float(self.per_k_interval_scale.get(k, self.per_k_interval_scale.get(max(self.per_k_interval_scale, default=0), 0.02)))
-        # ensure base_norm is at least 0.02 (fallback)
-        base_norm = max(base_norm, 0.02)
+        base_norm = float(
+            self.per_k_interval_scale.get(
+                k,
+                self.per_k_interval_scale.get(max(self.per_k_interval_scale, default=0), MIN_INTERVAL_SCALE),
+            )
+        )
+        # Keep only a numerical positive floor; calibration supplies the width.
+        base_norm = max(base_norm, MIN_INTERVAL_SCALE)
         lower = np.empty_like(mean)
         upper = np.empty_like(mean)
         for idx, desc in enumerate(self.manifest.descriptors):

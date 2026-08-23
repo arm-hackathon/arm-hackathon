@@ -1571,7 +1571,7 @@ def _load_artifact_model(
     if (
         not interval_scales
         or set(interval_scales) - set(REQUIRED_K)
-        or any(value <= 0.0 for value in interval_scales.values())
+        or any(value < 0.0 for value in interval_scales.values())
     ):
         raise ValueError("model artifact interval scales are invalid")
     model = DropoutAwareLinearForecaster(
