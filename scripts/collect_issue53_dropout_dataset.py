@@ -145,6 +145,8 @@ def _sample_payload(
     dropout_config: DropoutConfig,
     dropout_view: str,
     rollout_sha256: str,
+    family_metadata: Mapping[str, object],
+    truth_latest: np.ndarray,
 ) -> dict:
     history = sample.history
     payload = {
@@ -158,6 +160,11 @@ def _sample_payload(
         "rollout_sha256": rollout_sha256,
         "dropout_config_sha256": dropout_config.config_sha256,
         "dropout_view": dropout_view,
+        "family_metadata": dict(family_metadata),
+        "truth_latest": [
+            None if not math.isfinite(float(value)) else float(value)
+            for value in np.asarray(truth_latest, dtype=np.float32)
+        ],
         "latest_missing_count": int(np.sum(~history.available_mask[-1])),
         "history_records": [
             _record_payload(record, history.target_values[index], history.available_mask[index])
@@ -180,18 +187,76 @@ def _scenario_and_contract(
     scenario = Scenario.from_mapping(
         json.loads(scenario_path.read_text(encoding="utf-8"))
     )
-    scenario = extend_scenario_for_issue52(scenario)
     return scenario, load_hmc_contract(contract_path)
 
 
-def _family_scenario(base: Scenario, family_id: str) -> Scenario:
-    """Make each family a deterministic simulator seed, not a relabeled clone."""
+OPERATING_MODES = ("occupied", "eva_transition", "contingency", "dormant")
+FAULT_PROFILE_IDS = (
+    "fan-drive-degradation",
+    "galley-primary-co2-drift",
+    "power-bay-secondary-temperature-stuck",
+    "v5-cooling-delivery-loss",
+    "v5-feedback-battery-bias",
+)
+
+
+def _family_scenario(
+    base: Scenario,
+    family_id: str,
+    *,
+    decision_step: int,
+) -> tuple[Scenario, dict[str, object]]:
+    """Make each family a deterministic mode/fault/seed variant."""
 
     data = json.loads(json.dumps(base.data, allow_nan=False))
-    seed_bytes = hashlib.sha256(f"issue53-family-seed-v1|{family_id}".encode("utf-8")).digest()
+    family_index = int(family_id.rsplit("-", 1)[-1])
+    seed_bytes = hashlib.sha256(
+        f"issue53-family-seed-v1|{family_id}".encode("utf-8")
+    ).digest()
     data["sensor_model"]["random_seed"] = int.from_bytes(seed_bytes[:4], "big")
     data["name"] = f"{data['name']}-{family_id}"
-    return Scenario.from_mapping(data)
+    mode_index = family_index % len(OPERATING_MODES)
+    rotation = (mode_index - (decision_step % len(OPERATING_MODES))) % len(
+        OPERATING_MODES
+    )
+    original_timeline = list(data["timeline"])
+    original_modes = [str(segment["operating_mode"]) for segment in original_timeline]
+    for index, segment in enumerate(original_timeline):
+        segment["operating_mode"] = original_modes[(index + rotation) % len(original_modes)]
+    data["timeline"] = original_timeline
+    rotated = Scenario.from_mapping(data)
+    scenario = extend_scenario_for_issue52(rotated)
+
+    fault_present = (family_index // len(OPERATING_MODES)) % 2 == 1
+    selected_fault = None
+    if fault_present:
+        extended = json.loads(json.dumps(scenario.data, allow_nan=False))
+        profiles = {
+            str(profile["id"]): profile for profile in extended["fault_profiles"]
+        }
+        selected_id = FAULT_PROFILE_IDS[(family_index // 8) % len(FAULT_PROFILE_IDS)]
+        selected_fault = json.loads(json.dumps(profiles[selected_id]))
+        duration = max(
+            4,
+            int(selected_fault.get("end_step", 2))
+            - int(selected_fault.get("start_step", 1)),
+        )
+        selected_fault["start_step"] = max(0, decision_step - 3)
+        selected_fault["end_step"] = min(
+            int(extended["steps"]), selected_fault["start_step"] + duration
+        )
+        extended["fault_profiles"] = [selected_fault]
+        scenario = Scenario.from_mapping(extended)
+    else:
+        extended = json.loads(json.dumps(scenario.data, allow_nan=False))
+        extended["fault_profiles"] = []
+        scenario = Scenario.from_mapping(extended)
+    return scenario, {
+        "operating_mode": OPERATING_MODES[mode_index],
+        "fault_presence": "present" if fault_present else "absent",
+        "fault_profile_id": None if selected_fault is None else selected_fault["id"],
+        "family_index": family_index,
+    }
 
 
 def _collect_family(
@@ -202,13 +267,19 @@ def _collect_family(
     split: str,
     config: DropoutConfig,
 ) -> list[dict]:
-    scenario = _family_scenario(scenario, family_id)
+    scenario, family_metadata = _family_scenario(
+        scenario, family_id, decision_step=15
+    )
     checkpoint = build_offline_checkpoint(
         scenario,
         contract,
         decision_step=15,
         family_id=family_id,
     )
+    observed_mode = checkpoint.history_records[-1].mode
+    if type(observed_mode) is not str:
+        raise ValueError("checkpoint observation mode is missing")
+    family_metadata["operating_mode"] = observed_mode
     manifest = TargetManifest.from_scenario(scenario)
     catalogue = CandidateCatalogue.from_scenario(
         scenario, base_command=checkpoint.last_final_command
@@ -251,6 +322,8 @@ def _collect_family(
                     dropout_config=config,
                     dropout_view=f"k{k_target}",
                     rollout_sha256=rollout.rollout_sha256,
+                    family_metadata=family_metadata,
+                    truth_latest=sample.history.latest,
                 )
             )
     return serialized
@@ -264,7 +337,9 @@ def _sample_digest(sample: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
-def validate_dataset(output: Path) -> dict[str, int | str]:
+def validate_dataset(
+    output: Path, *, require_coverage: bool = False
+) -> dict[str, int | str]:
     """Validate the content-addressed files emitted by ``collect``."""
 
     config_mapping = json.loads((output / "dropout_config.json").read_text(encoding="utf-8"))
@@ -281,6 +356,7 @@ def validate_dataset(output: Path) -> dict[str, int | str]:
     sample_count = 0
     family_ids: set[str] = set()
     family_views: dict[str, dict[str, int]] = {}
+    family_metadata: dict[str, dict[str, object]] = {}
     with (output / "samples.jsonl").open("rb") as stream:
         for raw_line in stream:
             if not raw_line.endswith(b"\n"):
@@ -296,6 +372,30 @@ def validate_dataset(output: Path) -> dict[str, int | str]:
                 raise ValueError("dataset sample family is not in the manifest")
             if sample.get("split") != manifest.family_split[family_id]:
                 raise ValueError("dataset sample split does not bind manifest")
+            metadata = sample.get("family_metadata")
+            if not isinstance(metadata, Mapping):
+                raise ValueError("dataset sample family metadata is missing")
+            expected_metadata = {
+                "fault_presence": (
+                    "present"
+                    if (int(family_id.rsplit("-", 1)[-1]) // len(OPERATING_MODES)) % 2
+                    else "absent"
+                ),
+                "family_index": int(family_id.rsplit("-", 1)[-1]),
+            }
+            if any(metadata.get(key) != value for key, value in expected_metadata.items()):
+                raise ValueError("dataset sample family metadata is inconsistent")
+            history = sample.get("history_records")
+            if (
+                not isinstance(history, list)
+                or not history
+                or metadata.get("operating_mode") not in OPERATING_MODES
+                or metadata.get("operating_mode") != history[-1].get("mode")
+            ):
+                raise ValueError("dataset family operating mode does not bind replay")
+            previous_metadata = family_metadata.setdefault(family_id, dict(metadata))
+            if dict(previous_metadata) != dict(metadata):
+                raise ValueError("dataset family metadata is inconsistent")
             if sample.get("dropout_view") not in {f"k{k}" for k in EVALUATED_K}:
                 raise ValueError("dataset sample dropout view is invalid")
             if sample.get("latest_missing_count") != int(
@@ -304,8 +404,8 @@ def validate_dataset(output: Path) -> dict[str, int | str]:
                 raise ValueError("dataset sample dropout view is inconsistent")
             if sample.get("sample_sha256") != _sample_digest(sample):
                 raise ValueError("dataset sample digest is inconsistent")
-            history = sample.get("history_records")
             targets = sample.get("targets")
+            truth_latest = sample.get("truth_latest")
             if not isinstance(history, list) or len(history) != 16:
                 raise ValueError("dataset sample history is not a 16-row window")
             if not isinstance(targets, list) or len(targets) != HORIZON_STEPS:
@@ -329,6 +429,17 @@ def validate_dataset(output: Path) -> dict[str, int | str]:
                 not isinstance(row, list) or len(row) != width for row in targets
             ):
                 raise ValueError("dataset sample tensor widths are inconsistent")
+            if (
+                not isinstance(truth_latest, list)
+                or len(truth_latest) != width
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    for value in truth_latest
+                )
+            ):
+                raise ValueError("dataset latest truth is malformed")
             for record in history:
                 for value, available in zip(
                     record["target_values"], record["available_mask"]
@@ -368,6 +479,27 @@ def validate_dataset(output: Path) -> dict[str, int | str]:
     expected_views = {f"k{k}": 12 for k in EVALUATED_K}
     if any(views != expected_views for views in family_views.values()):
         raise ValueError("dataset family sample views are incomplete")
+    coverage: dict[tuple[str, str], dict[str, int]] = {}
+    for family_id, metadata in family_metadata.items():
+        cell = (str(metadata["operating_mode"]), str(metadata["fault_presence"]))
+        partition = manifest.family_split[family_id]
+        counts = coverage.setdefault(cell, {"TRAIN": 0, "VALIDATION": 0, "FINAL": 0})
+        counts[partition] += 1
+    if require_coverage:
+        required_cells = {
+            (mode, fault_presence)
+            for mode in OPERATING_MODES
+            for fault_presence in ("absent", "present")
+        }
+        if set(coverage) != required_cells:
+            raise ValueError("dataset coverage cells are incomplete")
+        if any(
+            counts["TRAIN"] < 6
+            or counts["VALIDATION"] < 3
+            or counts["FINAL"] < 3
+            for counts in coverage.values()
+        ):
+            raise ValueError("dataset coverage cell minimums are not met")
     return {
         "families": len(family_ids),
         "samples": sample_count,
@@ -432,7 +564,7 @@ def collect(
         for line in sample_lines:
             stream.write(line)
             stream.write(b"\n")
-    validate_dataset(output)
+    validate_dataset(output, require_coverage=not pilot)
     elapsed = time.time() - started
     estimated_full_hours = 33.0 if not pilot else None
     return {

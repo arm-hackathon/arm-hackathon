@@ -15,6 +15,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from aeolus.habitat_v2.forecast_issue52 import (
     CandidateCatalogue,
@@ -144,6 +145,18 @@ def test_dropout_mask_is_deterministic() -> None:
     a = dropout_mask_for_history(history, manifest, cfg, family_id="fam-A", decision_step=15)
     b = dropout_mask_for_history(history, manifest, cfg, family_id="fam-A", decision_step=15)
     assert np.array_equal(a, b)
+
+
+def test_dropout_sampler_uses_registered_pipe_delimiter() -> None:
+    from aeolus.habitat_v2.forecast_issue53_dropout import _sampler_u64
+
+    expected = int.from_bytes(
+        __import__("hashlib")
+        .sha256(b"530053|fam-A|15|0|zone/co2_ppm")
+        .digest()[:8],
+        "big",
+    )
+    assert _sampler_u64(530053, "fam-A", 15, 0, "zone/co2_ppm") == expected
 
 
 def test_dropout_is_observation_only_and_leak_free() -> None:
@@ -299,6 +312,136 @@ def test_interval_calibration_requires_validation_and_is_monotone() -> None:
     scales = calibrated.per_k_interval_scale
     assert scales
     assert list(scales.values()) == sorted(scales.values())
+
+
+def test_calibrated_interval_width_has_no_uncalibrated_dropout_multiplier() -> None:
+    cp, manifest, scenario = _checkpoint_and_manifest()
+    from aeolus.habitat_v2.forecast_issue52 import TrainingSample
+    from aeolus.habitat_v2.forecast_issue52_rollout import (
+        rollout_catalogue,
+        training_samples_from_rollouts,
+    )
+
+    catalogue = CandidateCatalogue.from_scenario(scenario, base_command=cp.last_final_command)
+    rollouts = rollout_catalogue(cp, catalogue)
+    train = training_samples_from_rollouts(cp, catalogue, rollouts, split="TRAIN")
+    validation = training_samples_from_rollouts(cp, catalogue, rollouts, split="VALIDATION")
+
+    def relabel(items, prefix: str, split: str):
+        return tuple(
+            TrainingSample(
+                family_id=f"{prefix}-{index}",
+                split=split,
+                scenario_sha256=item.scenario_sha256,
+                manifest_sha256=item.manifest_sha256,
+                checkpoint_sha256=item.checkpoint_sha256,
+                schedule_sha256=item.schedule_sha256,
+                history=apply_dropout_to_history(
+                    item.history,
+                    manifest,
+                    DropoutConfig(p_uniform=0.0),
+                    family_id=f"{prefix}-{index}",
+                    decision_step=15,
+                    latest_missing_count=index % 4,
+                ),
+                schedule=item.schedule,
+                targets=item.targets,
+            )
+            for index, item in enumerate(items * 2)
+        )
+
+    model = DropoutAwareLinearForecaster.fit_for_scenario(
+        scenario,
+        manifest,
+        relabel(train, "interval-train", "TRAIN"),
+        dropout_config=DropoutConfig(p_uniform=0.0),
+        alpha=1e-4,
+    ).calibrate(relabel(validation, "interval-validation", "VALIDATION"))
+    samples_by_k = {
+        int(np.sum(~item.history.available_mask[-1])): item
+        for item in relabel(validation, "interval-check", "VALIDATION")
+    }
+    widths = {}
+    for k, item in samples_by_k.items():
+        trajectory = model.forecast(item.history, item.schedule, apply_abstention=False)
+        assert trajectory.lower is not None and trajectory.upper is not None
+        widths[k] = float(
+            np.max(
+                (trajectory.upper - trajectory.lower)
+                / np.asarray([descriptor.scale for descriptor in manifest.descriptors])
+            )
+        )
+    assert widths[3] == pytest.approx(
+        2.0 * model.per_k_interval_scale[3] * np.sqrt(32.0), abs=5e-6
+    )
+    assert widths[0] == pytest.approx(
+        2.0 * model.per_k_interval_scale[0] * np.sqrt(32.0), abs=5e-6
+    )
+
+
+def test_risk_head_calibration_keeps_threshold_nonnegative() -> None:
+    cp, manifest, scenario = _checkpoint_and_manifest()
+    from aeolus.habitat_v2.forecast_issue52 import TrainingSample
+    from aeolus.habitat_v2.forecast_issue52_rollout import (
+        rollout_catalogue,
+        training_samples_from_rollouts,
+    )
+
+    catalogue = CandidateCatalogue.from_scenario(scenario, base_command=cp.last_final_command)
+    rollouts = rollout_catalogue(cp, catalogue)
+    train = training_samples_from_rollouts(cp, catalogue, rollouts, split="TRAIN")
+    validation = training_samples_from_rollouts(cp, catalogue, rollouts, split="VALIDATION")
+    train2 = tuple(
+        TrainingSample(
+            family_id=f"risk-train-{index}",
+            split=item.split,
+            scenario_sha256=item.scenario_sha256,
+            manifest_sha256=item.manifest_sha256,
+            checkpoint_sha256=item.checkpoint_sha256,
+            schedule_sha256=item.schedule_sha256,
+            history=item.history,
+            schedule=item.schedule,
+            targets=item.targets,
+        )
+        for index, item in enumerate(train * 2)
+    )
+    validation2 = tuple(
+        TrainingSample(
+            family_id=f"risk-validation-{index}",
+            split=item.split,
+            scenario_sha256=item.scenario_sha256,
+            manifest_sha256=item.manifest_sha256,
+            checkpoint_sha256=item.checkpoint_sha256,
+            schedule_sha256=item.schedule_sha256,
+            history=apply_dropout_to_history(
+                item.history,
+                manifest,
+                DropoutConfig(p_uniform=0.0),
+                family_id=f"risk-validation-{index}",
+                decision_step=15,
+                latest_missing_count=index % 4,
+            ),
+            schedule=item.schedule,
+            targets=item.targets,
+        )
+        for index, item in enumerate(validation * 2)
+    )
+    model = DropoutAwareLinearForecaster.fit_for_scenario(
+        scenario,
+        manifest,
+        train2,
+        dropout_config=DropoutConfig(p_uniform=0.0),
+        alpha=1e-4,
+    ).fit_risk_head(train2, [0.1 + index * 0.01 for index in range(len(train2))])
+    scores = [model.risk_score(item.history, item.schedule) for item in validation2]
+    assert all(score >= 0.0 and math.isfinite(score) for score in scores)
+    calibrated = model.calibrate(
+        validation2,
+        oracle_errors=[0.1 + index * 0.01 for index in range(len(validation2))],
+        oracle_high_error_threshold=0.2,
+        abstention_k=3,
+    )
+    assert calibrated.abstention_risk_limit >= 0.0
 
 
 def test_abstention_pr_requires_truth_backed_oracle_errors() -> None:

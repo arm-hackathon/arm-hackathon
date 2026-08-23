@@ -40,6 +40,7 @@ from .scenario import Scenario
 
 ISSUE53_SCHEMA_VERSION = "aeolus_habitat_v2_forecast_issue_53_v1"
 DROPOUT_SCHEMA_VERSION = "aeolus_habitat_v2_dropout_v1"
+FORECAST_METRIC_START = 8
 
 
 class Issue53ContractError(ValueError):
@@ -188,7 +189,7 @@ class DropoutConfig:
 # ---------------------------------------------------------------------------
 
 def _sampler_u64(seed: int, family_id: str, decision_step: int, step_offset: int, descriptor_id: str) -> int:
-    payload = f"{seed}\x00{family_id}\x00{decision_step}\x00{step_offset}\x00{descriptor_id}".encode("utf-8")
+    payload = f"{seed}|{family_id}|{decision_step}|{step_offset}|{descriptor_id}".encode("utf-8")
     digest = hashlib.sha256(payload).digest()
     return int.from_bytes(digest[:8], "big")
 
@@ -485,6 +486,108 @@ def _masked_feature_matrix(
     return mat
 
 
+def _observation_uncertainty_factor(history: ForecastHistory) -> float:
+    """Return a truth-independent multiplier for irregular observation age."""
+
+    latest_age: list[float] = []
+    for column in range(history.available_mask.shape[1]):
+        available_rows = np.flatnonzero(history.available_mask[:, column])
+        latest_age.append(
+            float(HISTORY_STEPS)
+            if len(available_rows) == 0
+            else float(HISTORY_STEPS - 1 - available_rows[-1])
+        )
+    mean_age = float(np.mean(latest_age)) if latest_age else 0.0
+    missing_density = float(np.mean(~history.available_mask))
+    return 1.0 + 0.10 * mean_age + 0.50 * missing_density
+
+
+def _missingness_risk_score(
+    history: ForecastHistory,
+    coefficients: np.ndarray | None,
+    width: int,
+) -> float:
+    """Score missing latest channels by their learned observation sensitivity."""
+
+    if coefficients is None or width <= 0:
+        return 0.0
+    missing = ~history.available_mask[-1]
+    if not np.any(missing):
+        return 0.0
+    # Latest value, slope, mask, and observation-age blocks are the only
+    # observation features that change when a channel is unavailable.
+    blocks = np.stack(
+        (
+            coefficients[1 : 1 + width],
+            coefficients[1 + width : 1 + 2 * width],
+            coefficients[1 + 2 * width : 1 + 3 * width],
+            coefficients[1 + 3 * width : 1 + 4 * width],
+        ),
+        axis=0,
+    )
+    sensitivity = np.sqrt(np.sum(np.square(blocks.astype(np.float64)), axis=(0, 2)))
+    normalizer = max(float(np.median(sensitivity)), 1e-9)
+    return float(np.sum(sensitivity[missing]) / normalizer)
+
+
+def _risk_feature_vector(
+    history: ForecastHistory,
+    schedule: CandidateSchedule,
+    scenario: Scenario,
+    manifest: TargetManifest,
+    coefficients: np.ndarray | None = None,
+) -> np.ndarray:
+    """Build an observation-only risk feature vector for selective prediction."""
+
+    features = _masked_feature_matrix(history, schedule, scenario, manifest)
+    action_width = 3 + len(scenario.data["air_network"]["branches"]) + 2 * len(
+        scenario.data["zones"]
+    )
+    expected_feature_width = 4 * manifest.width + action_width + 3
+    if features.shape[1] != expected_feature_width:
+        raise Issue53ForecastError("risk feature matrix width is invalid")
+    action_start = 1 + 4 * manifest.width + 1
+    action_end = features.shape[1] - 1
+    imputed = impute_history_values(
+        history.target_values, history.available_mask, manifest
+    )[-1].astype(np.float64)
+    scales = np.asarray(
+        [descriptor.scale for descriptor in manifest.descriptors], dtype=np.float64
+    )
+    drift = 0.0
+    if coefficients is not None:
+        prediction = features @ np.asarray(coefficients, dtype=np.float64)
+        drift = float(
+            np.mean(
+                np.abs(prediction[FORECAST_METRIC_START:] - imputed[None, :])
+                / scales[None, :]
+            )
+        )
+    return np.concatenate(
+        (
+            features[0],
+            np.mean(features[:, action_start:action_end], axis=0),
+            np.asarray(
+                [
+                    float(history.latest_record.mode == mode)
+                    for mode in ("occupied", "eva_transition", "contingency", "dormant")
+                ],
+                dtype=np.float64,
+            ),
+            np.asarray(
+                [
+                    _observation_uncertainty_factor(history),
+                    _missingness_risk_score(
+                        history, coefficients, manifest.width
+                    ),
+                    drift,
+                ],
+                dtype=np.float64,
+            ),
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dropout-aware linear forecaster — development evidence only
 # ---------------------------------------------------------------------------
@@ -498,6 +601,13 @@ class DropoutAwareLinearForecaster:
     model_id: str = "issue53-dropout-linear-v1"
     # per-k interval scale: conformal residual quantile per k bin
     per_k_interval_scale: Mapping[int, float] = field(default_factory=dict, compare=False)
+    abstention_width_limit: float = field(default=8.0, compare=False)
+    abstention_min_k: int = field(default=3, compare=False)
+    abstention_risk_limit: float = field(default=1e9, compare=False)
+    risk_coefficients: np.ndarray | None = field(default=None, compare=False)
+    risk_center: np.ndarray | None = field(default=None, compare=False)
+    risk_scale: np.ndarray | None = field(default=None, compare=False)
+    risk_intercept: float = field(default=0.0, compare=False)
 
     def __post_init__(self) -> None:
         if type(self.scenario) is not Scenario or type(self.manifest) is not TargetManifest or type(self.dropout_config) is not DropoutConfig:
@@ -506,11 +616,69 @@ class DropoutAwareLinearForecaster:
             raise Issue53ForecastError("dropout forecaster manifest does not bind scenario")
         if type(self.model_id) is not str or not self.model_id:
             raise Issue53ForecastError("dropout forecaster model identity is invalid")
+        if (
+            isinstance(self.abstention_width_limit, bool)
+            or not isinstance(self.abstention_width_limit, (int, float))
+            or not math.isfinite(float(self.abstention_width_limit))
+            or float(self.abstention_width_limit) <= 0.0
+        ):
+            raise Issue53ForecastError("dropout abstention width limit is invalid")
+        if (
+            type(self.abstention_min_k) is not int
+            or self.abstention_min_k < 0
+            or self.abstention_min_k > 6
+        ):
+            raise Issue53ForecastError("dropout abstention missingness level is invalid")
+        if (
+            isinstance(self.abstention_risk_limit, bool)
+            or not isinstance(self.abstention_risk_limit, (int, float))
+            or not math.isfinite(float(self.abstention_risk_limit))
+            or float(self.abstention_risk_limit) < 0.0
+        ):
+            raise Issue53ForecastError("dropout abstention risk limit is invalid")
+        if (
+            isinstance(self.risk_intercept, bool)
+            or not isinstance(self.risk_intercept, (int, float))
+            or not math.isfinite(float(self.risk_intercept))
+            or float(self.risk_intercept) < 0.0
+        ):
+            raise Issue53ForecastError("dropout risk intercept is invalid")
         if self.coefficients is not None:
             vals = np.asarray(self.coefficients, dtype=np.float32)
-            if vals.ndim != 2 or not np.isfinite(vals).all():
+            action_width = 3 + len(self.scenario.data["air_network"]["branches"]) + 2 * len(
+                self.scenario.data["zones"]
+            )
+            expected_features = 4 * self.manifest.width + action_width + 3
+            if (
+                vals.ndim != 2
+                or vals.shape[1] != self.manifest.width
+                or vals.shape[0] != expected_features
+                or not np.isfinite(vals).all()
+            ):
                 raise Issue53ForecastError("dropout forecaster coefficients are invalid")
             object.__setattr__(self, "coefficients", _readonly(vals))
+        for name in ("risk_coefficients", "risk_center", "risk_scale"):
+            value = getattr(self, name)
+            if value is not None:
+                array = np.asarray(value, dtype=np.float64)
+                if array.ndim != 1 or not np.isfinite(array).all():
+                    raise Issue53ForecastError(f"{name} are invalid")
+                object.__setattr__(self, name, _readonly(array))
+        risk_arrays = (self.risk_coefficients, self.risk_center, self.risk_scale)
+        if any(value is not None for value in risk_arrays):
+            if any(value is None for value in risk_arrays):
+                raise Issue53ForecastError("risk head parameters are incomplete")
+            lengths = {int(np.asarray(value).shape[0]) for value in risk_arrays if value is not None}
+            action_width = 3 + len(self.scenario.data["air_network"]["branches"]) + 2 * len(
+                self.scenario.data["zones"]
+            )
+            expected_risk_width = 4 * self.manifest.width + 2 * action_width + 10
+            if (
+                len(lengths) != 1
+                or lengths != {expected_risk_width}
+                or not np.all(np.asarray(self.risk_scale) > 0.0)
+            ):
+                raise Issue53ForecastError("risk head parameter shapes are invalid")
         # freeze per_k scale
         frozen = MappingProxyType(dict(self.per_k_interval_scale))
         object.__setattr__(self, "per_k_interval_scale", frozen)
@@ -538,6 +706,7 @@ class DropoutAwareLinearForecaster:
         *,
         dropout_config: DropoutConfig,
         alpha: float = 1e-6,
+        augment_dropout: bool = True,
     ) -> "DropoutAwareLinearForecaster":
         items = tuple(samples)
         if len(items) < 3 or len({item.family_id for item in items}) < 2:
@@ -547,13 +716,22 @@ class DropoutAwareLinearForecaster:
         if type(scenario) is not Scenario or type(manifest) is not TargetManifest or type(dropout_config) is not DropoutConfig:
             raise Issue53ForecastError("fit inputs are not exact contract types")
         if manifest.scenario_sha256 != scenario.scenario_sha256:
-            raise Issue53ForecastError("fit manifest does not bind scenario")
+            raise Issue53ForecastError("fit manifest does not bind reference scenario")
         if any(
-            item.scenario_sha256 != scenario.scenario_sha256
-            or item.manifest_sha256 != manifest.manifest_sha256
+            item.history.target_values.shape[1] != manifest.width
+            or any(
+                record.topology_sha256 != manifest.topology_sha256
+                for record in item.history.records
+            )
             for item in items
         ):
-            raise Issue53ForecastError("fit samples do not bind scenario or manifest")
+            raise Issue53ForecastError("fit samples do not bind reference topology")
+        try:
+            for item in items:
+                for command in item.schedule.commands:
+                    _command_vector(scenario, command.to_mapping())
+        except (Issue52ForecastError, KeyError, TypeError, ValueError) as error:
+            raise Issue53ForecastError("fit samples contain incompatible commands") from error
         if not math.isfinite(float(alpha)) or alpha <= 0.0:
             raise Issue53ForecastError("fit regularization must be positive and finite")
         # Augment each sample's history with deterministic dropout (same family/decision binding)
@@ -567,7 +745,17 @@ class DropoutAwareLinearForecaster:
                 decision_step = int(item.history.records[-1].completed_step)
             except Exception:
                 decision_step = 15
-            masked_history = apply_dropout_to_history(item.history, manifest, dropout_config, family_id=family_id, decision_step=decision_step)
+            masked_history = (
+                apply_dropout_to_history(
+                    item.history,
+                    manifest,
+                    dropout_config,
+                    family_id=family_id,
+                    decision_step=decision_step,
+                )
+                if augment_dropout
+                else item.history
+            )
             augmented.append(
                 TrainingSample(
                     family_id=item.family_id,
@@ -603,6 +791,9 @@ class DropoutAwareLinearForecaster:
         samples: Sequence[TrainingSample],
         *,
         quantile: float = 0.90,
+        oracle_errors: Sequence[float] | None = None,
+        oracle_high_error_threshold: float | None = None,
+        abstention_k: int | None = None,
     ) -> "DropoutAwareLinearForecaster":
         """Calibrate normalized interval scales on VALIDATION only."""
 
@@ -624,13 +815,18 @@ class DropoutAwareLinearForecaster:
         )
         residuals: dict[int, list[float]] = {}
         for item in items:
-            if (
-                item.scenario_sha256 != self.scenario.scenario_sha256
-                or item.manifest_sha256 != self.manifest.manifest_sha256
+            if item.history.target_values.shape[1] != self.manifest.width or any(
+                record.topology_sha256 != self.manifest.topology_sha256
+                for record in item.history.records
             ):
+                raise Issue53ForecastError("calibration sample does not bind model topology")
+            try:
+                for command in item.schedule.commands:
+                    _command_vector(self.scenario, command.to_mapping())
+            except (Issue52ForecastError, KeyError, TypeError, ValueError) as error:
                 raise Issue53ForecastError(
-                    "calibration sample scenario or manifest does not bind model"
-                )
+                    "calibration sample contains incompatible commands"
+                ) from error
             features = _masked_feature_matrix(
                 item.history, item.schedule, self.scenario, self.manifest
             )
@@ -648,14 +844,228 @@ class DropoutAwareLinearForecaster:
             if previous_scale is not None:
                 calibrated[k] = max(calibrated[k], previous_scale)
             previous_scale = calibrated[k]
-        digest = hashlib.sha256(canonical_json_bytes(calibrated)).hexdigest()[:16]
+        abstention_limit = self.abstention_width_limit
+        abstention_min_k = self.abstention_min_k
+        abstention_risk_limit = self.abstention_risk_limit
+        risk_coefficients = self.risk_coefficients
+        risk_center = self.risk_center
+        risk_scale = self.risk_scale
+        risk_intercept = self.risk_intercept
+        if oracle_errors is not None:
+            if not isinstance(oracle_errors, Sequence) or isinstance(
+                oracle_errors, (str, bytes)
+            ):
+                raise Issue53ForecastError("calibration oracle errors must be a sequence")
+            errors = [float(value) for value in oracle_errors]
+            if len(errors) != len(items) or not all(math.isfinite(value) for value in errors):
+                raise Issue53ForecastError("calibration oracle errors are invalid")
+            if oracle_high_error_threshold is None:
+                oracle_threshold = float(np.quantile(np.asarray(errors), 0.90))
+            else:
+                oracle_threshold = float(oracle_high_error_threshold)
+                if not math.isfinite(oracle_threshold) or oracle_threshold < 0.0:
+                    raise Issue53ForecastError(
+                        "calibration oracle threshold is invalid"
+                    )
+            widths_by_family: dict[str, list[float]] = {}
+            errors_by_family: dict[str, list[float]] = {}
+            risks_by_family: dict[str, list[float]] = {}
+            for item, error in zip(items, errors):
+                if abstention_k is not None and int(
+                    np.sum(~item.history.available_mask[-1])
+                ) != abstention_k:
+                    continue
+                k = int(np.sum(~item.history.available_mask[-1]))
+                width = (
+                    2.0
+                    * max(
+                        float(
+                            calibrated.get(
+                                k, calibrated.get(max(calibrated, default=0), 0.02)
+                            )
+                        ),
+                        0.02,
+                    )
+                    * math.sqrt(HORIZON_STEPS)
+                )
+                widths_by_family.setdefault(item.family_id, []).append(width)
+                errors_by_family.setdefault(item.family_id, []).append(error)
+                risks_by_family.setdefault(item.family_id, []).append(
+                    self.risk_score(item.history, item.schedule)
+                )
+            widths = [float(np.mean(widths_by_family[family_id])) for family_id in sorted(widths_by_family)]
+            selected_errors = [
+                float(np.mean(errors_by_family[family_id]))
+                for family_id in sorted(errors_by_family)
+            ]
+            selected_risks = [
+                float(np.mean(risks_by_family[family_id]))
+                for family_id in sorted(risks_by_family)
+            ]
+            if not widths or len(widths) != len(selected_errors):
+                raise Issue53ForecastError(
+                    "calibration abstention bin has no aligned validation samples"
+                )
+            if abstention_k is not None:
+                if type(abstention_k) is not int or not 0 <= abstention_k <= 6:
+                    raise Issue53ForecastError("calibration abstention bin is invalid")
+                abstention_min_k = abstention_k
+            if abstention_k is not None:
+                abstention_limit = max(widths) + 1.0
+            risk_candidates = sorted(
+                {0.0, *selected_risks, max(selected_risks, default=0.0) + 1.0}
+            )
+            candidate_metrics: list[tuple[float, float, float, float, float]] = []
+            for risk_limit in risk_candidates:
+                predicted = [risk > risk_limit for risk in selected_risks]
+                high = [error > oracle_threshold for error in selected_errors]
+                tp = sum(is_high and is_abstain for is_high, is_abstain in zip(high, predicted))
+                fp = sum(not is_high and is_abstain for is_high, is_abstain in zip(high, predicted))
+                fn = sum(is_high and not is_abstain for is_high, is_abstain in zip(high, predicted))
+                precision = tp / (tp + fp) if tp + fp else 0.0
+                recall = tp / (tp + fn) if tp + fn else 0.0
+                f1 = 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
+                candidate_metrics.append(
+                    (
+                        risk_limit,
+                        precision,
+                        recall,
+                        f1,
+                        sum(predicted) / len(predicted),
+                    )
+                )
+            passing = [
+                item
+                for item in candidate_metrics
+                if item[1] >= 0.60 and item[2] >= 0.80
+            ]
+            selected = min(
+                passing or candidate_metrics,
+                key=lambda item: (
+                    -item[3],
+                    -item[2],
+                    -item[1],
+                    item[4],
+                    item[0],
+                ),
+            )
+            abstention_risk_limit = selected[0]
+        digest = hashlib.sha256(
+            canonical_json_bytes(
+                {
+                    "intervals": calibrated,
+                    "abstention_width_limit": abstention_limit,
+                    "abstention_min_k": abstention_min_k,
+                    "abstention_risk_limit": abstention_risk_limit,
+                    "risk_coefficients": None
+                    if risk_coefficients is None
+                    else risk_coefficients.tolist(),
+                    "risk_center": None
+                    if risk_center is None
+                    else risk_center.tolist(),
+                    "risk_scale": None if risk_scale is None else risk_scale.tolist(),
+                    "risk_intercept": float(risk_intercept),
+                }
+            )
+        ).hexdigest()[:16]
         return replace(
             self,
             per_k_interval_scale=calibrated,
             model_id=f"{self.model_id}-cal-{digest}",
+            abstention_width_limit=abstention_limit,
+            abstention_min_k=abstention_min_k,
+            abstention_risk_limit=abstention_risk_limit,
+            risk_coefficients=risk_coefficients,
+            risk_center=risk_center,
+            risk_scale=risk_scale,
+            risk_intercept=risk_intercept,
         )
 
-    def forecast(self, history: ForecastHistory, schedule: CandidateSchedule) -> ForecastTrajectory:
+    def fit_risk_head(
+        self,
+        samples: Sequence[TrainingSample],
+        oracle_errors: Sequence[float],
+        *,
+        alpha: float = 1.0,
+    ) -> "DropoutAwareLinearForecaster":
+        """Fit an observation-only error predictor on TRAIN family decisions."""
+
+        items = tuple(samples)
+        errors = np.asarray(oracle_errors, dtype=np.float64)
+        if not items or len(items) != len(errors) or not np.isfinite(errors).all():
+            raise Issue53ForecastError("risk head training inputs are invalid")
+        if isinstance(alpha, bool) or not math.isfinite(float(alpha)) or float(alpha) <= 0.0:
+            raise Issue53ForecastError("risk head regularization must be positive and finite")
+        if any(item.split != "TRAIN" for item in items):
+            raise Issue53ForecastError("risk head accepts TRAIN samples only")
+        grouped: dict[str, list[tuple[np.ndarray, float]]] = {}
+        for item, error in zip(items, errors):
+            grouped.setdefault(item.family_id, []).append(
+                (
+                    _risk_feature_vector(
+                        item.history,
+                        item.schedule,
+                        self.scenario,
+                        self.manifest,
+                        self.coefficients,
+                    ),
+                    float(error),
+                )
+            )
+        features = np.stack(
+            [
+                np.mean([feature for feature, _ in grouped[family_id]], axis=0)
+                for family_id in sorted(grouped)
+            ]
+        )
+        if features.ndim != 2 or features.shape[1] == 0:
+            raise Issue53ForecastError("risk head feature matrix is invalid")
+        errors = np.asarray(
+            [
+                np.mean([error for _, error in grouped[family_id]])
+                for family_id in sorted(grouped)
+            ],
+            dtype=np.float64,
+        )
+        center = features.mean(axis=0)
+        scale = features.std(axis=0)
+        scale[scale < 1e-9] = 1.0
+        normalized = (features - center) / scale
+        target = float(errors.mean())
+        gram = normalized.T @ normalized + float(alpha) * np.eye(normalized.shape[1])
+        coefficients = np.linalg.solve(gram, normalized.T @ (errors - target))
+        return replace(
+            self,
+            risk_coefficients=coefficients,
+            risk_center=center,
+            risk_scale=scale,
+            risk_intercept=target,
+        )
+
+    def risk_score(self, history: ForecastHistory, schedule: CandidateSchedule) -> float:
+        if (
+            self.risk_coefficients is None
+            or self.risk_center is None
+            or self.risk_scale is None
+        ):
+            return _missingness_risk_score(history, self.coefficients, self.manifest.width)
+        features = _risk_feature_vector(
+            history,
+            schedule,
+            self.scenario,
+            self.manifest,
+            self.coefficients,
+        )
+        normalized = (features - self.risk_center) / self.risk_scale
+        return max(0.0, float(self.risk_intercept + normalized @ self.risk_coefficients))
+
+    def forecast(
+        self,
+        history: ForecastHistory,
+        schedule: CandidateSchedule,
+        *,
+        apply_abstention: bool = True,
+    ) -> ForecastTrajectory:
         if history.target_values.shape[1] != self.manifest.width:
             return ForecastTrajectory("INVALID_OUTPUT", None, None, None, self.model_id, "manifest_width_mismatch")
         # Mode applicability same as Issue 52
@@ -714,8 +1124,8 @@ class DropoutAwareLinearForecaster:
         upper = np.empty_like(mean)
         for idx, desc in enumerate(self.manifest.descriptors):
             width = float(desc.scale) * base_norm
-            # monotone widening with horizon + k
-            spread = width * np.sqrt(np.arange(1, HORIZON_STEPS + 1, dtype=np.float64)) * (1.0 + 0.15 * k)
+            # Horizon growth is calibrated through the validation residual scale.
+            spread = width * np.sqrt(np.arange(1, HORIZON_STEPS + 1, dtype=np.float64))
             lower[:, idx] = mean[:, idx] - spread
             upper[:, idx] = mean[:, idx] + spread
         if not np.isfinite(lower).all() or not np.isfinite(upper).all() or np.any(lower > upper):
@@ -724,11 +1134,29 @@ class DropoutAwareLinearForecaster:
         # Compute normalized width; abstain only if interval too wide or k exceeds calibrated capacity
         scales = np.asarray([d.scale for d in self.manifest.descriptors], dtype=np.float64)
         norm_width = float(np.max((upper - lower) / scales[None, :]))
-        if norm_width > 8.0:  # wider than Issue 52's 4.0 — dropout lane tolerates wider but still bounded
+        risk_score = self.risk_score(history, schedule)
+        if (
+            apply_abstention
+            and k >= self.abstention_min_k
+            and risk_score > self.abstention_risk_limit
+        ):
+            return ForecastTrajectory(
+                "ABSTAIN",
+                None,
+                None,
+                None,
+                self.model_id,
+                "missingness_risk_limit",
+            )
+        if (
+            apply_abstention
+            and k >= self.abstention_min_k
+            and norm_width > self.abstention_width_limit
+        ):
             return ForecastTrajectory("ABSTAIN", None, None, None, self.model_id, "uncertainty_limit")
         # If k is large and we have no calibration for that k, be conservative
         max_calibrated_k = max(self.per_k_interval_scale.keys(), default=0)
-        if k > max_calibrated_k + 2 and k >= 5:
+        if apply_abstention and k > max_calibrated_k + 2 and k >= 5:
             return ForecastTrajectory("ABSTAIN", None, None, None, self.model_id, "uncalibrated_missing_level")
         return ForecastTrajectory("PREDICTION", _readonly(mean), _readonly(lower), _readonly(upper), self.model_id)
 
