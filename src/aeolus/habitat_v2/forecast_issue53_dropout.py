@@ -893,13 +893,13 @@ class DropoutAwareLinearForecaster:
                 risks_by_family.setdefault(item.family_id, []).append(
                     self.risk_score(item.history, item.schedule)
                 )
-            widths = [float(np.mean(widths_by_family[family_id])) for family_id in sorted(widths_by_family)]
+            widths = [float(max(widths_by_family[family_id])) for family_id in sorted(widths_by_family)]
             selected_errors = [
                 float(np.mean(errors_by_family[family_id]))
                 for family_id in sorted(errors_by_family)
             ]
             selected_risks = [
-                float(np.mean(risks_by_family[family_id]))
+                float(max(risks_by_family[family_id]))
                 for family_id in sorted(risks_by_family)
             ]
             if not widths or len(widths) != len(selected_errors):
@@ -1134,7 +1134,11 @@ class DropoutAwareLinearForecaster:
         # Compute normalized width; abstain only if interval too wide or k exceeds calibrated capacity
         scales = np.asarray([d.scale for d in self.manifest.descriptors], dtype=np.float64)
         norm_width = float(np.max((upper - lower) / scales[None, :]))
-        risk_score = self.risk_score(history, schedule)
+        risk_score = (
+            self.risk_score(history, schedule)
+            if apply_abstention and k >= self.abstention_min_k
+            else 0.0
+        )
         if (
             apply_abstention
             and k >= self.abstention_min_k

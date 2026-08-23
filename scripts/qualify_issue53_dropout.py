@@ -1083,7 +1083,7 @@ def _abstention_pr_curve(
         if status == "INVALID_OUTPUT":
             continue
         risk = float(
-            np.mean(
+            np.max(
                 [model.risk_score(item.history, item.schedule) for item, _ in items]
             )
         )
