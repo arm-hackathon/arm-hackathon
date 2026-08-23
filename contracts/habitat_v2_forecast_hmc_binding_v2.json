@@ -1,0 +1,237 @@
+{
+  "arbitration_receipt_schema_sha256": "560ccc0fbb5cdeb8364a36dda5f87282e04bd85d8895a45449759712b335a804",
+  "binding_sha256": "aa37ae6394031241d317bcfcc31ea2e3da0b4701ddd96f04dfbc90cf3142e63d",
+  "control_trace_schema_sha256": "6398cf76c013f1008efe980a0bbc40f9ba668a128191336aa29c04485e32e8b5",
+  "external_command_contract_sha256": "be06976a01085585772527b883bb2a7539ac9f88a3653ad7f9b0e36845d73281",
+  "final_hmc_commit_sha": "3bc5da3d716212cac6524b088a963b6abf47a0ef",
+  "final_hmc_tree_sha": "37912ee2c24bdb17491c424e75f0010a4967bea1",
+  "health_policy_sha256": "db0352334caf512dd4f85cf2903012cf9756ccb0d7d8aa2146c28848f2087713",
+  "hmc_contract_sha256": "9f4d269ad8d073d6370f5239d8a78f2541db3001097a460447a8feb84fee2414",
+  "hmc_source_file_manifest_sha256": "f95e324051b2cf4a06b0b7784556144f46e721a607bdd05af90a3007c1d403a8",
+  "hmc_source_files": [
+    {
+      "git_blob_sha1": "e12b3409d770f1f9c3133facc664b68dd37db018",
+      "path": "contracts/habitat_v2_hmc_v1.json",
+      "sha256": "9f4d269ad8d073d6370f5239d8a78f2541db3001097a460447a8feb84fee2414"
+    },
+    {
+      "git_blob_sha1": "a736fd4f039f96e51848d06ae83c6750819796a1",
+      "path": "pyproject.toml",
+      "sha256": "170b987bc7efb93418b862b2454191b36b26dcbb9aa2a1bb52e60d3b1634d58c"
+    },
+    {
+      "git_blob_sha1": "92f7ec3aae589b17737ed3c51045530380b2595c",
+      "path": "scenarios/habitat_v2_actuator_feedback.json",
+      "sha256": "e20dd4c4cab40a7dc5855aed7689b4d83f83612b215ff70465a7cae04a8eb4f2"
+    },
+    {
+      "git_blob_sha1": "165f1d60cf6170b6ff0bc4f7c2e18c21bb0a665d",
+      "path": "src/aeolus/habitat_v2/__init__.py",
+      "sha256": "782213b509533cd10012dbf0e539cd34eac0cdcf0d097638ce52d32484f1d8cc"
+    },
+    {
+      "git_blob_sha1": "661bc9bc74ed8d1fde4bc43b569d8e91b4ba460a",
+      "path": "src/aeolus/habitat_v2/__main__.py",
+      "sha256": "359b951db84d259fd592d09b4381907944acd1109ace47863eac8f5ca08dee26"
+    },
+    {
+      "git_blob_sha1": "7627c25b4923ab8a16815a77200e23ab0c9bd2f4",
+      "path": "src/aeolus/habitat_v2/actuators.py",
+      "sha256": "c5aa731babbd3af38d2f51268b9be66fc128e09f5d53d7153e4e71c83e3d639a"
+    },
+    {
+      "git_blob_sha1": "27504c24b7dfa910ddd0d252dd59813a8dda81eb",
+      "path": "src/aeolus/habitat_v2/air_network.py",
+      "sha256": "196d7358ff62536e139cfaaea561f7828ad90aadbd46b196019222b2a8df065c"
+    },
+    {
+      "git_blob_sha1": "a9e374e432ede9a1639a89b79190dab097467d4a",
+      "path": "src/aeolus/habitat_v2/config.py",
+      "sha256": "a1e59931dd304088fb8d94a4a2f3fcc203ca63f2f8520d124b65be5f21dd3767"
+    },
+    {
+      "git_blob_sha1": "185d7211969358181b96257984c4899d7b0bbe33",
+      "path": "src/aeolus/habitat_v2/control_trace.py",
+      "sha256": "e3f49ab0251d40c5c40981a949139fc487f8f6542d18b717228cba57ff53c67d"
+    },
+    {
+      "git_blob_sha1": "2631ac46a3c60da1db1c146c689d548a1956695c",
+      "path": "src/aeolus/habitat_v2/faults.py",
+      "sha256": "43b34d79326897eb5fc4c1e93fc6b4804079dd1cee4b1bd876f034fce08c71bf"
+    },
+    {
+      "git_blob_sha1": "9de1afb87d896092bd1380d95bb5e3baf1d83ed5",
+      "path": "src/aeolus/habitat_v2/health.py",
+      "sha256": "949853750279a2c753141f597fad441d0fe1fff15331b91cd1a0033b85ee65df"
+    },
+    {
+      "git_blob_sha1": "1a4ab570ee0d28d7a28a27fc8720d806be17a31f",
+      "path": "src/aeolus/habitat_v2/hmc.py",
+      "sha256": "1adc1ccf4672b3d4d7b307f1e6ffa233eead0e1c997c12ef6b70c8de7cc7583e"
+    },
+    {
+      "git_blob_sha1": "7dc3ccc859deb44b5498a03934ad62a0a43c58f0",
+      "path": "src/aeolus/habitat_v2/hmc_contract.py",
+      "sha256": "9878cca3b1c631a57e1ca804ba746cbe3a1805fd448e039a2570e4da821acdbf"
+    },
+    {
+      "git_blob_sha1": "b1bec51c789eb696221022432b44bb9174074e02",
+      "path": "src/aeolus/habitat_v2/instrumentation.py",
+      "sha256": "f5bb4f2b1307c9e6be54e5ecd6ed234972aca1cf463e10ad05637bdc3edf4dc2"
+    },
+    {
+      "git_blob_sha1": "e536a0f5ab27021b8bf164f3c7b88ecdae13bf76",
+      "path": "src/aeolus/habitat_v2/observability.py",
+      "sha256": "f605cd51ac947a24cb31bbefb205f7397d28cd4a80b950b154aa667d577125a9"
+    },
+    {
+      "git_blob_sha1": "66d234e11ae79e114221ce660d5036c04c0b2d72",
+      "path": "src/aeolus/habitat_v2/physics.py",
+      "sha256": "8c58db8ad19d2c3f9f5407600c50ef46df368bb11fa4e4b7a50c6862ec76837a"
+    },
+    {
+      "git_blob_sha1": "011affcf38c6efb9a1820f34ff59cdae6ca9d605",
+      "path": "src/aeolus/habitat_v2/proposal.py",
+      "sha256": "6da66fdcc58d77454c6829558ed3e55f1774181571af70e32f327b6ed4b94963"
+    },
+    {
+      "git_blob_sha1": "8ce5d3dbe64c1208d1a9f46cc1b63f39842b8b51",
+      "path": "src/aeolus/habitat_v2/qualification.py",
+      "sha256": "4934cf79245695ac8248f6e1b315bf3333e7767ae26e74224839f19fa80b61ba"
+    },
+    {
+      "git_blob_sha1": "cbc0b202f5ea5b8332a7ff5b8af691424588c5ad",
+      "path": "src/aeolus/habitat_v2/qualification_packet.py",
+      "sha256": "f6eedaa7e31b644dbc6d6049f03b99eacf8a038b7654cc0412ab27f7752d05d4"
+    },
+    {
+      "git_blob_sha1": "51b50fe2bf1434b02c3ba483993089c3dd69312a",
+      "path": "src/aeolus/habitat_v2/runner.py",
+      "sha256": "97f0768650d890479643a89c19c8578c416fe21a1c65b293767aef8e66096fa2"
+    },
+    {
+      "git_blob_sha1": "0ffc42b6793d50e0ae4e1820e0d6e575f73f92ef",
+      "path": "src/aeolus/habitat_v2/safety.py",
+      "sha256": "a7ac4ffdfe34ddd209ac3265c4ff11d473ace2fe04844cdb60dda8c9a26487b1"
+    },
+    {
+      "git_blob_sha1": "b9ebbac229e6ae4eb767540e093ae1b90c92fe73",
+      "path": "src/aeolus/habitat_v2/scenario.py",
+      "sha256": "2134fa98756892e04aaeb2e1da5b4058cd1360435e4e64aed2b82d301ec8905c"
+    },
+    {
+      "git_blob_sha1": "08e8c9e5cf967fa46691dd5f3c3ccf700f3903dd",
+      "path": "src/aeolus/habitat_v2/snapshot.py",
+      "sha256": "29c627edbcd51c92f2f5f7e52301979cd1e38e3c5a84617ec50444a94be6de85"
+    },
+    {
+      "git_blob_sha1": "488e7c299dea329ca932e24cde4b14c25a8adb06",
+      "path": "src/aeolus/habitat_v2/state.py",
+      "sha256": "ff509d40fe332aa41f4fd3af70e842aa1a15874850314e57a58a512767781c3e"
+    },
+    {
+      "git_blob_sha1": "48f39e24f0192acce8d92781f4480ba31b09a8dd",
+      "path": "src/aeolus/habitat_v2/telemetry.py",
+      "sha256": "a60ca3795ba3dc56ddcabff3188ddaf6849d29b44757e2af388661da975ce672"
+    },
+    {
+      "git_blob_sha1": "144c9bcd18d104db93dd14dd9043490f3552aed8",
+      "path": "src/aeolus/habitat_v2/trace.py",
+      "sha256": "3d379afdbef01c75a3ff2686f04dd21d992fc0e6d361a62121423b5f80b82b72"
+    },
+    {
+      "git_blob_sha1": "11a8aa36d5293c39d5ae7943093b4162849fb539",
+      "path": "uv.lock",
+      "sha256": "e6cab8d202b49fa120b1d81561cd51056fa5b214b1332e4936f1b32c05bfa0ca"
+    }
+  ],
+  "observable_topology": {
+    "branches": [
+      {
+        "damper_id": "air_processing_bay_supply_damper",
+        "zone_id": "air_processing_bay"
+      },
+      {
+        "damper_id": "airlock_suitport_supply_damper",
+        "zone_id": "airlock_suitport"
+      },
+      {
+        "damper_id": "common_galley_supply_damper",
+        "zone_id": "common_galley"
+      },
+      {
+        "damper_id": "crew_quarters_a_supply_damper",
+        "zone_id": "crew_quarters_a"
+      },
+      {
+        "damper_id": "crew_quarters_b_supply_damper",
+        "zone_id": "crew_quarters_b"
+      },
+      {
+        "damper_id": "equipment_power_bay_supply_damper",
+        "zone_id": "equipment_power_bay"
+      },
+      {
+        "damper_id": "hygiene_medical_supply_damper",
+        "zone_id": "hygiene_medical"
+      },
+      {
+        "damper_id": "laboratory_supply_damper",
+        "zone_id": "laboratory"
+      }
+    ],
+    "environmental_channels": [
+      "temperature_k",
+      "pressure_pa",
+      "co2_ppm",
+      "o2_mole_fraction",
+      "relative_humidity"
+    ],
+    "fan_id": "primary_supply_fan",
+    "operational_feedback_channels": [
+      "fan_speed_fraction",
+      "fan_dc_bus_current_a",
+      "damper_position_by_id",
+      "branch_airflow_m3_s",
+      "branch_differential_pressure_pa",
+      "scrubber_capture_rate_mol_s",
+      "condenser_removal_rate_mol_s",
+      "cooling_delivery_w",
+      "oxygen_delivery_mol_s",
+      "battery_state_of_charge",
+      "oxygen_store_fraction",
+      "sorbent_remaining_fraction"
+    ],
+    "operational_resource_gauge_channels": [
+      "battery_state_of_charge",
+      "oxygen_store_fraction",
+      "sorbent_remaining_fraction"
+    ],
+    "schema_version": "aeolus_habitat_v2_observable_topology_v1",
+    "zone_ids": [
+      "air_processing_bay",
+      "airlock_suitport",
+      "common_galley",
+      "crew_quarters_a",
+      "crew_quarters_b",
+      "equipment_power_bay",
+      "hygiene_medical",
+      "laboratory"
+    ]
+  },
+  "observable_topology_sha256": "b0246a9dc8f847c3236068c8e1eeeddb31809a680e6133eaf038ea197d6e10e6",
+  "preflight_contract_sha256": "45949d05c99e06d980920e2d2d8905315221d96c80e3ea3a2755f6fa1784ede5",
+  "proposal_receipt_schema_sha256": "ec3209b3f01abee275aec524c9959a58a3d231ed0cf129b03831793363bf1626",
+  "reference_scenario_path": "scenarios/habitat_v2_actuator_feedback.json",
+  "reference_scenario_sha256": "a9ee8eecdb4a952ef95347edcabb7dad614280eb496877cc9cddf8a5c9f77de7",
+  "release_tier": "DEVELOPMENT_FIXTURE_ONLY",
+  "safety_policy_sha256": "198cabe62a079eb35bc40aba0c387c08aa009726f7d15f988ae481e5afe82f19",
+  "schema_version": "aeolus_habitat_v2_forecast_hmc_binding_v2",
+  "snapshot_schema_sha256": "85c500a6971fe01dff4b9789a0882ab75e7883c37e15a860adb1a87a46f39970",
+  "snapshot_verification_contract_sha256": "c6154bb7bcf4ab4e86e0d1ada7f6be229a1ae3c805d9c948c907744ab3babee1",
+  "snapshot_verification_receipt_schema_sha256": "db54a6c1d78e082db88cdd8300437fe4f6f68998ea83c63c8f63519d4d84b039",
+  "step_receipt_schema_sha256": "fe9cbc362b4262df9e310ed5803727f93312c6a30df4ca973714a3211866ca64",
+  "terminal_receipt_schema_sha256": "265b6d595f4cad28d91bea79e6a28529303e3a9835d71575e0b1087a9f881a40",
+  "reviewed_source_package": "contracts/habitat-v2-forecast-reviewed-hmc-v2",
+  "reviewed_source_package_manifest_sha256": "5f8051acd690f7da33cb8915d1d342bb1072eb40c9628dac3ce1aa0f2235b19d"
+}

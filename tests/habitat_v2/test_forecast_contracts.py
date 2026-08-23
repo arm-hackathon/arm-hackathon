@@ -39,7 +39,7 @@ def test_loader_rejects_frozen_artifact_self_hash_tamper(
 
     def tampered(path: Path) -> object:
         value = original(path)
-        if path.name == "habitat_v2_forecast_hmc_binding_v1.json":
+        if path.name == "habitat_v2_forecast_hmc_binding_v2.json":
             value = dict(value)
             value["final_hmc_tree_sha"] = "0" * 40
         return value

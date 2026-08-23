@@ -32,7 +32,7 @@ from .projection import (
 )
 
 
-FINAL_HMC_COMMIT_SHA = "79d6a718e0d44122a763bb72f9c8ed929f39fd23"
+FINAL_HMC_COMMIT_SHA = "3bc5da3d716212cac6524b088a963b6abf47a0ef"
 PATH_PREFIX = "development-fixture-only/"
 WINDOW_STEPS = 4
 HORIZON_STEPS = 2

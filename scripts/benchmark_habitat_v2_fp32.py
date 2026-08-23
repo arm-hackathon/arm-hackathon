@@ -13,7 +13,7 @@ from aeolus.habitat_v2.forecast.arm_optimization import (
 )
 from aeolus.habitat_v2.forecast.corpus import canonical_json_bytes
 
-SOURCE_MODEL_SHA256 = "a6e4ef34fc837bb6539a84e20d015bbd7bbfe4e9fd5a6fc74e3f0217bd978d9a"
+SOURCE_MODEL_SHA256 = "0de4b5cdb6ec2b47be260a06f924d8eb00f1def16d5ae668b3ab5191251f29df"
 _CONVERSION_FIELDS = frozenset(
     {
         "schema_version",

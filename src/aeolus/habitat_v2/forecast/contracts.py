@@ -24,7 +24,7 @@ from ..telemetry import ObservableTopology, derive_observable_topology
 
 
 RELEASE_TIER = "DEVELOPMENT_FIXTURE_ONLY"
-_BINDING_SHA256 = "f1890ca5813a98bb13bc628263c85c152fca28c0464843dc8304773b43a05bcc"
+_BINDING_SHA256 = "aa37ae6394031241d317bcfcc31ea2e3da0b4701ddd96f04dfbc90cf3142e63d"
 _ALARM_SHA256 = "f27db07c4b7d15a09ec625855d3131bb21734d8725ccb9644a78b982921d9aec"
 _CATALOGUE_SHA256 = "476df714510cc9435a4b82ebb23c8ebfab7d6953930c3b0481124a2af45521f9"
 _PROFILE_SHA256 = "e6748b21735b3fce668ffccc0b820ebf4df5ab61d204bffb540b3b4e612e3fed"
@@ -35,12 +35,12 @@ _FIXTURE_SCENARIO_SHA256 = (
 _REFERENCE_SCENARIO_SHA256 = (
     "a9ee8eecdb4a952ef95347edcabb7dad614280eb496877cc9cddf8a5c9f77de7"
 )
-_PACKAGED_REVIEWED_HMC_DIRECTORY = (
-    "contracts/habitat-v2-forecast-reviewed-hmc-v1"
-)
+_PACKAGED_REVIEWED_HMC_DIRECTORY = "contracts/habitat-v2-forecast-reviewed-hmc-v2"
 _PACKAGED_REVIEWED_HMC_MANIFEST_SHA256 = (
-    "b630e90b57ac25aec87576bc6ed9757b811c477abc9ab32181c4134ce6dea9d2"
+    "5f8051acd690f7da33cb8915d1d342bb1072eb40c9628dac3ce1aa0f2235b19d"
 )
+_FINAL_HMC_COMMIT_SHA = "3bc5da3d716212cac6524b088a963b6abf47a0ef"
+_FINAL_HMC_TREE_SHA = "37912ee2c24bdb17491c424e75f0010a4967bea1"
 
 
 class ForecastContractError(ValueError):
@@ -173,7 +173,7 @@ def _validate_current_source_bytes(
                 "diff",
                 "--quiet",
                 "--ignore-cr-at-eol",
-                "79d6a718e0d44122a763bb72f9c8ed929f39fd23",
+                _FINAL_HMC_COMMIT_SHA,
                 "--",
                 manifest_entry["path"],
             ],
@@ -262,7 +262,7 @@ def _final_git_source(root: Path, path: str) -> bytes:
                 "-C",
                 str(root),
                 "show",
-                f"79d6a718e0d44122a763bb72f9c8ed929f39fd23:{path}",
+                f"{_FINAL_HMC_COMMIT_SHA}:{path}",
             ],
             check=False,
             capture_output=True,
@@ -299,12 +299,12 @@ def _packaged_reviewed_source(root: Path, path: str) -> bytes:
     )
     if (
         manifest["schema_version"]
-        != "aeolus_habitat_v2_forecast_reviewed_hmc_package_v1"
+        != "aeolus_habitat_v2_forecast_reviewed_hmc_package_v2"
         or manifest["release_tier"] != RELEASE_TIER
         or manifest["original_hmc_commit_sha"]
-        != "79d6a718e0d44122a763bb72f9c8ed929f39fd23"
+        != _FINAL_HMC_COMMIT_SHA
         or manifest["original_hmc_tree_sha"]
-        != "91cea3b4c2334a4ece140bd1bf7144353f52ec0d"
+        != _FINAL_HMC_TREE_SHA
     ):
         raise ForecastContractError("packaged reviewed HMC identity is unsupported")
     _self_hash(
@@ -415,18 +415,23 @@ def _validate_binding(root: Path, value: Mapping[str, Any]) -> None:
         "observable_topology",
         "hmc_source_files",
         "hmc_source_file_manifest_sha256",
+        "reviewed_source_package",
+        "reviewed_source_package_manifest_sha256",
         "binding_sha256",
     }
     _exact(value, fields, "HMC binding")
     if (
-        value["schema_version"] != "aeolus_habitat_v2_forecast_hmc_binding_v1"
+        value["schema_version"] != "aeolus_habitat_v2_forecast_hmc_binding_v2"
         or value["release_tier"] != RELEASE_TIER
+        or value["reviewed_source_package"] != _PACKAGED_REVIEWED_HMC_DIRECTORY
+        or value["reviewed_source_package_manifest_sha256"]
+        != _PACKAGED_REVIEWED_HMC_MANIFEST_SHA256
     ):
         raise ForecastContractError("HMC binding schema/release tier is unsupported")
     _self_hash(value, "binding_sha256", _BINDING_SHA256)
     if (
-        value["final_hmc_commit_sha"] != "79d6a718e0d44122a763bb72f9c8ed929f39fd23"
-        or value["final_hmc_tree_sha"] != "91cea3b4c2334a4ece140bd1bf7144353f52ec0d"
+        value["final_hmc_commit_sha"] != _FINAL_HMC_COMMIT_SHA
+        or value["final_hmc_tree_sha"] != _FINAL_HMC_TREE_SHA
     ):
         raise ForecastContractError(
             "HMC Git identity drifts from final reviewed source"
@@ -754,7 +759,7 @@ def load_forecast_contracts(root: str | Path) -> ForecastContracts:
     """Load the only supported D1 fixture bundle, validating every binding."""
     root_path = Path(root).resolve()
     contract_dir = root_path / "contracts"
-    binding = _strict_json(contract_dir / "habitat_v2_forecast_hmc_binding_v1.json")
+    binding = _strict_json(contract_dir / "habitat_v2_forecast_hmc_binding_v2.json")
     alarm = _strict_json(contract_dir / "habitat_v2_forecast_alarm_manifest_v1.json")
     catalogue = _strict_json(
         contract_dir / "habitat_v2_forecast_action_catalogue_v1.json"

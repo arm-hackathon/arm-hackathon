@@ -65,7 +65,7 @@ recorded in those preserved files.
 SHA-256 for `action-aware-ridge.npz`:
 
 ```text
-a6e4ef34fc837bb6539a84e20d015bbd7bbfe4e9fd5a6fc74e3f0217bd978d9a
+0de4b5cdb6ec2b47be260a06f924d8eb00f1def16d5ae668b3ab5191251f29df
 ```
 
 The training report identifies this ridge as the lowest-NMAE model in the

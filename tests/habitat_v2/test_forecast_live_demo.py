@@ -102,10 +102,10 @@ def test_model_loader_rejects_artifact_that_claims_actuator_authority(
         window_steps=np.asarray(4, dtype=np.int64),
         horizon_steps=np.asarray(8, dtype=np.int64),
         input_manifest_sha256=np.asarray(
-            "379c8607c929b716f0bffb7343fefdab384bdfb35a8a9ccfcdd55c8dc60f377f"
+            "29d743472712dff68759477debd25aadba8a0584ad89d164bc5c583260356971"
         ),
         target_manifest_sha256=np.asarray(
-            "93f064cabd78758c9b0dd665510acfa101f03da6f717764d506bc3624eec283e"
+            "26e480ca4f07d2092fc6e96fcf2f006948e9e2872ad2b0fd4ae3ac8e947c74db"
         ),
     )
     expected_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -237,7 +237,7 @@ def _real_live_result(root: Path) -> object:
     model_path = (
         root / "artifacts/demo-only/habitat-v2-forecast/action-aware-ridge.npz"
     )
-    model_sha256 = "a6e4ef34fc837bb6539a84e20d015bbd7bbfe4e9fd5a6fc74e3f0217bd978d9a"
+    model_sha256 = "0de4b5cdb6ec2b47be260a06f924d8eb00f1def16d5ae668b3ab5191251f29df"
     model = load_live_ridge_model(model_path, expected_sha256=model_sha256)
     return run_live_forecast_demo(
         root,

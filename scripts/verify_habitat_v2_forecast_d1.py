@@ -32,7 +32,7 @@ from aeolus.habitat_v2.scenario import Scenario
 from aeolus.habitat_v2.telemetry import derive_observable_topology
 
 RELEASE_TIER = "DEVELOPMENT_FIXTURE_ONLY"
-FINAL_HMC_COMMIT_SHA = "79d6a718e0d44122a763bb72f9c8ed929f39fd23"
+FINAL_HMC_COMMIT_SHA = "3bc5da3d716212cac6524b088a963b6abf47a0ef"
 
 
 def _canonical_sha256(value: object) -> str:
@@ -86,7 +86,7 @@ def verify_frozen_inputs(root: Path) -> dict[str, Any]:
     contract_root = root / "contracts"
     paths = {
         "binding": (
-            contract_root / "habitat_v2_forecast_hmc_binding_v1.json",
+            contract_root / "habitat_v2_forecast_hmc_binding_v2.json",
             "binding_sha256",
         ),
         "alarms": (
@@ -195,7 +195,7 @@ def _proposal_mapping(
 
 
 def verify_development_hmc(root: Path) -> dict[str, Any]:
-    binding = _load_json(root / "contracts" / "habitat_v2_forecast_hmc_binding_v1.json")
+    binding = _load_json(root / "contracts" / "habitat_v2_forecast_hmc_binding_v2.json")
     actions = _load_json(
         root / "contracts" / "habitat_v2_forecast_action_catalogue_v1.json"
     )

@@ -20,8 +20,8 @@ from aeolus.habitat_v2.forecast.evaluation import (
     target_truth_sha256,
 )
 
-INPUT = "379c8607c929b716f0bffb7343fefdab384bdfb35a8a9ccfcdd55c8dc60f377f"
-TARGET = "93f064cabd78758c9b0dd665510acfa101f03da6f717764d506bc3624eec283e"
+INPUT = "29d743472712dff68759477debd25aadba8a0584ad89d164bc5c583260356971"
+TARGET = "26e480ca4f07d2092fc6e96fcf2f006948e9e2872ad2b0fd4ae3ac8e947c74db"
 SPLIT_TABLE = hashlib.sha256(b"canonical-split-table").hexdigest()
 
 
