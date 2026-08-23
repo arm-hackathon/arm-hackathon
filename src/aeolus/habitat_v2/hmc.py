@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 from typing import Any
 
 from .control_trace import (
@@ -152,6 +154,83 @@ def _domain_hash(label: str, *parts: bytes) -> str:
     return hashlib.sha256(label.encode("utf-8") + b"".join(parts)).hexdigest()
 
 
+class _FrozenDict(dict[str, Any]):
+    """Keep state JSON-compatible while rejecting ordinary mutations."""
+
+    def __init__(self, value: Mapping[str, Any]) -> None:
+        dict.__init__(self, value)
+
+    @staticmethod
+    def _reject(*args: Any, **kwargs: Any) -> None:
+        raise TypeError("frozen mapping is immutable")
+
+    __setitem__ = _reject
+    __delitem__ = _reject
+    clear = _reject
+    pop = _reject
+    popitem = _reject
+    setdefault = _reject
+    update = _reject
+    __ior__ = _reject
+
+
+def _freeze_mapping(value: Any) -> Any:
+    if isinstance(value, dict):
+        return _FrozenDict(
+            {str(key): _freeze_mapping(nested) for key, nested in value.items()}
+        )
+    if isinstance(value, list):
+        return tuple(_freeze_mapping(item) for item in value)
+    return value
+
+
+def _freeze_state(state: PlantState) -> PlantState:
+    """Seal nested actuator and feedback mappings at the HMC state boundary."""
+
+    utility = state.utility
+    return PlantState(
+        step=state.step,
+        zones=_freeze_mapping(dict(state.zones)),
+        utility=type(utility)(
+            co2_sorbent_remaining_mol=utility.co2_sorbent_remaining_mol,
+            captured_co2_mol=utility.captured_co2_mol,
+            condensed_water_mol=utility.condensed_water_mol,
+            oxygen_store_mol=utility.oxygen_store_mol,
+            battery_energy_wh=utility.battery_energy_wh,
+            actual_airflow_m3_s=_freeze_mapping(dict(utility.actual_airflow_m3_s)),
+            actual_scrubber_duty=utility.actual_scrubber_duty,
+            actual_condenser_duty=utility.actual_condenser_duty,
+            external_heat_rejected_j=utility.external_heat_rejected_j,
+            external_heat_received_j=utility.external_heat_received_j,
+            actual_fan_speed_fraction=utility.actual_fan_speed_fraction,
+            actual_damper_position_by_id=_freeze_mapping(
+                dict(utility.actual_damper_position_by_id)
+            ),
+            actual_cooling_removed_w=_freeze_mapping(
+                dict(utility.actual_cooling_removed_w)
+            ),
+            actual_oxygen_injection_mol_s=_freeze_mapping(
+                dict(utility.actual_oxygen_injection_mol_s)
+            ),
+            effective_scrubber_capture_ability=utility.effective_scrubber_capture_ability,
+            effective_condenser_removal_ability=(
+                utility.effective_condenser_removal_ability
+            ),
+            effective_cooling_delivery_by_zone=_freeze_mapping(
+                dict(utility.effective_cooling_delivery_by_zone)
+            ),
+            effective_oxygen_delivery_by_zone=_freeze_mapping(
+                dict(utility.effective_oxygen_delivery_by_zone)
+            ),
+            last_operational_feedback=(
+                None
+                if utility.last_operational_feedback is None
+                else _freeze_mapping(dict(utility.last_operational_feedback))
+            ),
+        ),
+    )
+
+
 @dataclass(slots=True)
 class HabitatManagementComputer:
     _scenario: Scenario
@@ -188,6 +267,33 @@ class HabitatManagementComputer:
     @property
     def observable_topology_sha256(self) -> str:
         return self._observable_topology.sha256
+
+    def advisory_binding(self) -> Mapping[str, str]:
+        """Return immutable scenario and contract identities for an adviser."""
+
+        return MappingProxyType(
+            {
+                "scenario_sha256": self._scenario.scenario_sha256,
+                "hmc_contract_sha256": self._contract.hmc_contract_sha256,
+            }
+        )
+
+    def advisory_safety_policy(self) -> Mapping[str, Any]:
+        """Return a detached immutable policy projection for forecast ranking."""
+
+        return _freeze_mapping(json.loads(self._contract.canonical_bytes)["health_policy"])
+
+    def preflight_advisory_command(
+        self, command: Mapping[str, Any], application_step: int
+    ) -> Any:
+        """Classify an advisory candidate without exposing mutable plant state."""
+
+        return preflight_external_command(
+            self._scenario,
+            self._state,
+            command,
+            application_step,
+        )
 
     @property
     def control_run_id(self) -> str:
@@ -296,7 +402,7 @@ class HabitatManagementComputer:
             _scenario=parsed_scenario,
             _contract=parsed_contract,
             _reset_nonce=bytes(reset_nonce),
-            _state=state,
+            _state=_freeze_state(state),
             _observable_topology=topology,
             _snapshot_schema_sha256=snapshot_schema_sha256,
             _control_run_id=control_run_id,
@@ -1358,7 +1464,7 @@ class HabitatManagementComputer:
                 final_command_sha256=final_command.sha256,
             )
 
-        self._state = staged.state
+        self._state = _freeze_state(staged.state)
         self._sensor_memory = staged.measurement.sensor_memory
         self._health_tracker = staged.health_tracker
         self._last_operational_measurement = staged.measurement

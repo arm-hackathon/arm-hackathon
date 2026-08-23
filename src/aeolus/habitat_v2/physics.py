@@ -841,6 +841,9 @@ def _advance_one_step_canonical(
                 scenario.data["actuator_feedback"]["oxygen_slew_mol_s2"]
             ),
             dt_seconds=dt_seconds,
+            oxygen_max_total_mol_s=float(
+                equipment["oxygen_injection_max_total_mol_s"]
+            ),
         )
         achieved_cooling_removed_w = achievement.cooling_removed_w
         achieved_oxygen_injection_mol_s = achievement.oxygen_injection_mol_s

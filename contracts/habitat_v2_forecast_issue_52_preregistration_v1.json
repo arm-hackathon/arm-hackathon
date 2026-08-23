@@ -1,0 +1,244 @@
+{
+  "authority": {
+    "final_command_authority": "HMC",
+    "model_role": "forecast_only_advisory",
+    "plant_step_authority": "HMC",
+    "runtime_process_boundary": "in_process_v1",
+    "safety_core_separate_review_required": true
+  },
+  "base_commit": "843a5c1485de841462cbb47e486c2185099b71a2",
+  "candidate_contract": {
+    "ablation_four_selection": "candidate_hold_plus_three_lexicographically_smallest_non_hold_ids",
+    "catalogue_size": 12,
+    "schedule_steps": 32,
+    "statuses": [
+      "STATICALLY_VALID",
+      "ROLLOUT_FEASIBLE",
+      "RUNTIME_FIRST_STEP_FEASIBLE"
+    ]
+  },
+  "corpus": {
+    "coverage_cells": {
+      "dimensions": {
+        "fault_presence": [
+          "absent",
+          "present"
+        ],
+        "operating_mode": [
+          "occupied",
+          "eva_transition",
+          "contingency",
+          "dormant"
+        ]
+      },
+      "minimum_families_per_cell": {
+        "FINAL": 3,
+        "TRAIN": 6,
+        "VALIDATION": 3
+      }
+    },
+    "family_cap": 384,
+    "family_split": {
+      "algorithm": "sha256_issue52_split_v1_then_largest_remainder",
+      "final_fraction": 0.15,
+      "train_fraction": 0.7,
+      "validation_fraction": 0.15
+    },
+    "final_invocations_per_model_version": 1,
+    "minimum_power": 0.8,
+    "power_calculation": {
+      "effect_scale": "paired_family_log_ratio",
+      "effect_size": 0.10536051565782628,
+      "forecast_pilot_pair": "regularized_linear_action_conditioned_over_persistence_action_agnostic_using_the_same_complete_decisions",
+      "minimum_final_families": 30,
+      "paired_family_value": "log(max(candidate_family_metric,1e-12)/max(comparator_family_metric,1e-12))",
+      "ranking_pilot_pair": "best_frozen_non_neural_forecaster_with_12_candidates_over_the_same_forecaster_with_the_frozen_4_candidate_subset_after_true_score_amendment",
+      "required_final_formula": "max(30, ceil(((1.959963984540054 + 0.8416212335729143) * pilot_sd / 0.10536051565782628) ** 2))",
+      "roster_rule": "smallest_total_not_above_caps_whose_largest_remainder_70_15_15_split_meets_required_final_and_every_partition_coverage_minimum",
+      "stop_rule": "stop_if_either_pair_has_fewer_than_2_finite_paired_family_values_if_pilot_sd_or_required_final_is_non_finite_or_if_required_roster_exceeds_any_cap; pilot_sd_zero_uses_required_final_30",
+      "variance_estimator": "sample_standard_deviation_ddof_1_of_finite_paired_family_log_ratios",
+      "z_alpha_two_sided": 1.959963984540054,
+      "z_power_0_80": 0.8416212335729143
+    },
+    "pilot_family_cap": 32,
+    "pilot_transition_cap": 12288,
+    "total_candidate_transition_cap": 2000000,
+    "whole_family_isolation": true
+  },
+  "forecast_contract": {
+    "cadence_seconds": 60,
+    "history_steps": 16,
+    "horizon_steps": 32,
+    "target_channels": {
+      "global_unique": [
+        "battery_resource_gauge",
+        "oxygen_reserve_resource_gauge",
+        "sorbent_reserve_resource_gauge"
+      ],
+      "per_habitable_zone": [
+        "co2_concentration",
+        "dry_bulb_temperature",
+        "relative_humidity"
+      ],
+      "width_formula": "3 * habitable_zone_count + 3"
+    },
+    "target_environmental_head": "primary_telemetry",
+    "target_kind": "runtime_operational_instrumentation_projection",
+    "target_missing_rule": "any_missing_non_finite_or_duplicate_required_primary_environmental_or_unique_resource_sample_in_any_candidate_invalidates_the_entire_12_candidate_decision; exclude_that_decision_from_training_and_all_metrics; quarantine_the_family_only_if_no_complete_decision_remains",
+    "unavailable_after_infeasibility": "masked_from_training_and_all_forecast_metrics; candidate_remains_in_ranking_group_as_ineligible_hard_violation"
+  },
+  "issue": 52,
+  "metrics": {
+    "authority_violation_count": {
+      "maximum": 0,
+      "priority": "hard"
+    },
+    "dangerous_crossing_false_rate_difference": {
+      "definition": "evaluate_each_complete_decision_candidate_channel_threshold_direction_series_separately; a_crossing_at_transition_j_requires_source_strictly_on_the_safe_side_and_destination_equal_to_or_beyond_the_threshold_in_the_registered_direction; starting_equal_is_not_a_crossing; retain_every_crossing_after_reentry; greedily_match_truth_events_in_ascending_step_order_to_the_unmatched_predicted_event_with_smallest_absolute_step_distance_at_most_1_then_earliest_step; false_predictions_are_unmatched_predicted_events; non_crossing_truth_opportunities_are_complete_series_with_zero_truth_events; false_rate_is_the_number_of_non_crossing_truth_opportunities_containing_at_least_one_predicted_event_divided_by_all_non_crossing_truth_opportunities; zero_denominator_yields_rate_zero",
+      "maximum": 0.01,
+      "priority": "hard"
+    },
+    "dangerous_crossing_recall_difference": {
+      "definition": "matched_truth_events_divided_by_all_truth_events_using_the_crossing_and_greedy_one_to_one_matching_rule_registered_for_false_rate; each_manifest_threshold_is_a_separate_series; unavailable_or_incomplete_decisions_are_excluded_by_the_global_missing_rule; zero_truth_events_yield_recall_one_only_if_zero_predicted_events_else_zero",
+      "minimum": -0.02,
+      "priority": "hard"
+    },
+    "inference_all_12_p99_ms": {
+      "maximum": 250,
+      "priority": "hard"
+    },
+    "inference_timeout_rate": {
+      "maximum": 0.0,
+      "priority": "hard"
+    },
+    "non_finite_committed_state_count": {
+      "maximum": 0,
+      "priority": "hard"
+    },
+    "primary_forecast_h9_h32_nmae_ratio": {
+      "aggregation": "for_each_complete_candidate_trajectory_compute_mean_over_targets_and_horizons_of_abs_error_divided_by_manifest_scale; average_candidates_within_decision; average_decisions_within_family; average_families; point_ratio_is_candidate_aggregate_divided_by_comparator_aggregate",
+      "comparison": "learned_over_best_frozen_non_neural_baseline",
+      "eligible_rows": "only_candidate_trajectories_with_all_32_finite_targets; identical_eligibility_mask_for_all_forecasters",
+      "point_maximum": 0.9,
+      "upper_95_ci_maximum_exclusive": 0.98,
+      "weighting": "equal_family_equal_horizon_equal_target"
+    },
+    "primary_ranking_normalized_regret_ratio": {
+      "activation_gate": "inactive_until_a_commit_bound_metric_amendment_freezes_the_exact_true_score_formula_component_units_normalizers_weights_hard_infeasibility_value_and_manifest_digests; no_ranking_power_calculation_comparative_fitting_or_experiment_may_run_before_that_amendment",
+      "aggregation": "family_value_is_mean_over_decisions_of_selected_true_score_minus_oracle_true_score_divided_by_max(abs(oracle_true_score),1e-12); aggregate_is_equal_weight_mean_over_families; point_ratio_is_twelve_candidate_aggregate_divided_by_four_candidate_aggregate",
+      "comparison": "twelve_candidate_over_frozen_four_candidate_ablation",
+      "oracle_tie_rule": "minimum_true_score_then_lower_true_safety_exposure_then_lower_intervention_then_candidate_hold_then_stable_candidate_id",
+      "point_maximum": 0.9,
+      "upper_95_ci_maximum_exclusive": 0.98
+    },
+    "provenance_or_split_violation_count": {
+      "maximum": 0,
+      "priority": "hard"
+    },
+    "replay_failure_count": {
+      "maximum": 0,
+      "priority": "hard"
+    },
+    "safety_bound_exposure_difference": {
+      "point_maximum": 0.0,
+      "priority": "hard",
+      "upper_95_ci_maximum": 0.0
+    },
+    "short_horizon_h1_h8_nmae_ratio": {
+      "aggregation": "same_as_primary_forecast_with_horizons_1_through_8",
+      "point_maximum": 1.05,
+      "upper_95_ci_maximum": 1.08
+    },
+    "wear_reserve_healthy_intervention_ratios": {
+      "activation_gate": "inactive_until_the_same_commit_bound_metric_amendment_freezes_each_family_value_formula_eligibility_denominator_and_required_command_or_target_manifest_digest",
+      "aggregation": "three_separate_family_equal_ratio_gates_for_wear_reserve_use_and_healthy_false_intervention",
+      "point_maximum": 1.05,
+      "upper_95_ci_maximum": 1.05
+    }
+  },
+  "preregistration_version": "habitat_v2_forecast_issue_52_preregistration_v1",
+  "runtime_outcomes": [
+    "SELECTED_HOLD",
+    "ABSTAINED",
+    "WARMUP_NO_PROPOSAL",
+    "INVALID_OUTPUT",
+    "TIMEOUT_NO_PROPOSAL",
+    "HMC_REJECTED_TO_HOLD",
+    "HMC_EMERGENCY_OVERRIDDEN"
+  ],
+  "statistics": {
+    "alpha_two_sided": 0.05,
+    "bootstrap_repetitions": 10000,
+    "bootstrap_seed": 520032,
+    "bootstrap_ci": "equal_tailed_percentile_interval_using_sorted_10000_bootstrap_statistics_and_linear_type_7_quantiles_at_0.025_and_0.975",
+    "bootstrap_family_order": "ascending_utf8_family_id",
+    "bootstrap_non_finite_rule": "any_non_finite_family_value_aggregate_or_bootstrap_statistic_invalidates_the_evaluation_and_fails_the_gate",
+    "bootstrap_sampler": "for_replicate_r_and_draw_d_take_uint64_big_endian_of_first_8_bytes_of_sha256(utf8('issue52-bootstrap-v1|'+seed+'|'+r+'|'+d))_modulo_family_count_as_the_with_replacement_index; r_and_d_are_zero_based_decimal_without_padding",
+    "holm_secondary_correction": true,
+    "holm_families": {
+      "crossing": [
+        "dangerous_crossing_recall_difference",
+        "dangerous_crossing_false_rate_difference"
+      ],
+      "operational_regression": [
+        "wear_ratio",
+        "reserve_use_ratio",
+        "healthy_false_intervention_ratio"
+      ]
+    },
+    "holm_procedure": "for_each_named_family_compute_one_sided_p_values_as_(1+count_of_bootstrap_effects_at_or_beyond_the_null_boundary_in_the_harmful_direction)/(10000+1); sort_by_p_then_metric_name_utf8; for_rank_i_one_based_reject_only_while_p_i_is_strictly_less_than_or_equal_to_0.05/(m-i+1); stop_rejecting_after_first_failure; report_adjusted_p_as_max_over_prior_ranks_of((m-j+1)*p_j)_capped_at_1; all_individual_numeric_effect_gates_still_apply",
+    "point_estimator": "ratio_of_equal_weight_family_aggregate_means_not_mean_of_family_ratios",
+    "ratio_zero_denominator_rule": "if comparator is zero, candidate must also be zero and the ratio gate passes as equality; if comparator is zero and candidate is positive, the ratio gate fails; bootstrap samples with both values zero contribute ratio 1.0",
+    "resampling_unit": "semantic_scenario_family"
+  },
+  "step_semantics": {
+    "first_command": "A_s",
+    "first_target": "S_s_plus_1",
+    "latest_observation": "S_s",
+    "requested_application_step": "s"
+  },
+  "stop_precedence": [
+    "authority",
+    "safety",
+    "leakage_or_provenance",
+    "replay_or_determinism",
+    "systems_budget",
+    "forecast_quality",
+    "ranking_utility"
+  ],
+  "systems": {
+    "benchmark_exclusive_workload": true,
+    "inference_deadline_ms": 250,
+    "latency_contract": {
+      "clock": "time.perf_counter_ns_monotonic",
+      "deadline_equality_is_timely": true,
+      "late_completion_rule": "elapsed_ns_greater_than_250000000_is_timeout_no_proposal_and_result_is_discarded_even_if_completion_is_observed_concurrently",
+      "p99_estimator": "nearest_rank_sorted_value_at_index_ceil(0.99*N)_one_based",
+      "start": "immediately_before_history_projection_and_validation_for_a_verified_current_snapshot",
+      "stop": "after_all_12_forecasts_output_validation_deterministic_scoring_selection_and_proposal_adapter_construction_complete"
+    },
+    "qualification_host": {
+      "architecture": "x64",
+      "cpu": "AMD Ryzen 5 4600H with Radeon Graphics",
+      "logical_processors": 12,
+      "machine": "DESKTOP-069U89D",
+      "os": "Windows 11 Pro",
+      "os_build": "26200",
+      "os_version": "10.0.26200",
+      "physical_memory_bytes": 16505847808,
+      "python": "3.14.0"
+    },
+    "warmup_runs": 20,
+    "timed_runs": 1000
+  },
+  "training": {
+    "comparative_fitting_requires_metric_amendment_approved": true,
+    "model_seeds": [
+      520032,
+      520033,
+      520034
+    ],
+    "online_learning": false,
+    "smallest_passing_model_wins": true
+  }
+}
