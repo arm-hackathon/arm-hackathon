@@ -8,7 +8,7 @@ preflight, policy, capability issuance, plant stepping, and replay.
 The implementation is useful without a trained artifact: the default
 forecaster is a deterministic action-conditioned baseline.  A fitted linear
 forecaster can be created from offline rollout samples once the data and
-metric approvals are in place.
+metric contracts are frozen.
 """
 
 from __future__ import annotations

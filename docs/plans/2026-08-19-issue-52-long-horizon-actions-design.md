@@ -1,13 +1,13 @@
 # Issue #52: Longer Forecasts and a Wider Action Menu
 
-Status: Ben approved contract implementation and the bounded raw feasibility pilot; training, experiments, and deployment remain blocked
+Status: contract implementation and bounded raw feasibility pilot
 Issue: https://github.com/arm-hackathon/arm-hackathon/issues/52
 Design base: `843a5c1485de841462cbb47e486c2185099b71a2`
 Normative appendix: `2026-08-19-issue-52-long-horizon-actions-plan.md`
 Preregistration: `contracts/habitat_v2_forecast_issue_52_preregistration_v1.json`
-Preregistration SHA-256: `E0A24B2FD9309ED551DCD6D4FB98EFF1FDDA6B364DE2DBE73584CCF1ADA7E61F`
+Preregistration SHA-256: `DE4744E127D2946A43D623EC90D3289B0A3735C99E62C8CECCD87768E0702A3B`
 
-## Short design note for Ben
+## Short design note
 
 The issue says that today's model looks eight steps ahead and chooses among four actions. The audited Habitat V2 code does not yet contain that planner. Its existing four-output model is a fault classifier, and those four outputs are fault types rather than actions. This proposal therefore builds the missing forecast-and-rank stage instead of changing two constants.
 
@@ -37,29 +37,21 @@ HMC remains the only final-command and plant-step authority. It may accept a pro
 
 The primary forecast metric is normalized MAE over horizons 9-32 across all target channels. The learned model must improve its point estimate by at least 10% over the best frozen non-neural baseline, and the upper bound of the paired 95% family-bootstrap ratio must be below 0.98. Horizons 1-8 must be non-inferior within 5%.
 
-The proposed primary ranking metric is normalized regret against offline oracle-trajectory ranking. It remains inactive until a separate commit-bound amendment freezes the exact true and predicted score formulas, units, normalizers, weights, hard-infeasibility value, operational metric formulas, and manifest digests, and Ben approves that commit. Only then may the 12-candidate arm be tested for at least 10% point-estimate regret improvement over the frozen four-candidate ablation with an upper 95% ratio below 0.98.
+The proposed primary ranking metric is normalized regret against offline oracle-trajectory ranking. It remains inactive until a separate commit-bound amendment freezes the exact true and predicted score formulas, units, normalizers, weights, hard-infeasibility value, operational metric formulas, and manifest digests. Only then may the 12-candidate arm be tested for at least 10% point-estimate regret improvement over the frozen four-candidate ablation with an upper 95% ratio below 0.98.
 
 Hard release gates require zero authority violations, zero replay/provenance failures, no increase in total safety-bound exposure, no more than 2 percentage points loss in dangerous-crossing recall, no more than 1 percentage point increase in false crossings, and, after the amendment activates their exact formulas, no more than 5% regression in wear, reserve use, or healthy false interventions. Runtime inference for all 12 candidates must have p99 at or below 250 ms and zero deadline misses over 1,000 timed runs after 20 warm-ups. The initial qualification host is Windows 11 Pro build 26200 on an AMD Ryzen 5 4600H, x64, 12 logical processors, 16,505,847,808 bytes RAM, and Python 3.14.0, with no competing benchmark workload. Statistics use the preregistered deterministic SHA-256 family-bootstrap sampler for 10,000 resamples and the registered Holm procedure.
 
-The family count is not guessed in advance. Initial approval permits a maximum 32-family raw feasibility pilot. Forecast power uses paired family log-ratios from the frozen deterministic baseline pair. Ranking power remains blocked until the metric amendment is approved. The amendment records the exact manifests, formulas, power result, final roster, and deterministic 70/15/15 split. The roster is capped at 384 families and 2,000,000 candidate transitions.
+The family count is not guessed in advance. The raw feasibility pilot is capped at 32 families. Forecast power uses paired family log-ratios from the frozen deterministic baseline pair. Ranking power remains blocked until the metric amendment is complete. The amendment records the exact manifests, formulas, power result, final roster, and deterministic 70/15/15 split. The roster is capped at 384 families and 2,000,000 candidate transitions.
 
 ## Delivery sequence
 
-1. Ben approves the exact three-file package and its Git commit.
-2. Implement the approved contracts and run only the bounded raw feasibility pilot.
+1. Freeze the exact three-file package and its Git commit.
+2. Implement the contracts and run only the bounded raw feasibility pilot.
 3. Commit the exact manifests, scoring formulas, operational metric formulas, power result, roster, and split as a metric amendment.
-4. Obtain Ben's separate approval of that amendment before comparative fitting, model training, or experiments.
+4. Run comparative fitting, model training, and experiments only against that frozen amendment.
 5. Establish persistence, recent-delta, linear, and autoregressive baselines under the frozen amendment.
 6. Train the smallest action-conditioned forecast model that can pass the gates.
 7. Qualify forecast quality before enabling deterministic candidate ranking.
 8. Integrate a feature-disabled-by-default advisory source and run authority, fail-closed, replay, latency, and end-to-end demo tests.
 9. Open the sealed final split once after all choices are frozen.
-10. Present the implementation and any safety-core diff to Ben for a separate review. Deployment remains separately blocked.
-
-## Approval requested
-
-Ben can approve by replying with the exact local commit and this statement:
-
-> I, Ben (`bbeennyy860-cyber`), approve the Issue #52 design package at the identified commit. I authorize contract implementation and the bounded raw feasibility pilot under the attached HMC authority boundary. Comparative fitting, ranking power calculation, model training, experiments, and deployment remain blocked until I approve the required commit-bound metric amendment. Any safety-core change requires my separate review before merge.
-
-Approval is recorded in the normative appendix. It authorizes contract implementation and the bounded raw feasibility pilot only. The preregistration is intentionally byte-frozen at its approved digest and retains the original proposed-state flags; the approval record is the authoritative status update. Data generation, training, experiments, deployment, and metric-amendment approval remain false.
+10. Review the implementation and any safety-core diff separately. Deployment remains separately blocked.

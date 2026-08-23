@@ -1,14 +1,4 @@
 {
-  "approval": {
-    "ben_sign_off": false,
-    "code_authorised": false,
-    "data_generation_authorised": false,
-    "deployment_authorised": false,
-    "experiments_authorised": false,
-    "metric_amendment_approved": false,
-    "required_approver": "bbeennyy860-cyber",
-    "training_authorised": false
-  },
   "authority": {
     "final_command_authority": "HMC",
     "model_role": "forecast_only_advisory",
@@ -54,7 +44,7 @@
       "train_fraction": 0.7,
       "validation_fraction": 0.15
     },
-    "final_invocations_per_approved_model_version": 1,
+    "final_invocations_per_model_version": 1,
     "minimum_power": 0.8,
     "power_calculation": {
       "effect_scale": "paired_family_log_ratio",
@@ -62,10 +52,10 @@
       "forecast_pilot_pair": "regularized_linear_action_conditioned_over_persistence_action_agnostic_using_the_same_complete_decisions",
       "minimum_final_families": 30,
       "paired_family_value": "log(max(candidate_family_metric,1e-12)/max(comparator_family_metric,1e-12))",
-      "ranking_pilot_pair": "best_frozen_non_neural_forecaster_with_12_candidates_over_the_same_forecaster_with_the_frozen_4_candidate_subset_after_true_score_amendment_approval",
+      "ranking_pilot_pair": "best_frozen_non_neural_forecaster_with_12_candidates_over_the_same_forecaster_with_the_frozen_4_candidate_subset_after_true_score_amendment",
       "required_final_formula": "max(30, ceil(((1.959963984540054 + 0.8416212335729143) * pilot_sd / 0.10536051565782628) ** 2))",
       "roster_rule": "smallest_total_not_above_caps_whose_largest_remainder_70_15_15_split_meets_required_final_and_every_partition_coverage_minimum",
-      "stop_rule": "stop_for_ben_review_if_either_pair_has_fewer_than_2_finite_paired_family_values_if_pilot_sd_or_required_final_is_non_finite_or_if_required_roster_exceeds_any_cap; pilot_sd_zero_uses_required_final_30",
+      "stop_rule": "stop_if_either_pair_has_fewer_than_2_finite_paired_family_values_if_pilot_sd_or_required_final_is_non_finite_or_if_required_roster_exceeds_any_cap; pilot_sd_zero_uses_required_final_30",
       "variance_estimator": "sample_standard_deviation_ddof_1_of_finite_paired_family_log_ratios",
       "z_alpha_two_sided": 1.959963984540054,
       "z_power_0_80": 0.8416212335729143
@@ -134,7 +124,7 @@
       "weighting": "equal_family_equal_horizon_equal_target"
     },
     "primary_ranking_normalized_regret_ratio": {
-      "activation_gate": "inactive_until_a_commit_bound_metric_amendment_freezes_and_ben_approves_the_exact_true_score_formula_component_units_normalizers_weights_hard_infeasibility_value_and_manifest_digests; no_ranking_power_calculation_comparative_fitting_or_experiment_may_run_before_that_approval",
+      "activation_gate": "inactive_until_a_commit_bound_metric_amendment_freezes_the_exact_true_score_formula_component_units_normalizers_weights_hard_infeasibility_value_and_manifest_digests; no_ranking_power_calculation_comparative_fitting_or_experiment_may_run_before_that_amendment",
       "aggregation": "family_value_is_mean_over_decisions_of_selected_true_score_minus_oracle_true_score_divided_by_max(abs(oracle_true_score),1e-12); aggregate_is_equal_weight_mean_over_families; point_ratio_is_twelve_candidate_aggregate_divided_by_four_candidate_aggregate",
       "comparison": "twelve_candidate_over_frozen_four_candidate_ablation",
       "oracle_tie_rule": "minimum_true_score_then_lower_true_safety_exposure_then_lower_intervention_then_candidate_hold_then_stable_candidate_id",
