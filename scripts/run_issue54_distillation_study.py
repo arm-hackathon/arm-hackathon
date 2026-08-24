@@ -37,6 +37,7 @@ from aeolus.habitat_v2.forecast.projection import (
 from aeolus.habitat_v2.forecast_issue52 import extend_scenario_for_issue52
 from aeolus.habitat_v2.forecast_issue54_distillation import (
     DistillationSample,
+    PROTOCOL_ADDENDUM_ID,
     RANKING_METRIC_ID,
     RANKING_PROTOCOL_STATUS,
     StudentMlpModel,
@@ -613,6 +614,7 @@ def main() -> None:
         ),
         "ranking_metric_id": RANKING_METRIC_ID,
         "ranking_protocol_status": RANKING_PROTOCOL_STATUS,
+        "protocol_addendum_id": PROTOCOL_ADDENDUM_ID,
         "collect_time_s": collect_time,
         "teachers": results,
     }

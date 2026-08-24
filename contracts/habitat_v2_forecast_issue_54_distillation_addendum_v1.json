@@ -1,0 +1,46 @@
+{
+  "addendum_id": "habitat_v2_forecast_issue_54_distillation_addendum_v1",
+  "declared_at": "2026-08-24",
+  "issue": 54,
+  "status": "DECLARED_BEFORE_FULL_RUN",
+  "preregistration": {
+    "version": "habitat_v2_forecast_issue_54_preregistration_v1",
+    "sha256_lf_normalized": "E16BEFB588A43F131128056932BBFE5CAA707C87309A828A33C91E1C412D5246"
+  },
+  "corpus": {
+    "option": "fresh_pipeline",
+    "family_count": 32,
+    "anchor_steps": [16, 24, 32],
+    "candidate_count": 4,
+    "candidate_contract": "Track A normal-* forecast fixture actions",
+    "decision_identity": "family_id|anchor=NNNN",
+    "total_decisions": 96,
+    "final_family_count": 6,
+    "final_decision_count": 18,
+    "family_split": "SHA256(issue54-split-v1|family_id), largest-remainder 60/20/20",
+    "whole_family_isolation": true
+  },
+  "targets": {
+    "layout": "forecast.baselines Track A float32[8,51]",
+    "horizon_steps": 8,
+    "target_count": 51,
+    "nmae_scale": "TRAIN-only per horizon/target P95 truth minus P05 truth",
+    "unsupported_scale_rule": "reject any non-finite or non-positive TRAIN scale"
+  },
+  "ranking": {
+    "metric_id": "issue54-simplified-nominal-point-bound-v1",
+    "protocol_status": "ADDENDUM_APPROVED_NON_PREREGISTERED_METRIC",
+    "approval": "The 51-target point forecast lane uses the declared simplified nominal/bound metric; frozen Issue #52 score_trajectory is not claimed because its interval-bearing 27-target contract is incompatible with this lane."
+  },
+  "training": {
+    "distillation_loss": "MSE after per-output TRAIN teacher-target standardization, then de-standardized for evaluation",
+    "mlp_seeds": [540054, 540055, 540056],
+    "linear_student": "deterministic closed-form ridge, reported once with seed null",
+    "seed_selection": "report every declared MLP seed; do not select using FINAL"
+  },
+  "authority": {
+    "hmc_is_sole_proposal_arbitration_and_plant_authority": true,
+    "student_actuator_authority": false,
+    "frozen_preregistration_modified": false
+  }
+}

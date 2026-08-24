@@ -31,7 +31,8 @@ from .forecast_issue52 import TargetManifest
 
 ISSUE54_SCHEMA_VERSION = "aeolus_habitat_v2_forecast_issue_54_v2"
 RANKING_METRIC_ID = "issue54-simplified-nominal-point-bound-v1"
-RANKING_PROTOCOL_STATUS = "NON_PREREGISTERED_METRIC_REQUIRES_ADDENDUM"
+RANKING_PROTOCOL_STATUS = "ADDENDUM_APPROVED_NON_PREREGISTERED_METRIC"
+PROTOCOL_ADDENDUM_ID = "habitat_v2_forecast_issue_54_distillation_addendum_v1"
 HORIZON_STEPS = 8
 OUTPUT_DIM = HORIZON_STEPS * TARGET_COUNT  # 408
 MLP_WINDOW_STEPS = 16
