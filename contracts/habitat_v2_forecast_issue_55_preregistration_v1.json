@@ -1,0 +1,139 @@
+{
+  "schema_version": "aeolus_habitat_v2_issue_55_preregistration_v1",
+  "preregistration_id": "habitat_v2_forecast_issue_55_preregistration_v1",
+  "status": "DECLARED_BEFORE_ANY_RUN",
+  "issue": 55,
+  "title": "Research study: race three controllers against each other (rules vs model vs perfect foresight)",
+  "base_commit": "099a141022c39b815589ef6879e66ae38b8e957e",
+  "lane": "RESEARCH_STUDY_DEV_EVIDENCE_ONLY",
+  "authority": {
+    "final_command_authority": "HMC",
+    "rules_arm": "HMC_default_policy_with_no_proposals",
+    "model_arm": "HMC_default_policy_plus_frozen_mlp_teacher_point_ranking_advisory",
+    "oracle_arm": "HMC_default_policy_plus_true_plant_lookahead_selection",
+    "oracle_role": "measuring_instrument_only_never_a_demo_controller",
+    "plant_step_authority": "HMC",
+    "proposal_authority": "none_proposals_are_advisory_and_may_be_rejected_by_arbitration",
+    "runtime_process_boundary": "in_process_v1",
+    "frozen_surfaces_untouched": [
+      "contracts/habitat_v2_forecast_hmc_binding_v2.json",
+      "artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz",
+      "artifacts/demo-only/habitat-v2-forecast/action-aware-ridge.npz",
+      "src/aeolus/habitat_v2/hmc.py",
+      "src/aeolus/habitat_v2/physics.py",
+      "src/aeolus/habitat_v2/safety.py"
+    ]
+  },
+  "suite": {
+    "corpus_id": "issue55_race_v1",
+    "family_count": 32,
+    "family_id_algorithm": "'issue55f' + SHA256('issue55-family-v1|issue55_race_v1|' + index_zeropadded4)[:16]",
+    "family_construction": "development_scenario_with_sensor_model_random_seed_offset_by_1000_times_family_index_and_renamed_then_extended_to_96_steps_via_extend_scenario_for_issue52",
+    "episode_steps": 96,
+    "arms": ["rules_only", "model_advised", "oracle_instrument"],
+    "episode_nonce": "SHA256('issue55-episode-nonce-v1|' + family_id)_identical_across_arms_for_paired_comparison",
+    "decision_rule": {
+      "start_step": 16,
+      "cadence_steps": 4,
+      "eligibility": "decision_step + lookahead_steps <= episode_steps - 1",
+      "expected_decision_count_per_episode": 18,
+      "lookahead_steps": 8
+    }
+  },
+  "target_layout": {
+    "kind": "track_a_float32_8x51",
+    "columns": "8 zones x (temperature_k, pressure_pa, co2_ppm, o2_mole_fraction, relative_humidity, branch_airflow_m3_s) + (battery_soc, oxygen_store, sorbent_remaining)",
+    "bounds_source": "frozen_issue52_scoring_bounds_identical_to_issue54_evaluation_arrays",
+    "zone_fields": [
+      { "field": "temperature_k", "nominal": 295.15, "scale": 10.0, "lower": 250.0, "upper": 330.0 },
+      { "field": "pressure_pa", "nominal": 101325.0, "scale": 1000.0, "lower": 50000.0, "upper": 150000.0 },
+      { "field": "co2_ppm", "nominal": 800.0, "scale": 800.0, "lower": 300.0, "upper": 5000.0 },
+      { "field": "o2_mole_fraction", "nominal": 0.2095, "scale": 0.005, "lower": 0.15, "upper": 0.30 },
+      { "field": "relative_humidity", "nominal": 0.45, "scale": 0.25, "lower": 0.0, "upper": 1.0 },
+      { "field": "branch_airflow_m3_s", "nominal": 0.05, "scale": 0.1, "lower": 0.0, "upper": 1.0 }
+    ],
+    "resource_fields": [
+      { "field": "battery_state_of_charge", "nominal": 0.75, "scale": 0.25, "lower": 0.0, "upper": 1.0 },
+      { "field": "oxygen_store_fraction", "nominal": 0.75, "scale": 0.25, "lower": 0.0, "upper": 1.0 },
+      { "field": "sorbent_remaining_fraction", "nominal": 0.75, "scale": 0.25, "lower": 0.0, "upper": 1.0 }
+    ]
+  },
+  "metrics": {
+    "safety_exposure": "sum_over_steps_and_targets_of_max(0, lower - value)/scale + max(0, value - upper)/scale_on_true_plant_states",
+    "safety_violation_steps": "count_of_steps_where_any_true_target_crosses_its_bounds",
+    "comfort_deviation": "mean_over_occupied_mode_steps_of_mean_over_temperature_co2_relative_humidity_columns_of_abs(value - nominal)/scale_on_true_plant_states",
+    "resource_composite": "sum_of_max(0, initial - final)_of_battery_oxygen_and_sorbent_fraction_columns",
+    "hmc_rejection_count": "count_of_decision_steps_where_arbitration_final_command_sha256_differs_from_the_proposed_command_sha256",
+    "gap_closure": {
+      "formula": "(mean_rules - mean_model) / (mean_rules - mean_oracle)_per_metric_over_equal_weight_family_means",
+      "interpretation": "0_percent_equals_rules_alone_100_percent_equals_oracle_ceiling",
+      "degenerate_rule": "if_abs_denominator_lt_1e-12_closure_is_undefined_and_reported_as_DEGENERATE_GAP",
+      "ci": "bootstrap_10000_resamples_sha256_counter_sampler_seed_550055_resampling_unit_is_family_percentile_2.5_97.5",
+      "applies_to": ["safety_exposure", "comfort_deviation", "resource_composite"]
+    }
+  },
+  "advisory_contract": {
+    "model_arm_ranking_metric_id": "issue55-advisory-point-ranking-v1",
+    "teacher": "action_aware_mlp_v1_sha256_a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd",
+    "prediction": "float32_8x51_point_prediction_per_catalogue_action_from_16_step_verified_history",
+    "point_mass_bounds": "lower_equals_upper_equals_prediction",
+    "score": "tracking + 0.5 * safety + 0.05 * intervention_with_uncertainty_term_zero_by_construction",
+    "hard_ineligible": "any_predicted_bound_crossing_of_safety_bounds",
+    "tie_break": "(score, safety, intervention, hold_preference, action_id)_identical_ordering_semantics_to_rank_candidates",
+    "confidence_field": "null_no_calibrated_confidence_is_claimed",
+    "abstain_rule": "if_every_candidate_is_hard_ineligible_no_proposal_is_issued_at_that_decision_and_the_abstention_is_counted_per_episode",
+    "source_type": "issue55-model-advisory-v1",
+    "not_a_claim": "this_is_not_frozen_issue52_score_trajectory_compliance_with_uncertainty_and_not_issue54_ranking_metric_reuse"
+  },
+  "oracle_contract": {
+    "selection_metric_id": "issue55-oracle-lookahead-v1",
+    "lookahead": "for_each_catalogue_action_advance_the_true_plant_8_steps_repeating_the_action_command_each_step",
+    "score": "safety_exposure_lookahead + comfort_lookahead + 0.1 * resource_composite_lookahead_on_true_states",
+    "infeasible_rule": "candidate_that_cannot_complete_8_feasible_steps_is_excluded",
+    "empty_rule": "if_all_candidates_are_excluded_no_proposal_is_issued_at_that_decision",
+    "tie_break": "(score, safety, comfort, action_id)",
+    "source_type": "issue55-oracle-instrument-v1",
+    "prohibited_uses": [
+      "never_embedded_in_any_demo_report_or_browser_surface_as_a_controller",
+      "never_shipped_as_a_runtime_advisor",
+      "reported_only_as_the_ceiling_measuring_instrument_of_this_study"
+    ]
+  },
+  "expected_results": {
+    "declared_before_run": true,
+    "ordering_expectation": "oracle_instrument is expected to achieve the lowest or equal safety_exposure and comfort_deviation family means, with model_advised between rules_only and oracle_instrument or equal on at least one of comfort_deviation or safety_exposure",
+    "safety_gap_expectation": "the development fixture is benign; absolute safety_exposure differences between arms are expected to be small, so safety_exposure gap closure may be DEGENERATE_GAP or noisy; this is an acceptable honest outcome",
+    "comfort_gap_expectation": "model_advised is expected to close a non-negative fraction of the rules-to-oracle comfort_deviation gap",
+    "resource_expectation": "no directional commitment is made for resource_composite; the result will be reported as measured",
+    "hmc_rejection_expectation": "rejections are expected to be rare because the four catalogue commands are pre-validated; any rejection is counted and reported per arm"
+  },
+  "success_criteria": {
+    "hard_gates": {
+      "authority_violation_count": { "maximum": 0 },
+      "replay_failure_count": { "maximum": 0 },
+      "provenance_violation_count": { "maximum": 0 },
+      "non_finite_metric_count": { "maximum": 0 },
+      "proposal_admission_failure_count": { "maximum": 0 }
+    },
+    "reporting_requirements": [
+      "publish the full per-arm per-family results table for safety_violation_steps, safety_exposure, comfort_deviation, and resource_composite",
+      "publish gap closure with bootstrap 95 percent CI for all three continuous metrics regardless of outcome",
+      "report hmc_rejection_count and abstention_count per arm",
+      "state explicitly that the oracle is a measuring instrument and the results are simulation development evidence only"
+    ],
+    "honest_negative_rule": "if the model arm does not close a non-negative comfort gap or worsens safety, the study is still a valid completion when all hard gates pass; the negative result must be published without tuning"
+  },
+  "non_goals": [
+    "no deployment qualification certification or hardware claim",
+    "no change to HMC policy contracts physics or frozen artifacts",
+    "no oracle integration into any demo or runtime advisory surface",
+    "no tuning of thresholds or metrics after observing results",
+    "no use of final-suite or validation data"
+  ],
+  "reproducibility": {
+    "entry_point": "scripts/run_issue55_controller_race.py",
+    "output_rule": "write_once_new_directory_under_ignored_out",
+    "determinism_rule": "no_wall_clock_or_unseeded_values_in_any_digest_bearing_artifact",
+    "digest_rule": "episode_records_results_and_manifests_are_canonical_json_sha256_bound"
+  }
+}
