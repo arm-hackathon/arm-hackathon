@@ -10,10 +10,11 @@
 - Preregistration SHA-256: `E16BEFB588A43F131128056932BBFE5CAA707C87309A828A33C91E1C412D5246`
 - This-lane status: `RESEARCH_STUDY_DEV_EVIDENCE_ONLY`
 
-> Audit status: the original numerical evidence is historical pending the
-> corrections and pre-run declaration in
-> `docs/evidence/issue-54-distillation-audit.md`. The v1 preregistration remains
-> frozen; no corrected full-run result is claimed yet.
+> Audit status: the original v1 numerical evidence is historical. The corrected
+> full development run was declared in
+> `contracts/habitat_v2_forecast_issue_54_distillation_addendum_v1.json` and is
+> recorded in `docs/evidence/issue-54-measurements.md`; the v1 preregistration
+> remains frozen.
 
 This appendix is normative. The short note is the plain-English entry point. The qualification runbook is in `docs/evidence/issue-54-distillation-card.md` and `docs/evidence/issue-54-measurements.md`.
 

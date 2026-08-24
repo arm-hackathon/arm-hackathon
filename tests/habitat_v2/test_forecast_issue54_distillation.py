@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,7 @@ from aeolus.habitat_v2.forecast.contracts import canonical_json_bytes
 from aeolus.habitat_v2.forecast_issue54_distillation import (
     MLP_FEATURE_COUNT,
     OUTPUT_DIM,
+    PROTOCOL_ADDENDUM_ID,
     RIDGE_FEATURE_COUNT,
     DistillationCorpusManifest,
     DistillationSample,
@@ -546,3 +548,17 @@ class TestPreregistrationBinding:
         text = prereg_path.read_text(encoding="utf-8").replace("\r\n", "\n")
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest().upper()
         assert digest == "E16BEFB588A43F131128056932BBFE5CAA707C87309A828A33C91E1C412D5246"
+
+    def test_distillation_addendum_is_declared(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        addendum_path = repo_root / "contracts" / (
+            "habitat_v2_forecast_issue_54_distillation_addendum_v1.json"
+        )
+        addendum = json.loads(addendum_path.read_text(encoding="utf-8"))
+        assert addendum["addendum_id"] == PROTOCOL_ADDENDUM_ID
+        assert addendum["status"] == "DECLARED_BEFORE_FULL_RUN"
+        assert addendum["preregistration"]["sha256_lf_normalized"] == (
+            "E16BEFB588A43F131128056932BBFE5CAA707C87309A828A33C91E1C412D5246"
+        )
+        assert addendum["corpus"]["total_decisions"] == 96
+        assert addendum["corpus"]["final_decision_count"] == 18

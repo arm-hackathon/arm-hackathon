@@ -1,7 +1,7 @@
 # Issue #54 Distillation Audit
 
 Date: 2026-08-24
-Status: **PROTOCOL ADDENDUM DECLARED; FRESH FULL RUN IN PROGRESS**
+Status: **CORRECTED FULL RUN VALIDATED; DEVELOPMENT EVIDENCE ONLY**
 Preregistration: `contracts/habitat_v2_forecast_issue_54_preregistration_v1.json`
 Preregistration SHA-256, LF-normalized: `E16BEFB588A43F131128056932BBFE5CAA707C87309A828A33C91E1C412D5246`
 
@@ -47,22 +47,21 @@ development evidence only and does not establish hardware or deployment safety.
    duplicate decision/candidate rows, missing decisions, missing candidates,
    roster drift, manifest digest drift, and incomplete prediction maps.
 
-7. **The ranking metric remains a protocol boundary.** Issue #54 samples contain
+7. **The ranking metric required an explicit protocol choice.** Issue #54 samples contain
    51 point targets and no forecast intervals. The frozen Issue #52
    `score_trajectory` ranker expects its own target manifest and interval-bearing
    `ForecastTrajectory` values, so the original simplified nominal/bound score
    was not equivalent to the preregistered metric. The corrected implementation
    labels its helper as
-   `issue54-simplified-nominal-point-bound-v1` and records
-   `NON_PREREGISTERED_METRIC_REQUIRES_ADDENDUM`; it does not silently claim
-   `score_trajectory` compliance.
+   `issue54-simplified-nominal-point-bound-v1`. The declared addendum approves
+   this metric for the Track A lane; it does not silently claim `score_trajectory`
+   compliance.
 
-8. **The trainer has a disclosed but non-literal loss normalization.** The MLP
+8. **The trainer required an explicit loss-normalization choice.** The MLP
    trainer standardizes each teacher output dimension before MSE optimization.
    This is documented in the original capability card, but the frozen
-   preregistration states MSE against raw teacher predictions. A corrected run
-   must declare whether this normalization is an approved interpretation or a
-   protocol amendment.
+   preregistration states MSE against raw teacher predictions. The protocol
+   addendum approves this normalization for the corrected run.
 
 9. **The target and action fixtures differ from the frozen Issue #52 lane.** The
    collector uses the Track A `float32[8,51]` layout (including pressure, oxygen,
@@ -74,8 +73,8 @@ development evidence only and does not establish hardware or deployment safety.
 
 ## Required Pre-Run Declaration
 
-Before a corrected full run is treated as Issue #54 evidence, declare an
-addendum that fixes:
+The following choices had to be declared before a corrected full run could be
+treated as Issue #54 evidence:
 
 - whether `(family_id, anchor_step)` is the decision identity and updates the
   denominator to 96 total decisions and 18 FINAL decisions for the current
@@ -93,9 +92,9 @@ addendum that fixes:
   student; and
 - whether the `fresh_pipeline` option alone is the declared corpus option.
 
-Until that declaration and a fresh run exist, the numerical tables in
-`issue-54-measurements.md` and the capability claims in
-`issue-54-distillation-card.md` are historical provenance, not current results.
+These choices were declared in the machine-readable addendum below before the
+full run. The corrected results are now current development evidence; the old
+v1 measurements remain historical provenance only.
 
 ## Declared Protocol Addendum
 
@@ -121,16 +120,33 @@ before the corrected full run. In summary:
 - HMC remains the sole authority and the frozen v1 preregistration remains
   byte-identical.
 
+## Corrected Full Run
+
+The declared full run completed in `out/issue54-full-evidence-1` using commit
+`a3802d7` and the frozen teacher/HMC artifacts. It collected 384 samples per
+teacher, trained every declared MLP seed, and emitted 24 student MLP artifacts.
+The independent post-run check verified all roster counts, all 24 artifact
+SHA-256 values, both manifest digests, both sample digests, finite result
+metrics, and the addendum identity.
+
+- MLP manifest: `6ba2d3ec6118c7a23f44d1ab70460a54f2f03287b1a121f63be18414f7ab8946`
+- Ridge manifest: `5769871fc5ce1682b8ac86c986f265e6c845bce56508db820a9730d892228406`
+- MLP samples: `aa944440767465eb7b595c4343105417fd6ba02378204d1b43036e4eff7ae5b9`
+- Ridge samples: `558da30f049008ebee9ce025c9edb9a6b6ff6ca16951bff2f1777e8d3c75eeb1`
+- Results JSON: `44abf8167d2fe6116a71d835a68714dd5ec074f8cbda5dc49fe506bec2149252`
+- TRAIN scale shape/digest: `8x51` / `25c9aa1dc0a441c45ca2d13e81d9ee9d725f1de2e759ecdd854e3f10f19ffc83`
+
 ## Verification Performed
 
-- `35 passed` in `tests/habitat_v2/test_forecast_issue54_distillation.py`.
-- `1112 passed` in the full locked test suite `tests/`.
+- `36 passed` in `tests/habitat_v2/test_forecast_issue54_distillation.py`.
+- `1113 passed` in the full locked test suite `tests/`.
 - Ruff, Python compilation, `uv lock --check`, and `git diff --check` pass.
-- The final corrected pilot smoke run completed in
+- The corrected pilot smoke run completed in
   `out/issue54-audit-pilot-5`: 48 samples per teacher, 12 decision IDs, strict
   trace replay, manifest validation, TRAIN-only scale derivation, all three MLP
   seeds, and finite result JSON with hashes for every saved student MLP.
   Its ignored output is not evidence: it has one FINAL family and uses the
-  explicitly non-preregistered ranking metric.
-- The corrected full evidence run is being generated after the declaration above;
-  its output must be validated before the historical tables are replaced.
+  addendum-approved ranking metric.
+- The corrected full evidence run completed and passed the independent artifact
+  validation described above. Raw outputs remain ignored by policy; the
+  committed measurements and capability card record their identities.
