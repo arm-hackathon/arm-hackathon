@@ -3,11 +3,11 @@
 This module is deliberately outside the HMC authority core.  The Habitat
 Management Controller remains the sole actuator authority in every arm; the
 model and oracle arms may only issue standard advisory proposals that the HMC
-is free to reject.  The oracle arm is a measuring instrument for the
-perfect-foresight ceiling of this study and must never be integrated into any
-demo or runtime advisor surface.
+is free to reject.  The oracle arm is a measuring instrument that evaluates a
+finite full-remaining-episode constant-command schedule and must never be
+integrated into any demo or runtime advisor surface.
 
-Protocol: contracts/habitat_v2_forecast_issue_55_preregistration_v1.json
+Protocol: contracts/habitat_v2_forecast_issue_55_preregistration_v2.json
 (declared before any run).  Every digest-bearing structure in this module is
 canonical-JSON bound and free of wall-clock values.
 """
@@ -42,23 +42,24 @@ from .scenario import Scenario
 from .telemetry import derive_observable_topology
 
 
-RACE_SCHEMA_VERSION = "aeolus_habitat_v2_race_issue_55_v1"
-PREREGISTRATION_ID = "habitat_v2_forecast_issue_55_preregistration_v1"
+RACE_SCHEMA_VERSION = "aeolus_habitat_v2_race_issue_55_v2"
+PREREGISTRATION_ID = "habitat_v2_forecast_issue_55_preregistration_v2"
 ADVISORY_RANKING_METRIC_ID = "issue55-advisory-point-ranking-v1"
-ORACLE_SELECTION_METRIC_ID = "issue55-oracle-lookahead-v1"
+ORACLE_SELECTION_METRIC_ID = "issue55-oracle-full-horizon-v2"
 MODEL_SOURCE_TYPE = "issue55-model-advisory-v1"
-ORACLE_SOURCE_TYPE = "issue55-oracle-instrument-v1"
+ORACLE_SOURCE_TYPE = "issue55-oracle-instrument-v2"
 HMC_IMPLEMENTATION_GIT_SHA = "3bc5da3d716212cac6524b088a963b6abf47a0ef"
 
 ARMS = ("rules_only", "model_advised", "oracle_instrument")
 ADVISORY_ARMS = ("model_advised", "oracle_instrument")
-CORPUS_ID = "issue55_race_v1"
+CORPUS_ID = "issue55_race_v2"
+FAMILY_COUNT = 32
 EPISODE_STEPS = 96
 DECISION_START_STEP = 16
 DECISION_CADENCE_STEPS = 4
-LOOKAHEAD_STEPS = 8
 HISTORY_WINDOW_STEPS = 16
-HORIZON_STEPS = 8
+MODEL_HORIZON_STEPS = 8
+HORIZON_STEPS = MODEL_HORIZON_STEPS
 TARGET_COUNT = 51
 ZONE_FIELD_COUNT = 6
 N_ZONES = 8
@@ -67,6 +68,23 @@ ORACLE_RESOURCE_WEIGHT = 0.1
 BOOTSTRAP_RESAMPLES = 10_000
 BOOTSTRAP_SEED = 550055
 GAP_DENOMINATOR_FLOOR = 1e-12
+
+OPERATING_CONDITIONS: tuple[tuple[str, str, float, float, float, float, float, float, float], ...] = (
+    ("nominal_occupied", "occupied", 1.00, 5500.0, 0.0, 0.0, 0.30, 0.45, 72000.0),
+    ("high_load_occupied", "occupied", 1.30, 4500.0, 1.5, 160.0, 0.27, 0.55, 72000.0),
+    ("eva_transition", "eva_transition", 0.75, 6000.0, -0.5, -80.0, 0.25, 0.40, 68000.0),
+    ("contingency", "contingency", 1.20, 3500.0, 2.0, 260.0, 0.23, 0.60, 70000.0),
+)
+PLANT_CONDITIONS: tuple[tuple[str, str | None, float, float], ...] = (
+    ("nominal_plant", None, 1.00, 1.00),
+    ("fan_degradation", "fan_speed_degradation", 0.95, 0.95),
+    ("laboratory_resistance", "branch_resistance_increase", 1.90, 1.00),
+    ("equipment_cooling_loss", "cooling_delivery_degradation", 0.85, 0.90),
+)
+SENSOR_VARIANTS: tuple[tuple[str, int], ...] = (
+    ("sensor_seed_a", 0),
+    ("sensor_seed_b", 17),
+)
 
 ZONE_FIELD_BOUNDS: tuple[tuple[str, float, float, float, float], ...] = (
     ("temperature_k", 10.0, 295.15, 250.0, 330.0),
@@ -124,45 +142,157 @@ def target_bounds() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 def deterministic_family_ids(count: int, corpus_id: str = CORPUS_ID) -> tuple[str, ...]:
     """Derive preregistered family identities from the corpus id and index."""
 
-    if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
-        raise Issue55RaceError("family count must be a positive integer")
+    if (
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or not 0 < count <= FAMILY_COUNT
+    ):
+        raise Issue55RaceError("family count must be between one and 32")
     if type(corpus_id) is not str or not corpus_id:
         raise Issue55RaceError("corpus id is invalid")
     return tuple(
         "issue55f"
         + hashlib.sha256(
-            f"issue55-family-v1|{corpus_id}|{index:04d}".encode("utf-8")
+            f"issue55-family-v2|{corpus_id}|{index:04d}".encode("utf-8")
         ).hexdigest()[:16]
         for index in range(count)
     )
 
 
-def build_family_scenario(base_scenario: Scenario, family_index: int) -> Scenario:
-    """Create the deterministic family variant extended to the race episode length."""
-
-    if type(base_scenario) is not Scenario:
-        raise Issue55RaceError("family construction requires the base Scenario")
+def _family_variant_indices(family_index: int) -> tuple[int, int, int]:
     if (
         isinstance(family_index, bool)
         or not isinstance(family_index, int)
-        or family_index < 0
+        or not 0 <= family_index < FAMILY_COUNT
     ):
-        raise Issue55RaceError("family index is invalid")
+        raise Issue55RaceError("family index is outside the preregistered roster")
+    return family_index // 8, (family_index // 2) % 4, family_index % 2
+
+
+def family_condition_descriptor(family_index: int) -> dict[str, Any]:
+    """Return the immutable roster row for one preregistered family index."""
+
+    operation_index, plant_index, sensor_index = _family_variant_indices(family_index)
+    operation = OPERATING_CONDITIONS[operation_index]
+    plant = PLANT_CONDITIONS[plant_index]
+    sensor = SENSOR_VARIANTS[sensor_index]
+    return {
+        "family_index": family_index,
+        "operating_condition": operation[0],
+        "operating_mode": operation[1],
+        "plant_condition": plant[0],
+        "fault_type": plant[1],
+        "sensor_condition": sensor[0],
+        "sensor_seed_offset": sensor[1],
+    }
+
+
+def build_family_scenario(base_scenario: Scenario, family_index: int) -> Scenario:
+    """Create one preregistered operating, plant and sensor-condition family."""
+
+    if type(base_scenario) is not Scenario:
+        raise Issue55RaceError("family construction requires the base Scenario")
+    operation_index, plant_index, sensor_index = _family_variant_indices(family_index)
+    (
+        operation_name,
+        operating_mode,
+        load_scale,
+        generation_w,
+        temperature_delta,
+        co2_delta,
+        oxygen_fraction,
+        relative_humidity,
+        pressure_pa,
+    ) = OPERATING_CONDITIONS[operation_index]
+    plant_name, fault_type, fault_multiplier, resource_factor = PLANT_CONDITIONS[
+        plant_index
+    ]
+    sensor_name, sensor_offset = SENSOR_VARIANTS[sensor_index]
     data: dict[str, Any] = {
         key: _copy_json(value) for key, value in base_scenario.data.items()
     }
     sensor_model = data.get("sensor_model")
     if not isinstance(sensor_model, Mapping) or "random_seed" not in sensor_model:
         raise Issue55RaceError("base scenario has no sensor seed to vary")
-    sensor_model["random_seed"] = int(sensor_model["random_seed"]) + family_index * 1000
-    data["name"] = f"{data.get('name', 'dev')}-issue55-f{family_index:04d}"
+    sensor_model["random_seed"] = (
+        int(sensor_model["random_seed"]) + family_index * 1000 + sensor_offset
+    )
+    data["name"] = (
+        f"{data.get('name', 'dev')}-issue55-f{family_index:04d}-"
+        f"{operation_name}-{plant_name}-{sensor_name}"
+    )
+    for zone in data["zones"]:
+        initial = zone["initial"]
+        initial["temperature_k"] = float(initial["temperature_k"]) + temperature_delta
+        initial["co2_ppm"] = max(0.0, float(initial["co2_ppm"]) + co2_delta)
+        initial["o2_mole_fraction"] = oxygen_fraction
+        initial["relative_humidity"] = relative_humidity
+        initial["pressure_pa"] = pressure_pa
+    utility = data["initial_utility"]
+    utility["battery_energy_wh"] = float(utility["battery_energy_wh"]) * resource_factor
+    utility["oxygen_store_mol"] = float(utility["oxygen_store_mol"]) * resource_factor
+    utility["co2_sorbent_remaining_mol"] = (
+        float(utility["co2_sorbent_remaining_mol"]) * resource_factor
+    )
+    for segment in data["timeline"]:
+        segment["operating_mode"] = operating_mode
+        segment["generation_w"] = generation_w
+        for load in segment["loads"].values():
+            for field_name in (
+                "co2_generation_mol_s",
+                "o2_consumption_mol_s",
+                "sensible_heat_w",
+                "water_vapor_generation_mol_s",
+            ):
+                load[field_name] = float(load[field_name]) * load_scale
+    fault_profiles: list[dict[str, Any]] = []
+    if fault_type == "fan_speed_degradation":
+        fault_profiles.append(
+            {
+                "id": f"issue55-f{family_index:04d}-fan-degradation",
+                "type": fault_type,
+                "start_step": 32,
+                "end_step": 80,
+                "start_multiplier": fault_multiplier,
+                "end_multiplier": fault_multiplier,
+            }
+        )
+    elif fault_type == "branch_resistance_increase":
+        fault_profiles.append(
+            {
+                "id": f"issue55-f{family_index:04d}-laboratory-resistance",
+                "type": fault_type,
+                "zone_id": "laboratory",
+                "start_step": 32,
+                "end_step": 80,
+                "start_multiplier": fault_multiplier,
+                "end_multiplier": fault_multiplier,
+            }
+        )
+    elif fault_type == "cooling_delivery_degradation":
+        fault_profiles.append(
+            {
+                "id": f"issue55-f{family_index:04d}-equipment-cooling",
+                "type": fault_type,
+                "zone_id": "equipment_power_bay",
+                "start_step": 32,
+                "end_step": 80,
+                "start_multiplier": fault_multiplier,
+                "end_multiplier": fault_multiplier,
+            }
+        )
     try:
         variant = Scenario.from_mapping(data)
     except ScenarioValidationError as error:
         raise Issue55RaceError("family scenario failed V5 validation") from error
     try:
-        return extend_scenario_for_issue52(variant, minimum_steps=EPISODE_STEPS)
-    except ValueError as error:
+        extended = extend_scenario_for_issue52(variant, minimum_steps=EPISODE_STEPS)
+        extended_data = {
+            key: _copy_json(value) for key, value in extended.data.items()
+        }
+        extended_data["fault_profiles"] = fault_profiles
+        return Scenario.from_mapping(extended_data)
+    except (ValueError, ScenarioValidationError) as error:
         raise Issue55RaceError("family scenario cannot be extended to 96 steps") from error
 
 
@@ -177,18 +307,18 @@ def episode_nonce(family_id: str) -> bytes:
 
 
 def decision_steps(episode_steps: int = EPISODE_STEPS) -> tuple[int, ...]:
-    """Preregistered decision steps: start 16, cadence 4, full 8-step lookahead."""
+    """Preregistered model-decision steps with complete 8-step predictions."""
 
     if (
         isinstance(episode_steps, bool)
         or not isinstance(episode_steps, int)
-        or episode_steps <= DECISION_START_STEP + LOOKAHEAD_STEPS
+        or episode_steps <= DECISION_START_STEP + MODEL_HORIZON_STEPS
     ):
         raise Issue55RaceError("episode is too short for the preregistered cadence")
     return tuple(
         step
         for step in range(DECISION_START_STEP, episode_steps, DECISION_CADENCE_STEPS)
-        if step + LOOKAHEAD_STEPS <= episode_steps - 1
+        if step + MODEL_HORIZON_STEPS <= episode_steps - 1
     )
 
 
@@ -408,7 +538,7 @@ def rank_actions_advisory(scores: Sequence[AdvisoryScore]) -> AdvisoryScore | No
 
 @dataclass(frozen=True, slots=True)
 class OracleScore:
-    """True-plant lookahead score for one catalogue action (oracle arm)."""
+    """Full-remaining-episode true-plant score for one catalogue action."""
 
     action_id: str
     score: float
@@ -416,23 +546,27 @@ class OracleScore:
     comfort: float
     resource: float
     feasible_steps: int
+    horizon_steps: int
     excluded: bool
 
 
-def oracle_lookahead_scores(
+def oracle_full_horizon_scores(
     scenario: Scenario,
     zone_ids: Sequence[str],
     state: Any,
     actions: Sequence[Any],
 ) -> tuple[OracleScore, ...]:
-    """`issue55-oracle-lookahead-v1`: true-plant 8-step evaluation per action."""
+    """`issue55-oracle-full-horizon-v2`: repeat one action to episode end."""
 
     if type(scenario) is not Scenario:
-        raise Issue55RaceError("oracle lookahead requires Scenario")
+        raise Issue55RaceError("oracle full-horizon score requires Scenario")
     if not actions:
-        raise Issue55RaceError("oracle lookahead requires catalogue actions")
+        raise Issue55RaceError("oracle full-horizon score requires catalogue actions")
     base_row = project_true_targets(scenario, zone_ids, state).astype(np.float64)
     _, nominals, _, _ = target_bounds()
+    horizon_steps = int(scenario.data["steps"]) - int(state.step)
+    if horizon_steps <= 0:
+        raise Issue55RaceError("oracle full-horizon score requires remaining steps")
     results: list[OracleScore] = []
     for action in actions:
         command_mapping = action.command.to_mapping()
@@ -440,7 +574,7 @@ def oracle_lookahead_scores(
         rows: list[np.ndarray] = []
         feasible_steps = 0
         try:
-            for _ in range(LOOKAHEAD_STEPS):
+            for _ in range(horizon_steps):
                 stepped = advance_one_step_with_command(
                     scenario, cursor, command_mapping
                 )
@@ -451,7 +585,7 @@ def oracle_lookahead_scores(
                 feasible_steps += 1
         except (InfeasibleActionError, ScenarioValidationError):
             rows = []
-        if feasible_steps < LOOKAHEAD_STEPS or not rows:
+        if feasible_steps < horizon_steps or not rows:
             results.append(
                 OracleScore(
                     action_id=action.action_id,
@@ -460,16 +594,28 @@ def oracle_lookahead_scores(
                     comfort=math.inf,
                     resource=math.inf,
                     feasible_steps=feasible_steps,
+                    horizon_steps=horizon_steps,
                     excluded=True,
                 )
             )
             continue
         values = np.stack(rows)
         safety = float(np.sum(_crossings(values)))
+        occupied_rows = [
+            row
+            for offset, row in enumerate(rows)
+            if operating_mode_for_application_step(scenario, state.step + offset)
+            == "occupied"
+        ]
         comfort = float(
             np.mean(
-                np.abs(values[:, list(COMFORT_COLUMNS)] - nominals[list(COMFORT_COLUMNS)][None, :])
+                np.abs(
+                    np.stack(occupied_rows)[:, list(COMFORT_COLUMNS)]
+                    - nominals[list(COMFORT_COLUMNS)][None, :]
+                )
             )
+            if occupied_rows
+            else 0.0
         )
         final_row = rows[-1]
         resource = float(
@@ -487,17 +633,18 @@ def oracle_lookahead_scores(
                 comfort=comfort,
                 resource=resource,
                 feasible_steps=feasible_steps,
+                horizon_steps=horizon_steps,
                 excluded=False,
             )
         )
     ids = [item.action_id for item in results]
     if len(set(ids)) != len(ids):
-        raise Issue55RaceError("oracle lookahead produced duplicate action ids")
+        raise Issue55RaceError("oracle full-horizon score produced duplicate action ids")
     return tuple(results)
 
 
 def select_oracle_action(scores: Sequence[OracleScore]) -> OracleScore | None:
-    """Argmin of the preregistered lookahead score; None when all are excluded."""
+    """Argmin of the preregistered full-horizon score."""
 
     if not scores:
         raise Issue55RaceError("oracle selection requires at least one score")
@@ -906,7 +1053,7 @@ def _oracle_proposal(
     step: int,
     shadow: Any,
 ) -> dict[str, Any] | None:
-    scores = oracle_lookahead_scores(scenario, zone_ids, shadow, actions)
+    scores = oracle_full_horizon_scores(scenario, zone_ids, shadow, actions)
     selected = select_oracle_action(scores)
     if selected is None:
         return None
@@ -1093,7 +1240,8 @@ __all__ = [
     "decision_steps",
     "deterministic_family_ids",
     "episode_nonce",
-    "oracle_lookahead_scores",
+    "family_condition_descriptor",
+    "oracle_full_horizon_scores",
     "project_true_targets",
     "rank_actions_advisory",
     "run_race_episode",

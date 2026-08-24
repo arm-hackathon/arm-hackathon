@@ -1,0 +1,167 @@
+{
+  "schema_version": "aeolus_habitat_v2_issue_55_preregistration_v2",
+  "preregistration_id": "habitat_v2_forecast_issue_55_preregistration_v2",
+  "status": "DECLARED_BEFORE_REVISED_RUN",
+  "issue": 55,
+  "title": "Research study: race rules, model advice and a full-horizon oracle instrument",
+  "base_commit": "25a1486157f0bf556c5097b9ab392d8e1e184e02",
+  "lane": "RESEARCH_STUDY_DEV_EVIDENCE_ONLY",
+  "supersedes": {
+    "preregistration_id": "habitat_v2_forecast_issue_55_preregistration_v1",
+    "reason": "v1 used an 8-step greedy oracle and sensor-seed-only families; v2 declares a full-remaining-episode finite oracle schedule and diverse plant-condition families"
+  },
+  "authority": {
+    "final_command_authority": "HMC",
+    "rules_arm": "HMC_default_policy_with_no_proposals",
+    "model_arm": "HMC_default_policy_plus_frozen_mlp_teacher_point_ranking_advisory",
+    "oracle_arm": "HMC_default_policy_plus_true_plant_full_remaining_episode_schedule_selection",
+    "oracle_role": "measuring_instrument_only_never_a_demo_controller",
+    "plant_step_authority": "HMC",
+    "proposal_authority": "none_proposals_are_advisory_and_may_be_rejected_by_arbitration",
+    "runtime_process_boundary": "in_process_v1",
+    "frozen_surfaces_untouched": [
+      "contracts/habitat_v2_forecast_hmc_binding_v2.json",
+      "artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz",
+      "artifacts/demo-only/habitat-v2-forecast/action-aware-ridge.npz",
+      "src/aeolus/habitat_v2/hmc.py",
+      "src/aeolus/habitat_v2/physics.py",
+      "src/aeolus/habitat_v2/safety.py"
+    ]
+  },
+  "suite": {
+    "corpus_id": "issue55_race_v2",
+    "family_count": 32,
+    "family_id_algorithm": "'issue55f' + SHA256('issue55-family-v2|' + corpus_id + '|' + index_zeropadded4)[:16]",
+    "family_matrix": {
+      "shape": "4 operating conditions x 4 physical plant conditions x 2 sensor seeds",
+      "roster_mapping": "operation_index = floor(family_index / 8); plant_index = floor(family_index / 2) mod 4; sensor_index = family_index mod 2",
+      "operating_conditions": [
+        "nominal_occupied: occupied, load_scale=1.00, generation_w=5500, temperature_delta=0, co2_delta=0, o2=0.30, humidity=0.45, pressure=72000",
+        "high_load_occupied: occupied, load_scale=1.30, generation_w=4500, temperature_delta=1.5, co2_delta=160, o2=0.27, humidity=0.55, pressure=72000",
+        "eva_transition: eva_transition, load_scale=0.75, generation_w=6000, temperature_delta=-0.5, co2_delta=-80, o2=0.25, humidity=0.40, pressure=68000",
+        "contingency: contingency, load_scale=1.20, generation_w=3500, temperature_delta=2.0, co2_delta=260, o2=0.23, humidity=0.60, pressure=70000"
+      ],
+      "physical_plant_conditions": [
+        "nominal_plant: no physical fault, resource_factor=1.00",
+        "fan_degradation: fan_speed_degradation steps 32..79 at multiplier 0.95, resource_factor=0.95",
+        "laboratory_resistance: branch_resistance_increase for laboratory steps 32..79 at multiplier 1.90, resource_factor=1.00",
+        "equipment_cooling_loss: cooling_delivery_degradation for equipment_power_bay steps 32..79 at multiplier 0.85, resource_factor=0.90"
+      ],
+      "sensor_conditions": [
+        "sensor_seed_a: base random seed plus 1000 times family index",
+        "sensor_seed_b: base random seed plus 1000 times family index plus 17"
+      ]
+    },
+    "episode_steps": 96,
+    "arms": ["rules_only", "model_advised", "oracle_instrument"],
+    "episode_nonce": "SHA256('issue55-episode-nonce-v1|' + family_id)_identical_across_arms_for_paired_comparison",
+    "decision_rule": {
+      "start_step": 16,
+      "cadence_steps": 4,
+      "eligibility": "decision_step + model_horizon_steps <= episode_steps - 1",
+      "expected_decision_count_per_episode": 18,
+      "model_horizon_steps": 8,
+      "oracle_horizon": "episode_steps - current_state_step, evaluated separately at each decision"
+    }
+  },
+  "target_layout": {
+    "kind": "track_a_float32_8x51",
+    "columns": "8 zones x (temperature_k, pressure_pa, co2_ppm, o2_mole_fraction, relative_humidity, branch_airflow_m3_s) + (battery_soc, oxygen_store, sorbent_remaining)",
+    "bounds_source": "frozen_issue52_scoring_bounds_identical_to_issue54_evaluation_arrays",
+    "zone_fields": [
+      {"field": "temperature_k", "nominal": 295.15, "scale": 10.0, "lower": 250.0, "upper": 330.0},
+      {"field": "pressure_pa", "nominal": 101325.0, "scale": 1000.0, "lower": 50000.0, "upper": 150000.0},
+      {"field": "co2_ppm", "nominal": 800.0, "scale": 800.0, "lower": 300.0, "upper": 5000.0},
+      {"field": "o2_mole_fraction", "nominal": 0.2095, "scale": 0.005, "lower": 0.15, "upper": 0.30},
+      {"field": "relative_humidity", "nominal": 0.45, "scale": 0.25, "lower": 0.0, "upper": 1.0},
+      {"field": "branch_airflow_m3_s", "nominal": 0.05, "scale": 0.1, "lower": 0.0, "upper": 1.0}
+    ],
+    "resource_fields": [
+      {"field": "battery_state_of_charge", "nominal": 0.75, "scale": 0.25, "lower": 0.0, "upper": 1.0},
+      {"field": "oxygen_store_fraction", "nominal": 0.75, "scale": 0.25, "lower": 0.0, "upper": 1.0},
+      {"field": "sorbent_remaining_fraction", "nominal": 0.75, "scale": 0.25, "lower": 0.0, "upper": 1.0}
+    ]
+  },
+  "metrics": {
+    "safety_exposure": "sum_over_steps_and_targets_of_max(0, lower - value)/scale + max(0, value - upper)/scale_on_true_plant_states",
+    "safety_violation_steps": "count_of_steps_where_any_true_target_crosses_its_bounds",
+    "comfort_deviation": "mean_over_occupied_mode_steps_of_mean_over_temperature_co2_relative_humidity_columns_of_abs(value - nominal)/scale_on_true_plant_states",
+    "resource_composite": "sum_of_max(0, initial - final)_of_battery_oxygen_and_sorbent_fraction_columns",
+    "hmc_rejection_count": "count_of_decision_steps_where_arbitration_final_command_sha256_differs_from_the_proposed_command_sha256",
+    "gap_closure": {
+      "formula": "(mean_rules - mean_model) / (mean_rules - mean_oracle)_per_metric_over_equal_weight_family_means",
+      "interpretation": "0_percent_equals_rules_alone_100_percent_equals_declared_finite_oracle_schedule_baseline",
+      "degenerate_rule": "if_abs_denominator_lt_1e-12_closure_is_undefined_and_reported_as_DEGENERATE_GAP",
+      "ci": "bootstrap_10000_resamples_sha256_counter_sampler_seed_550055_resampling_unit_is_family_percentile_2.5_97.5",
+      "applies_to": ["safety_exposure", "comfort_deviation", "resource_composite"]
+    }
+  },
+  "advisory_contract": {
+    "model_arm_ranking_metric_id": "issue55-advisory-point-ranking-v1",
+    "teacher": "action_aware_mlp_v1_sha256_a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd",
+    "prediction": "float32_8x51_point_prediction_per_catalogue_action_from_16_step_verified_history",
+    "point_mass_bounds": "lower_equals_upper_equals_prediction",
+    "score": "tracking + 0.5 * safety + 0.05 * intervention_with_uncertainty_term_zero_by_construction",
+    "hard_ineligible": "any_predicted_bound_crossing_of_safety_bounds",
+    "tie_break": "(score, safety, intervention, hold_preference, action_id)_identical_ordering_semantics_to_rank_candidates",
+    "confidence_field": "null_no_calibrated_confidence_is_claimed",
+    "abstain_rule": "if_every_candidate_is_hard_ineligible_no_proposal_is_issued_at_that_decision_and_the_abstention_is_counted_per_episode",
+    "source_type": "issue55-model-advisory-v1",
+    "not_a_claim": "this_is_not_frozen_issue52_score_trajectory_compliance_with_uncertainty_and_not_issue54_ranking_metric_reuse"
+  },
+  "oracle_contract": {
+    "selection_metric_id": "issue55-oracle-full-horizon-v2",
+    "schedule_space": "the four frozen catalogue commands, each repeated unchanged from the current decision through the final episode step",
+    "foresight": "true plant state, future timeline loads, future operating modes and declared fault schedule are available only to this evidence instrument",
+    "score": "full_remaining_episode_true_plant_safety_exposure + full_remaining_episode_occupied_comfort_deviation + 0.1 * final_resource_composite",
+    "infeasible_rule": "candidate_that_cannot_complete_the_remaining_episode_steps_is_excluded",
+    "empty_rule": "if_all_candidates_are_excluded_no_proposal_is_issued_at_that_decision",
+    "tie_break": "(score, safety, comfort, action_id)",
+    "source_type": "issue55-oracle-instrument-v2",
+    "scope_limit": "exact only over the declared four-action constant-command schedule; not a global optimum over arbitrary action sequences",
+    "prohibited_uses": [
+      "never embedded in any demo report or browser surface as a controller",
+      "never shipped as a runtime advisor",
+      "reported only as the declared finite schedule measuring instrument of this study"
+    ]
+  },
+  "expected_results": {
+    "declared_before_run": true,
+    "ordering_expectation": "no directional result is required; the full-horizon instrument and diverse conditions replace the superseded v1 expectation",
+    "safety_expectation": "reported as measured across operating and physical-condition families",
+    "comfort_expectation": "reported as measured without a minimum passing claim",
+    "resource_expectation": "reported as measured without a directional commitment",
+    "hmc_rejection_expectation": "rejections are expected to be rare because the four catalogue commands are pre-validated; every rejection is counted"
+  },
+  "success_criteria": {
+    "hard_gates": {
+      "authority_violation_count": {"maximum": 0},
+      "replay_failure_count": {"maximum": 0},
+      "provenance_violation_count": {"maximum": 0},
+      "non_finite_metric_count": {"maximum": 0},
+      "proposal_admission_failure_count": {"maximum": 0}
+    },
+    "reporting_requirements": [
+      "publish the full per-arm per-family results table for safety_violation_steps, safety_exposure, comfort_deviation, and resource_composite",
+      "publish gap closure with bootstrap 95 percent CI for all three continuous metrics regardless of outcome",
+      "report hmc_rejection_count and abstention_count per arm",
+      "report the operating-condition, physical-plant-condition and sensor-condition roster",
+      "state explicitly that the oracle is a measuring instrument and the results are simulation development evidence only"
+    ],
+    "honest_negative_rule": "any model worsening or non-closure is published without tuning when all hard gates pass"
+  },
+  "non_goals": [
+    "no deployment qualification certification or hardware claim",
+    "no change to HMC policy contracts physics or frozen artifacts",
+    "no oracle integration into any demo or runtime advisory surface",
+    "no tuning of thresholds or metrics after observing results",
+    "no use of final-suite or validation data",
+    "no claim that the finite four-action schedule is a global optimum"
+  ],
+  "reproducibility": {
+    "entry_point": "scripts/run_issue55_controller_race.py",
+    "output_rule": "write_once_new_directory_under_ignored_out",
+    "determinism_rule": "no_wall_clock_or_unseeded_values_in_any_digest_bearing_artifact",
+    "digest_rule": "episode_records_results_and_manifests_are_canonical_json_sha256_bound"
+  }
+}

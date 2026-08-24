@@ -27,21 +27,23 @@ from aeolus.habitat_v2.forecast_issue55_race import (
     DECISION_CADENCE_STEPS,
     DECISION_START_STEP,
     EPISODE_STEPS,
-    LOOKAHEAD_STEPS,
+    FAMILY_COUNT,
+    HORIZON_STEPS,
     PREREGISTRATION_ID,
     aggregate_race_results,
     build_family_scenario,
     decision_steps,
     deterministic_family_ids,
+    family_condition_descriptor,
     run_race_episode,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PREREGISTRATION_PATH = (
-    REPO_ROOT / "contracts" / "habitat_v2_forecast_issue_55_preregistration_v1.json"
+    REPO_ROOT / "contracts" / "habitat_v2_forecast_issue_55_preregistration_v2.json"
 )
 PREREGISTRATION_SHA256 = (
-    "17C601D7F15A21804AA68B26024C96D44642491E07A9BD75BDE805E027C773CF"
+    "9041108536E64561ADCEAA434344CDCB6FEAB967F1BD9FB0F47C03FA713FB22E"
 )
 MLP_ARTIFACT_PATH = (
     REPO_ROOT / "artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz"
@@ -81,8 +83,8 @@ def main() -> None:
     output_dir = args.output
     if output_dir.exists():
         raise RuntimeError("output directory must be new and write-once")
-    if not 1 <= args.families <= 32:
-        raise RuntimeError("--families must be between 1 and 32")
+    if not 1 <= args.families <= FAMILY_COUNT:
+        raise RuntimeError(f"--families must be between 1 and {FAMILY_COUNT}")
 
     verify_preregistration()
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -97,7 +99,7 @@ def main() -> None:
     print(
         f"  episodes: {EPISODE_STEPS} steps, decisions every "
         f"{DECISION_CADENCE_STEPS} steps from {DECISION_START_STEP}, "
-        f"lookahead {LOOKAHEAD_STEPS}",
+        f"model horizon {HORIZON_STEPS}, oracle horizon remaining-to-episode-end",
         file=sys.stderr,
     )
 
@@ -152,12 +154,16 @@ def main() -> None:
         "corpus_id": CORPUS_ID,
         "family_count": args.families,
         "family_ids": list(family_ids),
+        "family_roster": [
+            family_condition_descriptor(index) for index in range(args.families)
+        ],
         "arms": list(ARMS),
         "episode_steps": EPISODE_STEPS,
         "decision_steps": list(decision_steps(EPISODE_STEPS)),
         "decision_start_step": DECISION_START_STEP,
         "decision_cadence_steps": DECISION_CADENCE_STEPS,
-        "lookahead_steps": LOOKAHEAD_STEPS,
+        "model_horizon_steps": HORIZON_STEPS,
+        "oracle_horizon": "remaining_episode_steps",
         "teacher_artifact_sha256": MLP_ARTIFACT_SHA,
         "hard_gates": gates,
         "arm_summaries": aggregated["arm_summaries"],

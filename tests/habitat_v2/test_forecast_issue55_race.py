@@ -15,6 +15,7 @@ from aeolus.habitat_v2.forecast_issue55_race import (
     ARMS,
     CORPUS_ID,
     EPISODE_STEPS,
+    FAMILY_COUNT,
     ORACLE_SELECTION_METRIC_ID,
     PREREGISTRATION_ID,
     RACE_SCHEMA_VERSION,
@@ -27,7 +28,8 @@ from aeolus.habitat_v2.forecast_issue55_race import (
     decision_steps,
     deterministic_family_ids,
     episode_nonce,
-    oracle_lookahead_scores,
+    family_condition_descriptor,
+    oracle_full_horizon_scores,
     project_true_targets,
     rank_actions_advisory,
     run_race_episode,
@@ -40,7 +42,7 @@ from aeolus.habitat_v2.physics import initial_state
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PREREGISTRATION_DIGEST = (
-    "17C601D7F15A21804AA68B26024C96D44642491E07A9BD75BDE805E027C773CF"
+    "9041108536E64561ADCEAA434344CDCB6FEAB967F1BD9FB0F47C03FA713FB22E"
 )
 MLP_ARTIFACT_PATH = (
     REPO_ROOT / "artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz"
@@ -70,18 +72,18 @@ class TestPreregistrationBinding:
         path = (
             REPO_ROOT
             / "contracts"
-            / "habitat_v2_forecast_issue_55_preregistration_v1.json"
+            / "habitat_v2_forecast_issue_55_preregistration_v2.json"
         )
         text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest().upper()
         assert digest == PREREGISTRATION_DIGEST
 
     def test_module_constants_bind_preregistration(self) -> None:
-        assert PREREGISTRATION_ID == "habitat_v2_forecast_issue_55_preregistration_v1"
-        assert RACE_SCHEMA_VERSION == "aeolus_habitat_v2_race_issue_55_v1"
+        assert PREREGISTRATION_ID == "habitat_v2_forecast_issue_55_preregistration_v2"
+        assert RACE_SCHEMA_VERSION == "aeolus_habitat_v2_race_issue_55_v2"
         assert ADVISORY_RANKING_METRIC_ID == "issue55-advisory-point-ranking-v1"
-        assert ORACLE_SELECTION_METRIC_ID == "issue55-oracle-lookahead-v1"
-        assert CORPUS_ID == "issue55_race_v1"
+        assert ORACLE_SELECTION_METRIC_ID == "issue55-oracle-full-horizon-v2"
+        assert CORPUS_ID == "issue55_race_v2"
         assert ARMS == ("rules_only", "model_advised", "oracle_instrument")
 
 
@@ -213,16 +215,16 @@ class TestAdvisoryRanking:
 class TestOracleSelection:
     def test_selects_minimum_score(self) -> None:
         scores = (
-            OracleScore("a", 2.0, 1.0, 0.5, 0.1, 8, False),
-            OracleScore("b", 1.0, 0.5, 0.25, 0.05, 8, False),
-            OracleScore("c", float("inf"), float("inf"), float("inf"), float("inf"), 3, True),
+            OracleScore("a", 2.0, 1.0, 0.5, 0.1, 8, 8, False),
+            OracleScore("b", 1.0, 0.5, 0.25, 0.05, 8, 8, False),
+            OracleScore("c", float("inf"), float("inf"), float("inf"), float("inf"), 3, 8, True),
         )
         assert select_oracle_action(scores).action_id == "b"
 
     def test_returns_none_when_all_excluded(self) -> None:
         scores = (
-            OracleScore("a", float("inf"), float("inf"), float("inf"), float("inf"), 2, True),
-            OracleScore("b", float("inf"), float("inf"), float("inf"), float("inf"), 0, True),
+            OracleScore("a", float("inf"), float("inf"), float("inf"), float("inf"), 2, 8, True),
+            OracleScore("b", float("inf"), float("inf"), float("inf"), float("inf"), 0, 8, True),
         )
         assert select_oracle_action(scores) is None
 
@@ -230,7 +232,7 @@ class TestOracleSelection:
         bundle = load_forecast_contracts(REPO_ROOT)
         scenario = build_family_scenario(bundle.development_scenario, 0)
         zone_ids = scenario_zone_order(scenario)
-        scores = oracle_lookahead_scores(
+        scores = oracle_full_horizon_scores(
             scenario, zone_ids, initial_state(scenario), tuple(bundle.actions)
         )
         assert len(scores) == 4
@@ -239,10 +241,11 @@ class TestOracleSelection:
         }
         for item in scores:
             if item.excluded:
-                assert item.feasible_steps < 8
+                assert item.feasible_steps < EPISODE_STEPS
                 assert item.score == float("inf")
             else:
-                assert item.feasible_steps == 8
+                assert item.feasible_steps == EPISODE_STEPS
+                assert item.horizon_steps == EPISODE_STEPS
                 assert item.score >= 0.0
 
 
@@ -287,8 +290,33 @@ class TestFamilyScenario:
         )
         assert (
             family_one.data["sensor_model"]["random_seed"]
-            == family_zero.data["sensor_model"]["random_seed"] + 1000
+            == family_zero.data["sensor_model"]["random_seed"] + 1017
         )
+        assert family_zero.data["fault_profiles"] == []
+        family_two = build_family_scenario(base, 2)
+        assert family_two.data["fault_profiles"]
+        assert family_two.data["fault_profiles"][0]["type"] == "fan_speed_degradation"
+
+    def test_full_roster_covers_condition_axes(self) -> None:
+        bundle = load_forecast_contracts(REPO_ROOT)
+        scenarios = [
+            build_family_scenario(bundle.development_scenario, index)
+            for index in range(FAMILY_COUNT)
+        ]
+        assert len({scenario.scenario_sha256 for scenario in scenarios}) == FAMILY_COUNT
+        assert {scenario.data["timeline"][0]["operating_mode"] for scenario in scenarios} == {
+            "occupied",
+            "eva_transition",
+            "contingency",
+        }
+        assert {bool(scenario.data["fault_profiles"]) for scenario in scenarios} == {
+            False,
+            True,
+        }
+        descriptor = family_condition_descriptor(31)
+        assert descriptor["family_index"] == 31
+        assert descriptor["operating_condition"] == "contingency"
+        assert descriptor["plant_condition"] == "equipment_cooling_loss"
 
 
 def _run_family_episode(bundle, arm: str, family_index: int, teacher=None):
