@@ -1,0 +1,186 @@
+{
+  "authority": {
+    "final_command_authority": "HMC",
+    "model_role": "distillation_research_advisory_only",
+    "plant_step_authority": "HMC",
+    "runtime_process_boundary": "in_process_v1",
+    "safety_core_separate_review_required": true,
+    "student_actuator_authority": false,
+    "teacher_actuator_authority": false
+  },
+  "base_commit": "6ae8641889b952a65e8bc4b06d551ea0c4793f78",
+  "corpus": {
+    "family_cap": 128,
+    "family_split": {
+      "algorithm": "sha256_issue54_split_v1_then_largest_remainder",
+      "final_fraction": 0.2,
+      "train_fraction": 0.6,
+      "validation_fraction": 0.2,
+      "split_input": "SHA256('issue54-split-v1|' + family_id)"
+    },
+    "minimum_families_per_split": { "FINAL": 5, "TRAIN": 10, "VALIDATION": 5 },
+    "options": [
+      {
+        "id": "fresh_pipeline",
+        "description": "generate scenario families via the forecast pipeline and run the teacher per family",
+        "minimum_families": 32
+      },
+      {
+        "id": "committed_corpus",
+        "description": "reuse the 288-example ridge corpus and run both teachers to produce distillation targets",
+        "minimum_families": 1
+      },
+      {
+        "id": "synthetic_varied_seed",
+        "description": "vary the development scenario random_seed and initial conditions to generate diverse inputs",
+        "minimum_families": 32
+      }
+    ],
+    "selection_rule": "report_all_three_options_and_record_the_best_distillation_agreement_per_param_count",
+    "whole_family_isolation": true
+  },
+  "forecast_contract": {
+    "cadence_seconds": 60,
+    "horizon_steps": 8,
+    "input_manifest_sha256": "29d743472712dff68759477debd25aadba8a0584ad89d164bc5c583260356971",
+    "target_channels": {
+      "global_unique": ["battery_resource_gauge", "oxygen_reserve_resource_gauge", "sorbent_reserve_resource_gauge"],
+      "per_habitable_zone": ["co2_concentration", "dry_bulb_temperature", "relative_humidity"],
+      "width_formula": "3 * habitable_zone_count + 3"
+    },
+    "target_environmental_head": "primary_telemetry",
+    "target_manifest_sha256": "26e480ca4f07d2092fc6e96fcf2f006948e9e2872ad2b0fd4ae3ac8e947c74db"
+  },
+  "hmc_binding": {
+    "binding_sha256": "aa37ae6394031241d317bcfcc31ea2e3da0b4701ddd96f04dfbc90cf3142e63d",
+    "final_hmc_commit_sha": "3bc5da3d716212cac6524b088a963b6abf47a0ef"
+  },
+  "honest_measurements_required": {
+    "curve": "how_small_is_safe_param_count_vs_nmae_ratio_vs_ranking_agreement_vs_safety_margin",
+    "limitation_card": "docs/evidence/issue-54-distillation-card.md",
+    "measurements_table": "docs/evidence/issue-54-measurements.md",
+    "must_report": [
+      "per_teacher_per_size_per_corpus_nmae_ratio_vs_teacher_with_95pct_ci",
+      "per_teacher_per_size_per_corpus_top1_ranking_agreement_rate",
+      "per_teacher_per_size_per_corpus_kendall_tau_full_ranking",
+      "per_teacher_per_size_per_corpus_safety_exposure_mean_abs_difference",
+      "best_corpus_per_param_count",
+      "honest_negative_results_if_any"
+    ]
+  },
+  "issue": 54,
+  "metrics": {
+    "action_ranking_top1_agreement": {
+      "definition": "fraction_of_decisions_where_student_top_ranked_candidate_equals_teacher_top_ranked_candidate",
+      "priority": "co_primary"
+    },
+    "action_ranking_kendall_tau": {
+      "definition": "mean_kendall_tau_b_between_student_and_teacher_full_rankings_over_all_decisions",
+      "priority": "co_primary"
+    },
+    "authority_violation_count": { "maximum": 0, "priority": "hard" },
+    "provenance_or_split_violation_count": { "maximum": 0, "priority": "hard" },
+    "replay_failure_count": { "maximum": 0, "priority": "hard" },
+    "nmae_ratio_vs_teacher": {
+      "aggregation": "equal_weight_family_mean_of_NMAE_student_divided_by_NMAE_teacher_paired_by_family",
+      "eligible_rows": "only_candidate_trajectories_with_all_8_finite_targets_identical_eligibility_mask_for_teacher_and_student",
+      "point_maximum": 1.5,
+      "point_minimum": 0.0,
+      "priority": "primary",
+      "upper_95_ci_maximum_exclusive": 2.0
+    },
+    "safety_exposure_difference": {
+      "definition": "mean_absolute_difference_of_safety_exposure_from_score_trajectory_between_student_and_teacher_per_candidate_per_decision",
+      "point_maximum": 0.5,
+      "priority": "co_primary"
+    }
+  },
+  "preregistration_version": "habitat_v2_forecast_issue_54_preregistration_v1",
+  "statistics": {
+    "alpha_two_sided": 0.05,
+    "bootstrap_family_order": "ascending_utf8_family_id",
+    "bootstrap_non_finite_rule": "any_non_finite_family_value_aggregate_or_bootstrap_statistic_invalidates_the_evaluation",
+    "bootstrap_repetitions": 10000,
+    "bootstrap_sampler": "for_replicate_r_and_draw_d_take_uint64_big_endian_of_first_8_bytes_of_sha256(utf8('issue54-bootstrap-v1|'+seed+'|'+r+'|'+d))_modulo_family_count_as_the_with_replacement_index",
+    "bootstrap_seed": 540054,
+    "point_estimator": "ratio_of_equal_weight_family_aggregate_means",
+    "ratio_zero_denominator_rule": "if_teacher_nmae_is_zero_student_must_also_be_zero_for_pass_otherwise_fail",
+    "resampling_unit": "semantic_scenario_family"
+  },
+  "student_architectures": {
+    "linear": {
+      "description": "ridge regression with teacher predictions as distillation targets",
+      "trainer": "fit_direct_ridge_with_distillation_targets"
+    },
+    "mlp_sizes": [
+      {
+        "hidden_layers": [512, 512, 256],
+        "id": "sanity-2.1m",
+        "input_width_mlp": 3132,
+        "input_width_ridge": 8767,
+        "label": "sanity_check_matching_mlp_teacher",
+        "output_width": 408,
+        "param_count_approx": 2100000
+      },
+      {
+        "hidden_layers": [140],
+        "id": "medium-500k",
+        "input_width_mlp": 3132,
+        "input_width_ridge": 8767,
+        "label": "half_order_magnitude",
+        "output_width": 408,
+        "param_count_approx": 500000
+      },
+      {
+        "hidden_layers": [28],
+        "id": "small-100k",
+        "input_width_mlp": 3132,
+        "input_width_ridge": 8767,
+        "label": "one_order_magnitude",
+        "output_width": 408,
+        "param_count_approx": 100000
+      },
+      {
+        "hidden_layers": [7],
+        "id": "tiny-25k",
+        "input_width_mlp": 3132,
+        "input_width_ridge": 8767,
+        "label": "two_orders_magnitude",
+        "output_width": 408,
+        "param_count_approx": 25000
+      }
+    ],
+    "training": {
+      "activation": "gelu_exact_erf",
+      "distillation_loss": "mean_squared_error_student_prediction_vs_teacher_prediction",
+      "epochs": 200,
+      "initialization": "numpy_default_rng_random_weights",
+      "learning_rate": 0.001,
+      "l2_penalty": 0.0001,
+      "optimizer": "adam",
+      "seeds": [540054, 540055, 540056]
+    }
+  },
+  "teachers": {
+    "mlp": {
+      "actuator_authority": false,
+      "architecture": "3132_input_512_512_256_408_output_gelu",
+      "artifact_path": "artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz",
+      "artifact_sha256": "a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd",
+      "frozen": true,
+      "param_count_approx": 2100000,
+      "release_tier": "DEVELOPMENT_EVIDENCE_ONLY",
+      "window_steps": 16
+    },
+    "ridge": {
+      "actuator_authority": false,
+      "architecture": "8767_input_408_output_ridge",
+      "artifact_path": "artifacts/demo-only/habitat-v2-forecast/action-aware-ridge.npz",
+      "artifact_sha256": "0de4b5cdb6ec2b47be260a06f924d8eb00f1def16d5ae668b3ab5191251f29df",
+      "frozen": true,
+      "param_count_approx": 3580000,
+      "release_tier": "DEMO_ONLY_PERMANENTLY_EXCLUDED",
+      "window_steps": 4
+    }
+  }
+}
