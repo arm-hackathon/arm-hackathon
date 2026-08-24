@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from aeolus.habitat_v2.forecast.contracts import canonical_json_bytes
 from aeolus.habitat_v2.forecast_issue54_distillation import (
     MLP_FEATURE_COUNT,
     OUTPUT_DIM,
@@ -19,6 +20,7 @@ from aeolus.habitat_v2.forecast_issue54_distillation import (
     build_corpus_manifest,
     compute_nmae_family,
     compute_ranking_and_safety,
+    derive_train_nmae_scales,
     deterministic_family_ids,
     evaluate_student,
     family_split,
@@ -48,19 +50,44 @@ def _fake_bounds() -> tuple[np.ndarray, np.ndarray]:
     return np.full(51, -100.0), np.full(51, 100.0)
 
 
+def _samples_digest(samples: list[DistillationSample]) -> str:
+    digest = hashlib.sha256()
+    for sample in samples:
+        digest.update(
+            canonical_json_bytes(
+                {
+                    "family_id": sample.family_id,
+                    "decision_id": sample.decision_id,
+                    "candidate_id": sample.candidate_id,
+                    "sha": sample.sample_sha256,
+                }
+            )
+        )
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
 def _make_sample(
     family_id: str,
     split: str,
     candidate_id: str,
     teacher_label: str,
     rng: np.random.Generator,
+    decision_id: str | None = None,
 ) -> DistillationSample:
     input_w = MLP_FEATURE_COUNT if teacher_label == "mlp" else RIDGE_FEATURE_COUNT
     inp = rng.normal(0, 1, size=input_w).astype(np.float32)
     pred = rng.normal(0, 1, size=OUTPUT_DIM).astype(np.float32)
     truth = rng.normal(0, 1, size=OUTPUT_DIM).astype(np.float32)
     return make_distillation_sample(
-        family_id, split, candidate_id, teacher_label, inp, pred, truth
+        family_id,
+        decision_id or f"{family_id}|anchor=0016",
+        split,
+        candidate_id,
+        teacher_label,
+        inp,
+        pred,
+        truth,
     )
 
 
@@ -68,14 +95,27 @@ def _make_manifest(
     teacher_label: str, family_ids: list[str], samples_sha256: str
 ) -> DistillationCorpusManifest:
     split = family_split(family_ids)
-    return build_corpus_manifest(teacher_label, "test", family_ids, split, samples_sha256)
+    decision_ids = [f"{fid}|anchor=0016" for fid in family_ids]
+    return build_corpus_manifest(
+        teacher_label,
+        "test",
+        family_ids,
+        split,
+        decision_ids,
+        ("c0", "c1", "c2", "c3"),
+        samples_sha256,
+    )
+
+
+def _fake_nmae_scales() -> np.ndarray:
+    return np.ones((8, 51), dtype=np.float64)
 
 
 class TestDistillationSample:
     def test_make_sample_validates_shapes(self) -> None:
         with pytest.raises(Issue54DistillationError, match="input shape"):
             make_distillation_sample(
-                "f1", "TRAIN", "c1", "mlp",
+                "f1", "d1", "TRAIN", "c1", "mlp",
                 np.zeros(10, dtype=np.float32),
                 np.zeros(OUTPUT_DIM, dtype=np.float32),
                 np.zeros(OUTPUT_DIM, dtype=np.float32),
@@ -84,7 +124,7 @@ class TestDistillationSample:
     def test_make_sample_rejects_unknown_teacher(self) -> None:
         with pytest.raises(Issue54DistillationError, match="unknown teacher"):
             make_distillation_sample(
-                "f1", "TRAIN", "c1", "unknown",
+                "f1", "d1", "TRAIN", "c1", "unknown",
                 np.zeros(MLP_FEATURE_COUNT, dtype=np.float32),
                 np.zeros(OUTPUT_DIM, dtype=np.float32),
                 np.zeros(OUTPUT_DIM, dtype=np.float32),
@@ -95,9 +135,20 @@ class TestDistillationSample:
         inp[0] = float("nan")
         with pytest.raises(Issue54DistillationError, match="non-finite"):
             make_distillation_sample(
-                "f1", "TRAIN", "c1", "mlp", inp,
+                "f1", "d1", "TRAIN", "c1", "mlp", inp,
                 np.zeros(OUTPUT_DIM, dtype=np.float32),
                 np.zeros(OUTPUT_DIM, dtype=np.float32),
+            )
+
+    def test_make_sample_rejects_non_finite_truth(self) -> None:
+        truth = np.zeros(OUTPUT_DIM, dtype=np.float32)
+        truth[0] = float("nan")
+        with pytest.raises(Issue54DistillationError, match="non-finite"):
+            make_distillation_sample(
+                "f1", "d1", "TRAIN", "c1", "mlp",
+                np.zeros(MLP_FEATURE_COUNT, dtype=np.float32),
+                np.zeros(OUTPUT_DIM, dtype=np.float32),
+                truth,
             )
 
     def test_sample_sha256_is_deterministic(self) -> None:
@@ -250,8 +301,7 @@ class TestEvaluation:
         rng = _rng()
         sample = _make_sample("f01", "FINAL", "c0", "mlp", rng)
         preds = {sample.sample_sha256: sample.ground_truth_f32}
-        scales = _fake_scales()
-        result = compute_nmae_family(preds, [sample], scales)
+        result = compute_nmae_family(preds, [sample], _fake_nmae_scales())
         assert result["f01"] == pytest.approx(0.0, abs=1e-6)
 
     def test_nmae_positive_for_imperfect(self) -> None:
@@ -259,9 +309,15 @@ class TestEvaluation:
         sample = _make_sample("f01", "FINAL", "c0", "mlp", rng)
         perturbed = sample.ground_truth_f32 + 1.0
         preds = {sample.sample_sha256: perturbed.astype(np.float32)}
-        scales = _fake_scales()
-        result = compute_nmae_family(preds, [sample], scales)
+        result = compute_nmae_family(preds, [sample], _fake_nmae_scales())
         assert result["f01"] > 0.0
+
+    def test_nmae_accepts_flat_target_scales(self) -> None:
+        rng = _rng()
+        sample = _make_sample("f01", "FINAL", "c0", "mlp", rng)
+        preds = {sample.sample_sha256: sample.ground_truth_f32}
+        result = compute_nmae_family(preds, [sample], _fake_scales())
+        assert result["f01"] == pytest.approx(0.0, abs=1e-6)
 
     def test_ranking_agreement_perfect(self) -> None:
         rng = _rng()
@@ -274,7 +330,36 @@ class TestEvaluation:
         scales = _fake_scales()
         lowers, uppers = _fake_bounds()
         top1, tau, safety = compute_ranking_and_safety(
-            preds, preds, samples, nominals, scales, lowers, uppers
+            preds, preds, samples, nominals, scales, lowers, uppers,
+            expected_candidate_ids=("c0", "c1", "c2", "c3"),
+        )
+        assert top1 == 1.0
+        assert tau == 1.0
+        assert safety == 0.0
+
+    def test_ranking_groups_by_decision_not_family(self) -> None:
+        rng = _rng()
+        samples = [
+            _make_sample(
+                "f01",
+                "FINAL",
+                f"c{j}",
+                "mlp",
+                rng,
+                decision_id=f"f01|anchor={anchor:04d}",
+            )
+            for anchor in (16, 24)
+            for j in range(4)
+        ]
+        preds = {sample.sample_sha256: sample.teacher_prediction_f32 for sample in samples}
+        top1, tau, safety = compute_ranking_and_safety(
+            preds,
+            preds,
+            samples,
+            _fake_nominals(),
+            _fake_scales(),
+            *_fake_bounds(),
+            expected_candidate_ids=("c0", "c1", "c2", "c3"),
         )
         assert top1 == 1.0
         assert tau == 1.0
@@ -301,14 +386,40 @@ class TestEvaluation:
         scales = _fake_scales()
         nominals = _fake_nominals()
         lowers, uppers = _fake_bounds()
-        result = evaluate_student(student, final, scales, nominals, lowers, uppers)
+        result = evaluate_student(
+            student,
+            final,
+            scales,
+            nominals,
+            lowers,
+            uppers,
+            corpus_id="test",
+            nmae_scales=_fake_nmae_scales(),
+            expected_candidate_ids=("c0", "c1", "c2", "c3"),
+        )
         assert result.teacher_label == "mlp"
         assert result.student_id == "tiny-25k"
+        assert result.corpus_id == "test"
         assert result.nmae_ratio > 0
         assert 0.0 <= result.top1_agreement <= 1.0
         assert -1.0 <= result.kendall_tau <= 1.0
         assert result.safety_exposure_difference >= 0.0
         assert result.student_param_count > 0
+
+    def test_train_scales_use_only_train_truth(self) -> None:
+        rng = _rng()
+        train = [
+            _make_sample(f"f{i:02d}", "TRAIN", "c0", "mlp", rng)
+            for i in range(6)
+        ]
+        scales = derive_train_nmae_scales(train)
+        expected_truth = np.stack([
+            sample.ground_truth_f32.reshape(8, 51) for sample in train
+        ]).astype(np.float64)
+        expected = np.percentile(expected_truth, 95, axis=0) - np.percentile(
+            expected_truth, 5, axis=0
+        )
+        np.testing.assert_array_equal(scales, expected)
 
 
 class TestSaveLoad:
@@ -356,27 +467,76 @@ class TestCorpusValidation:
             for j in range(4):
                 s = _make_sample(fid, split[fid], f"c{j}", "mlp", rng)
                 samples.append(s)
-        digest = hashlib.sha256()
-        for s in samples:
-            digest.update(
-                __import__("aeolus.habitat_v2.forecast.contracts", fromlist=["canonical_json_bytes"]).canonical_json_bytes(
-                    {"family_id": s.family_id, "candidate_id": s.candidate_id, "sha": s.sample_sha256}
-                )
-            )
-            digest.update(b"\n")
-        manifest = build_corpus_manifest("mlp", "test", ids, split, digest.hexdigest())
+        digest = _samples_digest(samples)
+        manifest = build_corpus_manifest(
+            "mlp",
+            "test",
+            ids,
+            split,
+            [f"{fid}|anchor=0016" for fid in ids],
+            ("c0", "c1", "c2", "c3"),
+            digest,
+        )
         validate_samples(samples, manifest)
 
     def test_validate_samples_rejects_split_mismatch(self) -> None:
         rng = _rng()
         ids = deterministic_family_ids(10, "test")
         split = family_split(ids)
-        s = _make_sample(ids[0], "WRONG", "c0", "mlp", rng)
-        digest = hashlib.sha256()
-        digest.update(b"dummy")
-        manifest = build_corpus_manifest("mlp", "test", ids, split, digest.hexdigest())
+        wrong_split = "VALIDATION" if split[ids[0]] != "VALIDATION" else "TRAIN"
+        s = _make_sample(ids[0], wrong_split, "c0", "mlp", rng)
+        manifest = build_corpus_manifest(
+            "mlp",
+            "test",
+            ids,
+            split,
+            [f"{fid}|anchor=0016" for fid in ids],
+            ("c0", "c1", "c2", "c3"),
+            "dummy",
+        )
         with pytest.raises(Issue54DistillationError, match="split does not match"):
             validate_samples([s], manifest)
+
+    def test_validate_samples_rejects_incomplete_decision(self) -> None:
+        rng = _rng()
+        family_ids = ["f01"]
+        split = {"f01": "FINAL"}
+        samples = [
+            _make_sample("f01", "FINAL", candidate_id, "mlp", rng)
+            for candidate_id in ("c0", "c1", "c2")
+        ]
+        manifest = build_corpus_manifest(
+            "mlp",
+            "test",
+            family_ids,
+            split,
+            ["f01|anchor=0016"],
+            ("c0", "c1", "c2", "c3"),
+            "not-the-digest",
+        )
+        with pytest.raises(Issue54DistillationError, match="complete candidate set"):
+            validate_samples(samples, manifest)
+
+    def test_validate_samples_rejects_duplicate_decision_candidate(self) -> None:
+        rng = _rng()
+        family_ids = ["f01"]
+        split = {"f01": "FINAL"}
+        samples = [
+            _make_sample("f01", "FINAL", candidate_id, "mlp", rng)
+            for candidate_id in ("c0", "c1", "c2", "c3")
+        ]
+        digest = _samples_digest(samples)
+        manifest = build_corpus_manifest(
+            "mlp",
+            "test",
+            family_ids,
+            split,
+            ["f01|anchor=0016"],
+            ("c0", "c1", "c2", "c3"),
+            digest,
+        )
+        with pytest.raises(Issue54DistillationError, match="duplicate decision candidate"):
+            validate_samples(samples + [samples[0]], manifest)
 
 
 class TestPreregistrationBinding:

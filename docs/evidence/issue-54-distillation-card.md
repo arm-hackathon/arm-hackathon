@@ -4,7 +4,12 @@ Date: 2026-08-24
 Lane: `research/issue-54-model-distillation`
 Preregistration: `contracts/habitat_v2_forecast_issue_54_preregistration_v1.json`
 Preregistration SHA-256, LF-normalized: `E16BEFB588A43F131128056932BBFE5CAA707C87309A828A33C91E1C412D5246`
-Status: **DEVELOPMENT EVIDENCE ONLY - research study, not qualified, not deployable**
+Status: **HISTORICAL / SUPERSEDED - DEVELOPMENT EVIDENCE ONLY**
+
+The numerical results below belong to the original v1 runner and are retained
+for provenance only. They are superseded by the audit in
+`docs/evidence/issue-54-distillation-audit.md`; no corrected full-run result is
+claimed in this repository yet. The frozen preregistration remains unchanged.
 
 HMC remains the sole proposal, arbitration, preflight, capability, plant-step,
 and replay authority. No student model has any actuator authority. This study
@@ -30,7 +35,7 @@ Implementation artifacts:
   manifest/validation, bootstrap NMAE-ratio statistics, and evaluation.
 * `scripts/run_issue54_distillation_study.py` - deterministic collector +
   qualifier entry point (pilot and full modes).
-* `tests/habitat_v2/test_forecast_issue54_distillation.py` - 29 tests.
+* `tests/habitat_v2/test_forecast_issue54_distillation.py` - 35 focused tests.
 * Frozen teachers: `artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz`
   (SHA-256 `a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd`)
   and `action-aware-ridge.npz` (SHA-256

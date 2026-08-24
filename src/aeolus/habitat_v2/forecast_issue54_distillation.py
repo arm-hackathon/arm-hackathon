@@ -29,7 +29,9 @@ from .forecast.contracts import canonical_json_bytes
 from .forecast_issue52 import TargetManifest
 
 
-ISSUE54_SCHEMA_VERSION = "aeolus_habitat_v2_forecast_issue_54_v1"
+ISSUE54_SCHEMA_VERSION = "aeolus_habitat_v2_forecast_issue_54_v2"
+RANKING_METRIC_ID = "issue54-simplified-nominal-point-bound-v1"
+RANKING_PROTOCOL_STATUS = "NON_PREREGISTERED_METRIC_REQUIRES_ADDENDUM"
 HORIZON_STEPS = 8
 OUTPUT_DIM = HORIZON_STEPS * TARGET_COUNT  # 408
 MLP_WINDOW_STEPS = 16
@@ -65,6 +67,7 @@ class DistillationSample:
     """One (input, teacher_prediction, ground_truth) triple with provenance."""
 
     family_id: str
+    decision_id: str
     split: str
     candidate_id: str
     teacher_label: str
@@ -173,6 +176,8 @@ class DistillationCorpusManifest:
     corpus_id: str
     family_split: dict[str, str]
     family_ids: tuple[str, ...]
+    decision_ids: tuple[str, ...]
+    candidate_ids: tuple[str, ...]
     samples_sha256: str
     manifest_sha256: str
 
@@ -184,6 +189,7 @@ class DistillationResult:
     teacher_label: str
     student_id: str
     corpus_id: str
+    ranking_metric_id: str
     student_param_count: int
     nmae_teacher: float
     nmae_student: float
@@ -241,6 +247,7 @@ def _as_f32(value: np.ndarray, label: str) -> np.ndarray:
 
 def _sample_sha256(
     family_id: str,
+    decision_id: str,
     split: str,
     candidate_id: str,
     teacher_label: str,
@@ -250,6 +257,7 @@ def _sample_sha256(
 ) -> str:
     payload = {
         "family_id": family_id,
+        "decision_id": decision_id,
         "split": split,
         "candidate_id": candidate_id,
         "teacher_label": teacher_label,
@@ -266,6 +274,7 @@ def _sample_sha256(
 
 def make_distillation_sample(
     family_id: str,
+    decision_id: str,
     split: str,
     candidate_id: str,
     teacher_label: str,
@@ -275,6 +284,13 @@ def make_distillation_sample(
 ) -> DistillationSample:
     if teacher_label not in _TEACHER_LABELS:
         raise Issue54DistillationError(f"unknown teacher label: {teacher_label}")
+    if any(
+        type(value) is not str or not value
+        for value in (family_id, decision_id, candidate_id)
+    ):
+        raise Issue54DistillationError("sample identity fields must be non-empty")
+    if split not in {"TRAIN", "VALIDATION", "FINAL"}:
+        raise Issue54DistillationError("sample split is invalid")
     input_arr = np.asarray(input_f32, dtype=np.float32)
     pred_arr = np.asarray(teacher_prediction_f32, dtype=np.float32)
     truth_arr = np.asarray(ground_truth_f32, dtype=np.float32)
@@ -287,13 +303,19 @@ def make_distillation_sample(
         raise Issue54DistillationError("teacher prediction must be flat float32[408]")
     if truth_arr.shape != (OUTPUT_DIM,):
         raise Issue54DistillationError("ground truth must be flat float32[408]")
-    if not np.isfinite(input_arr).all() or not np.isfinite(pred_arr).all():
+    if (
+        not np.isfinite(input_arr).all()
+        or not np.isfinite(pred_arr).all()
+        or not np.isfinite(truth_arr).all()
+    ):
         raise Issue54DistillationError("sample contains non-finite values")
     sha = _sample_sha256(
-        family_id, split, candidate_id, teacher_label, input_arr, pred_arr, truth_arr
+        family_id, decision_id, split, candidate_id, teacher_label,
+        input_arr, pred_arr, truth_arr
     )
     return DistillationSample(
         family_id=family_id,
+        decision_id=decision_id,
         split=split,
         candidate_id=candidate_id,
         teacher_label=teacher_label,
@@ -342,14 +364,33 @@ def build_corpus_manifest(
     corpus_id: str,
     family_ids: Sequence[str],
     split: Mapping[str, str],
+    decision_ids: Sequence[str],
+    candidate_ids: Sequence[str],
     samples_sha256: str,
 ) -> DistillationCorpusManifest:
+    family_id_tuple = tuple(family_ids)
+    decision_id_tuple = tuple(decision_ids)
+    candidate_id_tuple = tuple(candidate_ids)
+    if teacher_label not in _TEACHER_LABELS or type(corpus_id) is not str or not corpus_id:
+        raise Issue54DistillationError("manifest identity is invalid")
+    if not family_id_tuple or len(set(family_id_tuple)) != len(family_id_tuple):
+        raise Issue54DistillationError("manifest family roster is invalid")
+    if not decision_id_tuple or len(set(decision_id_tuple)) != len(decision_id_tuple):
+        raise Issue54DistillationError("manifest decision roster is invalid")
+    if not candidate_id_tuple or len(set(candidate_id_tuple)) != len(candidate_id_tuple):
+        raise Issue54DistillationError("manifest candidate roster is invalid")
+    if set(split) != set(family_id_tuple):
+        raise Issue54DistillationError("manifest family split roster is invalid")
+    if any(label not in {"TRAIN", "VALIDATION", "FINAL"} for label in split.values()):
+        raise Issue54DistillationError("manifest split label is invalid")
     body = {
         "schema_version": ISSUE54_SCHEMA_VERSION,
         "teacher_label": teacher_label,
         "corpus_id": corpus_id,
         "family_split": dict(split),
-        "family_ids": list(family_ids),
+        "family_ids": list(family_id_tuple),
+        "decision_ids": list(decision_id_tuple),
+        "candidate_ids": list(candidate_id_tuple),
         "samples_sha256": samples_sha256,
     }
     manifest_sha = hashlib.sha256(canonical_json_bytes(body)).hexdigest()
@@ -358,7 +399,9 @@ def build_corpus_manifest(
         teacher_label=teacher_label,
         corpus_id=corpus_id,
         family_split=dict(split),
-        family_ids=tuple(family_ids),
+        family_ids=family_id_tuple,
+        decision_ids=decision_id_tuple,
+        candidate_ids=candidate_id_tuple,
         samples_sha256=samples_sha256,
         manifest_sha256=manifest_sha,
     )
@@ -370,18 +413,71 @@ def validate_samples(
 ) -> None:
     if not samples:
         raise Issue54DistillationError("corpus contains no samples")
+    if manifest.schema_version != ISSUE54_SCHEMA_VERSION:
+        raise Issue54DistillationError("corpus manifest schema drift")
+    manifest_body = {
+        "schema_version": ISSUE54_SCHEMA_VERSION,
+        "teacher_label": manifest.teacher_label,
+        "corpus_id": manifest.corpus_id,
+        "family_split": dict(manifest.family_split),
+        "family_ids": list(manifest.family_ids),
+        "decision_ids": list(manifest.decision_ids),
+        "candidate_ids": list(manifest.candidate_ids),
+        "samples_sha256": manifest.samples_sha256,
+    }
+    if hashlib.sha256(canonical_json_bytes(manifest_body)).hexdigest() != manifest.manifest_sha256:
+        raise Issue54DistillationError("corpus manifest digest mismatch")
     sample_digest = hashlib.sha256()
     seen: set[str] = set()
     family_ids = set(manifest.family_ids)
+    decision_ids = set(manifest.decision_ids)
+    candidate_ids = set(manifest.candidate_ids)
+    decisions: dict[str, set[str]] = {}
+    decision_family: dict[str, str] = {}
+    decision_split: dict[str, str] = {}
+    decision_candidates: set[tuple[str, str]] = set()
     for sample in samples:
+        expected_input = MLP_FEATURE_COUNT if manifest.teacher_label == "mlp" else RIDGE_FEATURE_COUNT
+        if (
+            type(sample.family_id) is not str
+            or type(sample.decision_id) is not str
+            or type(sample.candidate_id) is not str
+            or sample.split not in {"TRAIN", "VALIDATION", "FINAL"}
+            or sample.input_f32.dtype != np.float32
+            or sample.input_f32.shape != (expected_input,)
+            or sample.teacher_prediction_f32.dtype != np.float32
+            or sample.teacher_prediction_f32.shape != (OUTPUT_DIM,)
+            or sample.ground_truth_f32.dtype != np.float32
+            or sample.ground_truth_f32.shape != (OUTPUT_DIM,)
+            or not np.isfinite(sample.input_f32).all()
+            or not np.isfinite(sample.teacher_prediction_f32).all()
+            or not np.isfinite(sample.ground_truth_f32).all()
+        ):
+            raise Issue54DistillationError("sample arrays or identity are invalid")
         if sample.teacher_label != manifest.teacher_label:
             raise Issue54DistillationError("sample teacher label drift")
         if sample.family_id not in family_ids:
             raise Issue54DistillationError("sample family not in manifest")
+        if sample.decision_id not in decision_ids:
+            raise Issue54DistillationError("sample decision not in manifest")
+        if sample.candidate_id not in candidate_ids:
+            raise Issue54DistillationError("sample candidate not in manifest")
+        if sample.decision_id in decision_family and decision_family[sample.decision_id] != sample.family_id:
+            raise Issue54DistillationError("decision crosses families")
+        if sample.decision_id in decision_split and decision_split[sample.decision_id] != sample.split:
+            raise Issue54DistillationError("decision crosses splits")
+        decision_family[sample.decision_id] = sample.family_id
+        decision_split[sample.decision_id] = sample.split
+        decisions.setdefault(sample.decision_id, set()).add(sample.candidate_id)
+        decision_candidate = (sample.decision_id, sample.candidate_id)
+        if decision_candidate in decision_candidates:
+            raise Issue54DistillationError("duplicate decision candidate")
+        decision_candidates.add(decision_candidate)
         if sample.split != manifest.family_split[sample.family_id]:
             raise Issue54DistillationError("sample split does not match manifest")
         expected_sha = _sample_sha256(
             sample.family_id,
+            sample.decision_id,
             sample.split,
             sample.candidate_id,
             sample.teacher_label,
@@ -398,12 +494,20 @@ def validate_samples(
             canonical_json_bytes(
                 {
                     "family_id": sample.family_id,
+                    "decision_id": sample.decision_id,
                     "candidate_id": sample.candidate_id,
                     "sha": sample.sample_sha256,
                 }
             )
         )
         sample_digest.update(b"\n")
+    expected_candidates = set(manifest.candidate_ids)
+    if any(values != expected_candidates for values in decisions.values()):
+        raise Issue54DistillationError("each decision must contain the complete candidate set")
+    if set(decisions) != decision_ids:
+        raise Issue54DistillationError("manifest decision roster is incomplete")
+    if set(decision_family.values()) != family_ids:
+        raise Issue54DistillationError("manifest family roster is incomplete")
     if sample_digest.hexdigest() != manifest.samples_sha256:
         raise Issue54DistillationError("corpus samples digest mismatch")
 
@@ -479,6 +583,24 @@ def train_student_mlp(
         MLP_FEATURE_COUNT if teacher_label == "mlp" else RIDGE_FEATURE_COUNT
     )
 
+    if not train_samples or not validation_samples:
+        raise Issue54DistillationError("MLP training requires TRAIN and VALIDATION samples")
+    expected_input = input_width
+    for label, rows, expected_split in (
+        ("TRAIN", train_samples, "TRAIN"),
+        ("VALIDATION", validation_samples, "VALIDATION"),
+    ):
+        if any(
+            sample.teacher_label != teacher_label
+            or sample.split != expected_split
+            or sample.input_f32.shape != (expected_input,)
+            or sample.teacher_prediction_f32.shape != (OUTPUT_DIM,)
+            or not np.isfinite(sample.input_f32).all()
+            or not np.isfinite(sample.teacher_prediction_f32).all()
+            for sample in rows
+        ):
+            raise Issue54DistillationError(f"{label} sample contract is invalid")
+
     def _matrix(samples: Sequence[DistillationSample]) -> tuple[np.ndarray, np.ndarray]:
         x = np.stack([s.input_f32 for s in samples]).astype(np.float64)
         t = np.stack([s.teacher_prediction_f32 for s in samples]).astype(np.float64)
@@ -510,6 +632,7 @@ def train_student_mlp(
     best_epoch = 0
     best_w = tuple(w.copy() for w in weights)
     best_b = tuple(b.copy() for b in biases)
+    best_train_mse = math.inf
     last_train_mse = math.inf
 
     for epoch in range(1, epochs + 1):
@@ -572,6 +695,7 @@ def train_student_mlp(
             if val_mse < best_val_mse - 1e-12:
                 best_val_mse = val_mse
                 best_epoch = epoch
+                best_train_mse = last_train_mse
                 best_w = tuple(w.copy() for w in weights)
                 best_b = tuple(b.copy() for b in biases)
 
@@ -589,7 +713,7 @@ def train_student_mlp(
         biases=tuple(_readonly(b.astype(np.float32)) for b in best_b),
         seed=seed,
         selected_epoch=best_epoch,
-        train_mse=last_train_mse,
+        train_mse=best_train_mse,
         validation_mse=best_val_mse,
         actuator_authority=False,
     )
@@ -608,6 +732,18 @@ def fit_student_ridge(
     input_width = (
         MLP_FEATURE_COUNT if teacher_label == "mlp" else RIDGE_FEATURE_COUNT
     )
+    if not train_samples:
+        raise Issue54DistillationError("ridge training requires TRAIN samples")
+    if any(
+        sample.teacher_label != teacher_label
+        or sample.split != "TRAIN"
+        or sample.input_f32.shape != (input_width,)
+        or sample.teacher_prediction_f32.shape != (OUTPUT_DIM,)
+        or not np.isfinite(sample.input_f32).all()
+        or not np.isfinite(sample.teacher_prediction_f32).all()
+        for sample in train_samples
+    ):
+        raise Issue54DistillationError("ridge training sample contract is invalid")
     x = np.stack([s.input_f32 for s in train_samples]).astype(np.float64)
     t = np.stack([s.teacher_prediction_f32 for s in train_samples]).astype(np.float64)
     feature_mean = x.mean(axis=0)
@@ -664,17 +800,47 @@ def fit_student_ridge(
 
 
 def _nmae_flat(prediction_f32: np.ndarray, truth_f32: np.ndarray, scales: np.ndarray) -> float:
-    pred = np.asarray(prediction_f32, dtype=np.float64).reshape(HORIZON_STEPS, TARGET_COUNT)
-    truth = np.asarray(truth_f32, dtype=np.float64).reshape(HORIZON_STEPS, TARGET_COUNT)
-    if not np.isfinite(pred).all() or not np.isfinite(truth).all():
+    pred_arr = np.asarray(prediction_f32, dtype=np.float64)
+    truth_arr = np.asarray(truth_f32, dtype=np.float64)
+    if pred_arr.size != OUTPUT_DIM or truth_arr.size != OUTPUT_DIM:
         return math.inf
-    return float(np.mean(np.abs(pred - truth) / scales[None, :]))
+    pred = pred_arr.reshape(HORIZON_STEPS, TARGET_COUNT)
+    truth = truth_arr.reshape(HORIZON_STEPS, TARGET_COUNT)
+    scale_arr = np.asarray(scales, dtype=np.float64)
+    if scale_arr.shape == (TARGET_COUNT,):
+        scale_arr = np.broadcast_to(scale_arr, (HORIZON_STEPS, TARGET_COUNT))
+    if (
+        not np.isfinite(pred).all()
+        or not np.isfinite(truth).all()
+        or scale_arr.shape != (HORIZON_STEPS, TARGET_COUNT)
+        or not np.isfinite(scale_arr).all()
+        or np.any(scale_arr <= 0.0)
+    ):
+        return math.inf
+    return float(np.mean(np.abs(pred - truth) / scale_arr))
 
 
 def extract_scales(manifest: TargetManifest) -> np.ndarray:
     return np.asarray(
         [d.scale for d in manifest.descriptors], dtype=np.float64
     )
+
+
+def derive_train_nmae_scales(
+    train_samples: Sequence[DistillationSample],
+) -> np.ndarray:
+    """Derive per-horizon/target P95-P05 scales using TRAIN truth only."""
+    if not train_samples:
+        raise Issue54DistillationError("cannot derive scales from empty TRAIN corpus")
+    truth = np.stack(
+        [sample.ground_truth_f32.reshape(HORIZON_STEPS, TARGET_COUNT) for sample in train_samples]
+    ).astype(np.float64)
+    if not np.isfinite(truth).all():
+        raise Issue54DistillationError("TRAIN truth contains non-finite values")
+    scales = np.percentile(truth, 95, axis=0) - np.percentile(truth, 5, axis=0)
+    if not np.isfinite(scales).all() or np.any(scales <= 0.0):
+        raise Issue54DistillationError("TRAIN truth has unsupported NMAE scales")
+    return scales
 
 
 def extract_nominals(manifest: TargetManifest) -> np.ndarray:
@@ -697,14 +863,21 @@ def compute_nmae_family(
     samples: Sequence[DistillationSample],
     scales: np.ndarray,
 ) -> dict[str, float]:
-    """Return per-family mean NMAE over candidates."""
+    """Return per-family mean NMAE over complete, finite candidate rows."""
+    expected_keys = {sample.sample_sha256 for sample in samples}
+    if len(expected_keys) != len(samples) or set(predictions) != expected_keys:
+        raise Issue54DistillationError("prediction roster does not match samples")
     grouped: dict[str, list[float]] = {}
     for sample in samples:
         pred = predictions.get(sample.sample_sha256)
         if pred is None:
-            continue
+            raise Issue54DistillationError("prediction roster is incomplete")
         value = _nmae_flat(pred, sample.ground_truth_f32, scales)
+        if not math.isfinite(value):
+            raise Issue54DistillationError("NMAE input is non-finite or unsupported")
         grouped.setdefault(sample.family_id, []).append(value)
+    if not grouped:
+        raise Issue54DistillationError("NMAE corpus contains no samples")
     return {
         fid: float(np.mean(vals)) if vals else math.inf
         for fid, vals in grouped.items()
@@ -713,12 +886,24 @@ def compute_nmae_family(
 
 def _candidate_score(prediction_f32: np.ndarray, nominals: np.ndarray, scales: np.ndarray) -> float:
     """Simplified tracking score: mean(|pred - nominal| / scale). Lower is better."""
-    pred = np.asarray(prediction_f32, dtype=np.float64).reshape(
-        HORIZON_STEPS, TARGET_COUNT
-    )
-    if not np.isfinite(pred).all():
+    pred_arr = np.asarray(prediction_f32, dtype=np.float64)
+    if pred_arr.size != OUTPUT_DIM:
         return math.inf
-    return float(np.mean(np.abs(pred - nominals[None, :]) / scales[None, :]))
+    pred = pred_arr.reshape(HORIZON_STEPS, TARGET_COUNT)
+    nominal_arr = np.asarray(nominals, dtype=np.float64)
+    scale_arr = np.asarray(scales, dtype=np.float64)
+    if scale_arr.shape == (TARGET_COUNT,):
+        scale_arr = np.broadcast_to(scale_arr, (HORIZON_STEPS, TARGET_COUNT))
+    if (
+        not np.isfinite(pred).all()
+        or nominal_arr.shape != (TARGET_COUNT,)
+        or not np.isfinite(nominal_arr).all()
+        or scale_arr.shape != (HORIZON_STEPS, TARGET_COUNT)
+        or not np.isfinite(scale_arr).all()
+        or np.any(scale_arr <= 0.0)
+    ):
+        return math.inf
+    return float(np.mean(np.abs(pred - nominal_arr[None, :]) / scale_arr))
 
 
 def _safety_exposure(
@@ -728,13 +913,29 @@ def _safety_exposure(
     scales: np.ndarray,
 ) -> float:
     """Mean normalized safety bound crossing magnitude."""
-    pred = np.asarray(prediction_f32, dtype=np.float64).reshape(
-        HORIZON_STEPS, TARGET_COUNT
-    )
-    if not np.isfinite(pred).all():
+    pred_arr = np.asarray(prediction_f32, dtype=np.float64)
+    if pred_arr.size != OUTPUT_DIM:
         return math.inf
-    lower_cross = np.maximum(0.0, lowers[None, :] - pred) / scales[None, :]
-    upper_cross = np.maximum(0.0, pred - uppers[None, :]) / scales[None, :]
+    pred = pred_arr.reshape(HORIZON_STEPS, TARGET_COUNT)
+    lower_arr = np.asarray(lowers, dtype=np.float64)
+    upper_arr = np.asarray(uppers, dtype=np.float64)
+    scale_arr = np.asarray(scales, dtype=np.float64)
+    if scale_arr.shape == (TARGET_COUNT,):
+        scale_arr = np.broadcast_to(scale_arr, (HORIZON_STEPS, TARGET_COUNT))
+    if (
+        not np.isfinite(pred).all()
+        or lower_arr.shape != (TARGET_COUNT,)
+        or upper_arr.shape != (TARGET_COUNT,)
+        or not np.isfinite(lower_arr).all()
+        or not np.isfinite(upper_arr).all()
+        or np.any(lower_arr > upper_arr)
+        or scale_arr.shape != (HORIZON_STEPS, TARGET_COUNT)
+        or not np.isfinite(scale_arr).all()
+        or np.any(scale_arr <= 0.0)
+    ):
+        return math.inf
+    lower_cross = np.maximum(0.0, lower_arr[None, :] - pred) / scale_arr
+    upper_cross = np.maximum(0.0, pred - upper_arr[None, :]) / scale_arr
     return float(np.mean(lower_cross + upper_cross))
 
 
@@ -766,38 +967,63 @@ def compute_ranking_and_safety(
     scales: np.ndarray,
     lowers: np.ndarray,
     uppers: np.ndarray,
+    *,
+    expected_candidate_ids: Sequence[str],
 ) -> tuple[float, float, float]:
-    """Return (top1_agreement, kendall_tau, safety_exposure_difference) over FINAL decisions."""
-    by_family: dict[str, list[DistillationSample]] = {}
+    """Return metrics for the explicitly named simplified ranking metric.
+
+    This is not the frozen Issue #52 ``score_trajectory`` contract: Issue #54
+    samples contain 51 point targets and no trajectory intervals, while the
+    frozen ranker expects a different target manifest and interval-bearing
+    trajectories.  The distinction is carried in ``RANKING_METRIC_ID``.
+    """
+    by_decision: dict[str, list[DistillationSample]] = {}
     for sample in samples:
-        by_family.setdefault(sample.family_id, []).append(sample)
+        by_decision.setdefault(sample.decision_id, []).append(sample)
+
+    expected = set(expected_candidate_ids)
+    if not expected:
+        raise Issue54DistillationError("expected candidate roster is empty")
 
     top1_matches = 0
     total_decisions = 0
     tau_values: list[float] = []
     safety_diffs: list[float] = []
+    expected_keys = {sample.sample_sha256 for sample in samples}
+    if (
+        len(expected_keys) != len(samples)
+        or set(teacher_predictions) != expected_keys
+        or set(student_predictions) != expected_keys
+    ):
+        raise Issue54DistillationError("ranking prediction roster does not match samples")
 
-    for family_id, family_samples in sorted(by_family.items()):
-        candidates = sorted(family_samples, key=lambda s: s.candidate_id)
+    for decision_id, decision_samples in sorted(by_decision.items()):
+        candidates = sorted(decision_samples, key=lambda s: s.candidate_id)
+        candidate_ids = {sample.candidate_id for sample in candidates}
+        if len(candidate_ids) != len(candidates):
+            raise Issue54DistillationError(f"duplicate candidates in decision {decision_id}")
+        if candidate_ids != expected:
+            raise Issue54DistillationError(f"candidate roster mismatch in decision {decision_id}")
         if len(candidates) < 2:
-            continue
+            raise Issue54DistillationError(f"decision {decision_id} has too few candidates")
         teacher_scores = []
         student_scores = []
         for sample in candidates:
             tp = teacher_predictions.get(sample.sample_sha256)
             sp = student_predictions.get(sample.sample_sha256)
             if tp is None or sp is None:
-                break
+                raise Issue54DistillationError("ranking prediction roster is incomplete")
             teacher_scores.append(_candidate_score(tp, nominals, scales))
             student_scores.append(_candidate_score(sp, nominals, scales))
+            if not math.isfinite(teacher_scores[-1]) or not math.isfinite(student_scores[-1]):
+                raise Issue54DistillationError("ranking score is non-finite")
+            teacher_safety = _safety_exposure(tp, lowers, uppers, scales)
+            student_safety = _safety_exposure(sp, lowers, uppers, scales)
+            if not math.isfinite(teacher_safety) or not math.isfinite(student_safety):
+                raise Issue54DistillationError("safety exposure is non-finite")
             safety_diffs.append(
-                abs(
-                    _safety_exposure(tp, lowers, uppers, scales)
-                    - _safety_exposure(sp, lowers, uppers, scales)
-                )
+                abs(teacher_safety - student_safety)
             )
-        if len(teacher_scores) < 2:
-            continue
         total_decisions += 1
         teacher_rank = sorted(range(len(teacher_scores)), key=lambda i: teacher_scores[i])
         student_rank = sorted(range(len(student_scores)), key=lambda i: student_scores[i])
@@ -805,9 +1031,11 @@ def compute_ranking_and_safety(
             top1_matches += 1
         tau_values.append(_kendall_tau_b(teacher_rank, student_rank))
 
-    top1 = top1_matches / total_decisions if total_decisions else 0.0
-    tau = float(np.mean(tau_values)) if tau_values else 0.0
-    safety_diff = float(np.mean(safety_diffs)) if safety_diffs else math.inf
+    if total_decisions == 0:
+        raise Issue54DistillationError("ranking corpus contains no decisions")
+    top1 = top1_matches / total_decisions
+    tau = float(np.mean(tau_values))
+    safety_diff = float(np.mean(safety_diffs))
     return top1, tau, safety_diff
 
 
@@ -832,7 +1060,9 @@ def bootstrap_nmae_ratio(
     repetitions: int = 10000,
 ) -> tuple[float, float, float]:
     """Return (point_ratio, lower_ci, upper_ci) for NMAE_student / NMAE_teacher."""
-    families = sorted(set(student_family_nmae) & set(teacher_family_nmae))
+    if set(student_family_nmae) != set(teacher_family_nmae):
+        return math.inf, math.inf, math.inf
+    families = sorted(student_family_nmae)
     if not families:
         return math.inf, math.inf, math.inf
     s_vals = np.array([student_family_nmae[f] for f in families], dtype=np.float64)
@@ -863,20 +1093,29 @@ def evaluate_student(
     nominals: np.ndarray,
     lowers: np.ndarray,
     uppers: np.ndarray,
+    *,
+    corpus_id: str,
+    nmae_scales: np.ndarray,
+    expected_candidate_ids: Sequence[str],
 ) -> DistillationResult:
     """Evaluate one student on FINAL samples against the teacher."""
+    if type(corpus_id) is not str or not corpus_id:
+        raise Issue54DistillationError("evaluation corpus identity is invalid")
     teacher_preds: dict[str, np.ndarray] = {}
     student_preds: dict[str, np.ndarray] = {}
     for sample in final_samples:
         teacher_preds[sample.sample_sha256] = sample.teacher_prediction_f32
         student_preds[sample.sample_sha256] = student.predict_flat(sample.input_f32)
 
-    teacher_nmae = compute_nmae_family(teacher_preds, final_samples, scales)
-    student_nmae = compute_nmae_family(student_preds, final_samples, scales)
+    metric_scales = np.asarray(nmae_scales, dtype=np.float64)
+    teacher_nmae = compute_nmae_family(teacher_preds, final_samples, metric_scales)
+    student_nmae = compute_nmae_family(student_preds, final_samples, metric_scales)
     point, lower, upper = bootstrap_nmae_ratio(student_nmae, teacher_nmae)
 
     top1, tau, safety_diff = compute_ranking_and_safety(
-        teacher_preds, student_preds, final_samples, nominals, scales, lowers, uppers
+        teacher_preds, student_preds, final_samples, nominals,
+        np.asarray(scales, dtype=np.float64), lowers, uppers,
+        expected_candidate_ids=expected_candidate_ids,
     )
 
     if isinstance(student, StudentMlpModel):
@@ -887,7 +1126,8 @@ def evaluate_student(
     return DistillationResult(
         teacher_label=student.teacher_label,
         student_id=student.student_id,
-        corpus_id="",
+        corpus_id=corpus_id,
+        ranking_metric_id=RANKING_METRIC_ID,
         student_param_count=pc,
         nmae_teacher=float(np.mean(list(teacher_nmae.values()))) if teacher_nmae else math.inf,
         nmae_student=float(np.mean(list(student_nmae.values()))) if student_nmae else math.inf,

@@ -1,8 +1,16 @@
 # Issue #54 Honest Measurements - How Small Is Safe?
 
-Status: **DEVELOPMENT EVIDENCE ONLY** - research study, not qualified.
+Status: **HISTORICAL / SUPERSEDED** - development evidence only; not qualified.
 Deployment of any student remains blocked: HMC is still the sole proposal,
 arbitration, preflight, capability, plant-step, and replay authority.
+
+The measurements in this file were produced by the original v1 runner and must
+not be used as the corrected Issue #54 result. The audit found that its three
+anchors were grouped by family, its NMAE scales were not derived from TRAIN-only
+truth, its MLP run reported only seed `540054`, and its ranking helper was not the
+frozen Issue #52 `score_trajectory` contract. See
+`docs/evidence/issue-54-distillation-audit.md`. A fresh declared rerun is
+required; the frozen preregistration is unchanged.
 
 The Issue #54 preregistration remains authoritative:
 `contracts/habitat_v2_forecast_issue_54_preregistration_v1.json`
