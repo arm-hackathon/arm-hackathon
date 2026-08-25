@@ -1,0 +1,145 @@
+{
+  "schema_version": "aeolus_habitat_v2_issue_56_v2_preregistration_v1",
+  "preregistration_id": "habitat_v2_forecast_issue_56_v2_preregistration_v1",
+  "status": "DECLARED_BEFORE_IMPLEMENTATION",
+  "parent_lane": "9145bb870c4f435923a5017dd2a0f17714c69a7b",
+  "lane": "RESEARCH_STUDY_DEV_EVIDENCE_ONLY",
+  "title": "V2 calibrated event/severity safety filter for point action ranking",
+  "authority": {
+    "final_command_authority": "HMC",
+    "proposal_authority": "none_proposals_are_advisory_and_may_be_rejected_by_arbitration",
+    "plant_step_authority": "HMC",
+    "replay_authority": "HMC_and_strict_replay_validator",
+    "model_role": "forecast_only_safety_filter_and_point_ranker_adviser",
+    "model_actuator_authority": false,
+    "frozen_surfaces_untouched": [
+      "src/aeolus/habitat_v2/hmc.py",
+      "src/aeolus/habitat_v2/physics.py",
+      "src/aeolus/habitat_v2/safety.py",
+      "contracts/habitat_v2_forecast_issue_55_preregistration_v2.json",
+      "contracts/habitat_v2_forecast_issue_56_preregistration_v1.json"
+    ]
+  },
+  "suite": {
+    "corpus_id": "issue56_action_risk_v2",
+    "family_count": 32,
+    "family_source": "same Issue #55 v2 development family matrix; no scenario expansion",
+    "family_split": "SHA256('issue56-v2-split-v1|' + family_id), largest remainder TRAIN/VALIDATION/EVALUATION = 60/20/20",
+    "decision_steps": "16 through 64 inclusive every 4 steps",
+    "decision_count_per_episode": 13,
+    "history_window_steps": 16,
+    "risk_horizon_steps": 32,
+    "primary_label_track": "effect_4",
+    "stress_label_track": "persistent_32",
+    "candidate_count": 4,
+    "effect_4_schedule": "apply candidate for four transitions, then hold the verified pre-decision command for the remaining 28 transitions to isolate one proposal cadence",
+    "persistent_32_schedule": "repeat candidate for all 32 transitions",
+    "arms": [
+      "rules_only",
+      "point_model",
+      "risk_only_v2",
+      "risk_filtered_point_v2"
+    ]
+  },
+  "features": {
+    "source": "verified operational snapshot projection only",
+    "layout": "float32[?] = existing 610 risk values plus observable mode/health/alarm/margin/action-delta/time features",
+    "additions": [
+      "current safety margin per target",
+      "operating mode one-hot",
+      "derived health one-hot",
+      "alarm severity/family counts",
+      "candidate minus current command delta",
+      "normalized decision position"
+    ],
+    "prohibited_inputs": [
+      "hidden plant truth",
+      "future measurements",
+      "fault labels or future fault schedule",
+      "HMC arbitration outcome",
+      "reserve audit state",
+      "validation or evaluation labels at runtime"
+    ]
+  },
+  "labels": {
+    "event": "any target crosses a frozen safety bound during the selected 32-transition track",
+    "exposure": "sum of normalized bound crossings over the selected track",
+    "maximum_crossing": "maximum normalized bound crossing over the selected track",
+    "infeasible": "counterfactual is excluded from fitting and counted separately; never assigned a finite safe label",
+    "severity_training": "positive-crossing TRAIN samples only",
+    "primary_runtime_track": "effect_4"
+  },
+  "model": {
+    "event_head": "normalized ridge logit followed by sigmoid",
+    "severity_head": "normalized ridge regression on log1p exposure for positive events",
+    "maximum_head": "normalized ridge regression on log1p maximum crossing for positive events",
+    "calibration": "validation-only monotonic event calibration and positive-severity residual quantiles",
+    "regularization": 0.1,
+    "seed": 560057,
+    "float_policy": "fit float64, frozen inference output float64 then report float32-compatible finite values"
+  },
+  "risk_policy": {
+    "metric_id": "issue56-risk-filtered-point-v2",
+    "event_probability_limit": 0.50,
+    "expected_exposure_limit": 0.50,
+    "maximum_crossing_limit": 0.25,
+    "upper_event_probability": "calibrated event probability",
+    "upper_conditional_exposure": "expm1(max(0, predicted_log1p_exposure + positive_validation_residual_P90))",
+    "upper_expected_exposure": "upper_event_probability * upper_conditional_exposure",
+    "eligible": "finite prediction AND all three upper limits pass",
+    "utility": "existing Issue #55 point-model score among risk-eligible candidates",
+    "abstain": "no candidate is risk-eligible or required history is incomplete"
+  },
+  "non_vacuity": {
+    "validation_decision_coverage_minimum": 0.10,
+    "validation_candidate_pass_minimum": 1,
+    "stop_before_evaluation_if_failed": true
+  },
+  "metrics": {
+    "primary": "paired true-plant safety exposure for risk_filtered_point_v2 versus rules_only",
+    "secondary": [
+      "dangerous-crossing recall",
+      "false-safe rate",
+      "comfort deviation",
+      "resource composite",
+      "proposal rate",
+      "abstention rate",
+      "event Brier score",
+      "event reliability and ECE",
+      "positive-severity upper coverage",
+      "authority violations",
+      "replay failures",
+      "provenance violations",
+      "non-finite outputs",
+      "p99 inference latency"
+    ],
+    "aggregation": "equal-weight family means with paired family identities",
+    "bootstrap": "10,000 deterministic whole-family paired resamples using SHA256 seed 560057"
+  },
+  "gates": {
+    "authority_violation_count": 0,
+    "replay_failure_count": 0,
+    "provenance_violation_count": 0,
+    "non_finite_metric_count": 0,
+    "proposal_admission_failure_count": 0,
+    "safety": "risk_filtered_point_v2 exposure point and 95% upper paired difference <= rules_only",
+    "crossing_recall_difference_minimum": -0.02,
+    "false_safe_rate_difference_maximum": 0.01,
+    "non_vacuity_required": true,
+    "latency_p99_ms": 250.0,
+    "honest_negative_rule": "failed utility or non-vacuity is published and never repaired with evaluation-derived thresholds"
+  },
+  "reproducibility": {
+    "entry_point": "scripts/run_action_risk_v2.py",
+    "output_rule": "new write-once ignored output directory",
+    "dirty_worktree": "comparative evaluation refuses dirty source worktree",
+    "artifact_rule": "source, contract, manifest, features, labels, model, calibration, traces, and results are SHA-256 bound"
+  },
+  "non_goals": [
+    "no HMC, physics, safety-core, capability, trace, or replay changes",
+    "no ensemble or disagreement penalty",
+    "no harder-scenario expansion",
+    "no Issue #52 catalogue redesign",
+    "no deployment, qualification, certification, hardware, or real-world safety claim"
+  ]
+}

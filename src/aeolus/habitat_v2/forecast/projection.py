@@ -61,6 +61,7 @@ class ForecastHistory:
     health_f32: np.ndarray
     alarm_lifecycle_f32: np.ndarray
     layout: ForecastLayout
+    snapshot_sha256: tuple[str, ...] = ()
 
 
 def _readonly(array: np.ndarray) -> np.ndarray:
@@ -516,6 +517,7 @@ def project_history_window(
     alarms = np.zeros((window_steps, 287, 4), dtype=np.float32)
     steps: list[int] = []
     times: list[float] = []
+    snapshot_ids: list[str] = []
     run_id: str | None = None
     epoch: str | None = None
     resource_ids = (
@@ -660,6 +662,7 @@ def project_history_window(
                 alarms[row, index, 0] = 1.0
         steps.append(step)
         times.append(float(time))
+        snapshot_ids.append(str(snapshot["snapshot_sha256"]))
     return ForecastHistory(
         tuple(steps),
         tuple(times),
@@ -669,6 +672,7 @@ def project_history_window(
         _readonly(healths),
         _readonly(alarms),
         layout,
+        tuple(snapshot_ids),
     )
 
 
