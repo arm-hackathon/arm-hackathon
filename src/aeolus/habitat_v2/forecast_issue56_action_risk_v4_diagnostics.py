@@ -38,7 +38,7 @@ V4_PROVENANCE_FIELDS = (
     "source_identity_sha256",
     "hmc_binding_sha256",
     "hmc_contract_sha256",
-    "scenario_sha256",
+    "scenario_manifest_sha256",
     "action_catalogue_sha256",
     "alarm_manifest_sha256",
     "feature_manifest_sha256",
@@ -296,9 +296,13 @@ def validate_condition_groups(
     if not items:
         raise Issue56V4DiagnosticsError("V4 diagnostics require observations")
     families: dict[str, set[str]] = defaultdict(set)
+    family_groups: dict[str, str] = {}
     for item in items:
         _require_identifier(item.condition_group_id, "V4 condition group")
         _require_identifier(item.family_id, "V4 family")
+        previous_group = family_groups.setdefault(item.family_id, item.condition_group_id)
+        if previous_group != item.condition_group_id:
+            raise Issue56V4DiagnosticsError("V4 family appears in multiple condition groups")
         families[item.condition_group_id].add(item.family_id)
     result = {
         group_id: tuple(sorted(group_families))

@@ -72,7 +72,7 @@
       "source_identity_sha256",
       "hmc_binding_sha256",
       "hmc_contract_sha256",
-      "scenario_sha256",
+      "scenario_manifest_sha256",
       "action_catalogue_sha256",
       "alarm_manifest_sha256",
       "feature_manifest_sha256",

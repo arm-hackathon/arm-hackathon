@@ -118,6 +118,38 @@ Together these related PRs preserve the complete 17-commit development and
 integration lineage. Forecast output remains advisory-only, and HMC remains
 the sole actuator authority.
 
+## Issue #56 V4 diagnostic groundwork
+
+The repository now includes a pre-model diagnostic lane for the next action-risk
+study. It separates candidate screening metrics from selected-action and
+executed-command metrics, records requested/final/executed command identities
+and HMC dispositions, aggregates by paired condition groups, and binds the
+source, HMC, scenario, feature, label, risk-model, point-artifact, and
+observation identities with SHA-256. V3 behavior and evidence remain frozen.
+
+The machine-readable draft is
+[`contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json),
+with rationale in
+[`docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md`](docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md).
+The draft is explicitly pending authorization and does not authorize learned
+model training, export, quantization, integration, or threshold changes.
+
+To audit an existing full Issue #56 V3 receipt without training or changing any
+artifact, use a new ignored output directory:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/diagnose_action_risk_v4.py \
+  --v3-run out/issue56-v3-evaluation-20260825-clean-a \
+  --output out/issue56-v4-diagnostics-run-a
+```
+
+The adapter strictly replays serialized V3 episode traces and reports whether
+the receipt is ready for a future V4 model study. Historical V3 samples do not
+retain counterfactual trace bytes, so this diagnostic path intentionally reports
+that counterfactual label replay is incomplete. This remains simulator
+development evidence only; HMC is still the sole final-command and plant-step
+authority.
+
 ## Try it: the verified forecast report
 
 **New here? Take the guided tour instead** — an interactive walkthrough that

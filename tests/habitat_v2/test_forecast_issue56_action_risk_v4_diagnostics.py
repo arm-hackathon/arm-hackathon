@@ -191,6 +191,12 @@ def test_condition_groups_require_two_families_and_group_means_are_equal_weighte
 
     with pytest.raises(Issue56V4DiagnosticsError, match="paired families"):
         validate_condition_groups(observations[:1])
+    split_family = (
+        observations[0],
+        _candidate("group-b", "family-a0", 20, "action-0", rejected=False, dangerous=False),
+    )
+    with pytest.raises(Issue56V4DiagnosticsError, match="multiple condition groups"):
+        validate_condition_groups(split_family)
 
 
 def test_group_bootstrap_is_deterministic_and_validates_support() -> None:

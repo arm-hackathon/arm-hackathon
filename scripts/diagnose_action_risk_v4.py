@@ -15,6 +15,7 @@ from collections.abc import Mapping, Sequence
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any
 
@@ -101,7 +102,31 @@ def _source_identity() -> dict[str, Any]:
                 "sha256": _sha_bytes(raw),
             }
         )
-    return {"schema_version": "issue56-v4-source-identity-v1", "source_files": files}
+    try:
+        source_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        worktree_dirty = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise V4DiagnosticRunError("V4 source identity cannot be read from Git") from error
+    return {
+        "schema_version": "issue56-v4-source-identity-v1",
+        "source_commit": source_commit,
+        "source_worktree_dirty": worktree_dirty,
+        "source_files": files,
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -277,6 +302,8 @@ def _verify_episode(
         raise V4DiagnosticRunError("V3 episode arm or family identity is invalid")
     if episode.get("schema_version") != f"{ISSUE56_V3_SCHEMA_VERSION}.episode":
         raise V4DiagnosticRunError(f"V3 episode schema drifted: {arm}/{family_id}")
+    if episode.get("family_index") != family_index[family_id]:
+        raise V4DiagnosticRunError(f"V3 family index drifted: {arm}/{family_id}")
     if tuple(episode.get("decision_steps", ())) != v2_decision_steps():
         raise V4DiagnosticRunError(f"V3 decision schedule drifted: {arm}/{family_id}")
     body = dict(episode)
@@ -436,7 +463,10 @@ def diagnose_v3_run(run_dir: Path, output_dir: Path) -> dict[str, Any]:
         for family_id in expected_evaluation_families
         for arm in V3_EPISODE_ARMS
     }
-    if observed_episode_keys != expected_episode_keys:
+    if (
+        len(replay_receipts) != len(expected_episode_keys)
+        or observed_episode_keys != expected_episode_keys
+    ):
         raise V4DiagnosticRunError("V3 episode receipt is incomplete or has duplicate arms")
     executed_observations = tuple(
         _make_executed_observation(episode, decision, family_index)
@@ -482,7 +512,7 @@ def diagnose_v3_run(run_dir: Path, output_dir: Path) -> dict[str, Any]:
         "source_identity_sha256": source_identity_sha256,
         "hmc_binding_sha256": bundle.binding_sha256,
         "hmc_contract_sha256": bundle.hmc_contract.hmc_contract_sha256,
-        "scenario_sha256": scenario_manifest_sha256,
+        "scenario_manifest_sha256": scenario_manifest_sha256,
         "action_catalogue_sha256": bundle.action_catalogue_sha256,
         "alarm_manifest_sha256": bundle.alarm_manifest_sha256,
         "feature_manifest_sha256": feature_manifest_sha256,
