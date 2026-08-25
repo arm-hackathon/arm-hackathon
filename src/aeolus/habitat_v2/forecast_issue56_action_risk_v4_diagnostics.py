@@ -20,6 +20,11 @@ from .forecast.contracts import canonical_json_bytes
 
 
 ISSUE56_V4_DIAGNOSTICS_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v4_diagnostics_v1"
+ISSUE56_V4_PROTOCOL_SCHEMA_VERSION = (
+    "aeolus_habitat_v2_risk_issue_56_v4_diagnostics_preregistration_v1"
+)
+ISSUE56_V4_PROTOCOL_ID = "habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1"
+ISSUE56_V4_PROTOCOL_STATUS = "PRE_MODEL_PROTOCOL_DRAFT_PENDING_AUTHORIZATION"
 V4_BOOTSTRAP_SEED = 560057
 V4_BOOTSTRAP_RESAMPLES = 10_000
 V4_PROPOSAL_OUTCOMES = (
@@ -460,3 +465,110 @@ def provenance_manifest_sha256(manifest: Mapping[str, str]) -> str:
             "identities": {field: manifest[field] for field in V4_PROVENANCE_FIELDS},
         }
     )
+
+
+def validate_v4_protocol(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the pre-model V4 diagnostic protocol shape."""
+
+    required = {
+        "schema_version",
+        "preregistration_id",
+        "status",
+        "lane",
+        "authority",
+        "scope",
+        "population",
+        "observations",
+        "metrics",
+        "provenance",
+        "data_boundary",
+        "model_work",
+        "non_goals",
+    }
+    if type(protocol) is not dict or set(protocol) != required:
+        raise Issue56V4DiagnosticsError("V4 protocol fields drift")
+    if protocol["schema_version"] != ISSUE56_V4_PROTOCOL_SCHEMA_VERSION:
+        raise Issue56V4DiagnosticsError("V4 protocol schema drift")
+    if protocol["preregistration_id"] != ISSUE56_V4_PROTOCOL_ID:
+        raise Issue56V4DiagnosticsError("V4 protocol identity drift")
+    if protocol["status"] != ISSUE56_V4_PROTOCOL_STATUS:
+        raise Issue56V4DiagnosticsError("V4 protocol is not pending authorization")
+    if protocol["lane"] != "RESEARCH_STUDY_DEV_EVIDENCE_ONLY":
+        raise Issue56V4DiagnosticsError("V4 protocol lane is invalid")
+
+    authority = protocol["authority"]
+    if type(authority) is not dict:
+        raise Issue56V4DiagnosticsError("V4 authority block is malformed")
+    if (
+        authority.get("final_command_authority") != "HMC"
+        or authority.get("plant_step_authority") != "HMC"
+        or authority.get("model_actuator_authority") is not False
+        or authority.get("v3_immutable") is not True
+    ):
+        raise Issue56V4DiagnosticsError("V4 authority boundary drifted")
+
+    scope = protocol["scope"]
+    if type(scope) is not dict or scope.get("current_phase") != "PRE_MODEL_DIAGNOSTICS":
+        raise Issue56V4DiagnosticsError("V4 scope is not pre-model diagnostics")
+    if scope.get("training_authorized") is not False or scope.get("artifact_export_authorized") is not False:
+        raise Issue56V4DiagnosticsError("V4 scope authorizes learned-model work")
+
+    population = protocol["population"]
+    if type(population) is not dict or population.get("statistical_unit") != "condition_group":
+        raise Issue56V4DiagnosticsError("V4 statistical unit is invalid")
+    if (
+        population.get("family_count") != 32
+        or population.get("condition_group_count") != 16
+        or population.get("families_per_condition_group") != 2
+        or population.get("paired_sensor_variants_stay_together") is not True
+    ):
+        raise Issue56V4DiagnosticsError("V4 population boundary drifted")
+
+    observations = protocol["observations"]
+    if type(observations) is not dict:
+        raise Issue56V4DiagnosticsError("V4 observation block is malformed")
+    if observations.get("candidate_metric_scope") != "all_candidate_actions":
+        raise Issue56V4DiagnosticsError("V4 candidate metric scope drifted")
+    if observations.get("executed_metric_scope") != "selected_and_executed_decisions":
+        raise Issue56V4DiagnosticsError("V4 executed metric scope drifted")
+    if tuple(observations.get("disposition_types", ())) != V4_DISPOSITION_TYPES:
+        raise Issue56V4DiagnosticsError("V4 disposition types drifted")
+
+    metrics = protocol["metrics"]
+    if type(metrics) is not dict:
+        raise Issue56V4DiagnosticsError("V4 metric block is malformed")
+    if metrics.get("aggregation") != "equal_weight_condition_group_means":
+        raise Issue56V4DiagnosticsError("V4 aggregation unit drifted")
+    bootstrap = metrics.get("bootstrap")
+    if (
+        type(bootstrap) is not dict
+        or bootstrap.get("seed") != V4_BOOTSTRAP_SEED
+        or bootstrap.get("resamples") != V4_BOOTSTRAP_RESAMPLES
+        or bootstrap.get("resampling_unit") != "condition_group"
+    ):
+        raise Issue56V4DiagnosticsError("V4 bootstrap contract drifted")
+
+    provenance = protocol["provenance"]
+    if type(provenance) is not dict or tuple(provenance.get("required_identities", ())) != V4_PROVENANCE_FIELDS:
+        raise Issue56V4DiagnosticsError("V4 provenance identity set drifted")
+    if provenance.get("observation_manifest_scheme") != "sorted_canonical_rows_sha256_v1":
+        raise Issue56V4DiagnosticsError("V4 observation manifest scheme drifted")
+
+    data_boundary = protocol["data_boundary"]
+    if type(data_boundary) is not dict or data_boundary.get("protected_final_suite_allowed") is not False:
+        raise Issue56V4DiagnosticsError("V4 protected-data boundary drifted")
+    prohibited = tuple(data_boundary.get("prohibited_runtime_inputs", ()))
+    if not {"hidden_fault_truth", "future_measurements", "hmc_arbitration_outcome"}.issubset(prohibited):
+        raise Issue56V4DiagnosticsError("V4 prohibited input boundary is incomplete")
+
+    model_work = protocol["model_work"]
+    if type(model_work) is not dict:
+        raise Issue56V4DiagnosticsError("V4 model-work block is malformed")
+    if model_work.get("requires_ben_scope_approval") is not True:
+        raise Issue56V4DiagnosticsError("V4 Ben scope gate is missing")
+    if model_work.get("new_protocol_required_for_training") is not True:
+        raise Issue56V4DiagnosticsError("V4 training protocol gate is missing")
+
+    if type(protocol["non_goals"]) is not list or not protocol["non_goals"]:
+        raise Issue56V4DiagnosticsError("V4 non-goals are missing")
+    return dict(protocol)

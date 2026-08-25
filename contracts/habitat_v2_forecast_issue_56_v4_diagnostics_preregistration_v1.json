@@ -1,0 +1,116 @@
+{
+  "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_diagnostics_preregistration_v1",
+  "preregistration_id": "habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1",
+  "status": "PRE_MODEL_PROTOCOL_DRAFT_PENDING_AUTHORIZATION",
+  "lane": "RESEARCH_STUDY_DEV_EVIDENCE_ONLY",
+  "authority": {
+    "final_command_authority": "HMC",
+    "plant_step_authority": "HMC",
+    "replay_authority": "HMC_and_strict_replay_validator",
+    "model_actuator_authority": false,
+    "v3_immutable": true
+  },
+  "scope": {
+    "current_phase": "PRE_MODEL_DIAGNOSTICS",
+    "training_authorized": false,
+    "artifact_export_authorized": false,
+    "threshold_changes_authorized": false,
+    "purpose": "make candidate, selected, requested, final, and executed outcomes measurable before any V4 learned-model work"
+  },
+  "population": {
+    "family_count": 32,
+    "condition_group_count": 16,
+    "families_per_condition_group": 2,
+    "statistical_unit": "condition_group",
+    "paired_sensor_variants_stay_together": true,
+    "evaluation_split_requirement": "cover every declared operating and fault-condition stratum before evaluation"
+  },
+  "observations": {
+    "candidate_metric_scope": "all_candidate_actions",
+    "executed_metric_scope": "selected_and_executed_decisions",
+    "command_identity_fields": [
+      "requested_command_sha256",
+      "final_command_sha256",
+      "executed_command_sha256"
+    ],
+    "disposition_types": [
+      "PROPOSED_ACCEPTED",
+      "PROPOSED_MODIFIED",
+      "PROPOSED_REJECTED_TO_HOLD",
+      "EMERGENCY_OVERRIDDEN",
+      "ABSTAINED_TO_HOLD"
+    ],
+    "candidate_and_executed_metrics_must_not_be_conflated": true
+  },
+  "metrics": {
+    "aggregation": "equal_weight_condition_group_means",
+    "required_candidate_metrics": [
+      "dangerous_event_recall",
+      "false_safe_rate",
+      "retained_candidate_count"
+    ],
+    "required_executed_metrics": [
+      "proposal_rate",
+      "abstention_rate",
+      "selected_action_false_safe_rate",
+      "hmc_mismatch_rate",
+      "disposition_counts"
+    ],
+    "bootstrap": {
+      "resampling_unit": "condition_group",
+      "resamples": 10000,
+      "seed": 560057,
+      "confidence_interval": "equal_tailed_percentile_95"
+    },
+    "non_vacuity": {
+      "minimum_useful_action_count": "must be selected before evaluation",
+      "maximum_abstention_rate": "must be selected before evaluation"
+    }
+  },
+  "provenance": {
+    "required_identities": [
+      "source_identity_sha256",
+      "hmc_binding_sha256",
+      "hmc_contract_sha256",
+      "scenario_sha256",
+      "action_catalogue_sha256",
+      "alarm_manifest_sha256",
+      "feature_manifest_sha256",
+      "label_manifest_sha256",
+      "point_artifact_sha256"
+    ],
+    "observation_manifest_scheme": "sorted_canonical_rows_sha256_v1",
+    "write_once_output_directory": true,
+    "independent_replay_required_for_counterfactual_labels": true
+  },
+  "data_boundary": {
+    "protected_final_suite_allowed": false,
+    "future_states_are_labels_only": true,
+    "prohibited_runtime_inputs": [
+      "hidden_fault_truth",
+      "future_measurements",
+      "fault_labels_or_schedules",
+      "seeds",
+      "internal_noise_or_bias_state",
+      "reserve_audit_state",
+      "hmc_arbitration_outcome"
+    ],
+    "policy_conditioned_development_histories_allowed": "only from approved development scenarios and deterministic replay"
+  },
+  "model_work": {
+    "requires_ben_scope_approval": true,
+    "new_protocol_required_for_training": true,
+    "architecture_selected": false,
+    "training_started": false,
+    "artifact_export_started": false,
+    "runtime_integration_started": false,
+    "next_decision": "authorize or reject a separate V4 learned-model protocol after diagnostic review"
+  },
+  "non_goals": [
+    "no V3 artifact, threshold, feature contract, or historical evidence changes",
+    "no HMC, physics, safety-core, capability, trace, or replay authority changes",
+    "no learned-model implementation, training, quantization, export, or integration in this phase",
+    "no qualification, deployment, hardware, certification, or real-world safety claim",
+    "no post-hoc repair of V3 abstention or mismatch results"
+  ]
+}

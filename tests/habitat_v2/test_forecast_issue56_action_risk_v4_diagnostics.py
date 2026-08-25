@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +19,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_diagnostics import (
     executed_action_metrics,
     observation_manifest_sha256,
     provenance_manifest_sha256,
+    validate_v4_protocol,
     validate_condition_groups,
 )
 
@@ -210,3 +213,19 @@ def test_provenance_manifest_requires_every_bound_identity() -> None:
     del missing["hmc_binding_sha256"]
     with pytest.raises(Issue56V4DiagnosticsError, match="provenance fields"):
         provenance_manifest_sha256(missing)
+
+
+def test_v4_protocol_contract_is_explicitly_pre_model_and_fail_closed() -> None:
+    protocol_path = (
+        Path(__file__).resolve().parents[2]
+        / "contracts"
+        / "habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json"
+    )
+    protocol = json.loads(protocol_path.read_text(encoding="utf-8"))
+
+    assert validate_v4_protocol(protocol) == protocol
+    tampered = dict(protocol)
+    tampered["scope"] = dict(protocol["scope"])
+    tampered["scope"]["training_authorized"] = True
+    with pytest.raises(Issue56V4DiagnosticsError, match="authorizes learned-model work"):
+        validate_v4_protocol(tampered)
