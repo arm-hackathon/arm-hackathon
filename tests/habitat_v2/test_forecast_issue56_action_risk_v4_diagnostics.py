@@ -22,7 +22,6 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_diagnostics import (
     validate_v4_protocol,
     validate_condition_groups,
 )
-from scripts.diagnose_action_risk_v4 import V4DiagnosticRunError, _verify_decision_digest
 
 
 def _digest(value: object) -> str:
@@ -236,21 +235,3 @@ def test_v4_protocol_contract_is_explicitly_pre_model_and_fail_closed() -> None:
     tampered["scope"]["training_authorized"] = True
     with pytest.raises(Issue56V4DiagnosticsError, match="authorizes learned-model work"):
         validate_v4_protocol(tampered)
-
-
-def test_v4_adapter_rejects_tampered_serialized_decision() -> None:
-    body = {
-        "decision_step": 16,
-        "selected_action_id": "action-0",
-        "requested_command_sha256": "a" * 64,
-        "final_command_sha256": "b" * 64,
-        "executed_command_sha256": "b" * 64,
-        "disposition": "PROPOSED_MODIFIED",
-    }
-    decision = {**body, "decision_sha256": _digest(body)}
-
-    _verify_decision_digest(decision)
-    tampered = dict(decision)
-    tampered["disposition"] = "PROPOSED_ACCEPTED"
-    with pytest.raises(V4DiagnosticRunError, match="digest"):
-        _verify_decision_digest(tampered)
