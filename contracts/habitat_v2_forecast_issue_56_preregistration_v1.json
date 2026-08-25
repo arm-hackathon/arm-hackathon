@@ -1,0 +1,129 @@
+{
+  "schema_version": "aeolus_habitat_v2_issue_56_preregistration_v1",
+  "preregistration_id": "habitat_v2_forecast_issue_56_preregistration_v1",
+  "status": "DECLARED_BEFORE_IMPLEMENTATION",
+  "issue": 56,
+  "title": "Development study: calibrated action-conditioned safety-risk adviser",
+  "base_commit": "4ae41b7cc13fadb2d94552dab17dfae80dffe294",
+  "lane": "RESEARCH_STUDY_DEV_EVIDENCE_ONLY",
+  "authority": {
+    "final_command_authority": "HMC",
+    "proposal_authority": "none_proposals_are_advisory_and_may_be_rejected_by_arbitration",
+    "plant_step_authority": "HMC",
+    "replay_authority": "HMC_and_strict_replay_validator",
+    "model_role": "forecast_only_action_risk_estimator",
+    "model_actuator_authority": false,
+    "frozen_surfaces_untouched": [
+      "src/aeolus/habitat_v2/hmc.py",
+      "src/aeolus/habitat_v2/physics.py",
+      "src/aeolus/habitat_v2/safety.py",
+      "artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz",
+      "contracts/habitat_v2_forecast_issue_55_preregistration_v2.json"
+    ]
+  },
+  "suite": {
+    "corpus_id": "issue56_action_risk_v1",
+    "family_count": 32,
+    "family_source": "Issue #55 v2 development family matrix, reused without scenario expansion",
+    "family_matrix": "4 operating conditions x 4 physical plant conditions x 2 sensor seeds",
+    "split_algorithm": "SHA256('issue56-split-v1|' + family_id), largest remainder TRAIN/VALIDATION/EVALUATION = 60/20/20",
+    "split_labels": ["TRAIN", "VALIDATION", "EVALUATION"],
+    "decision_steps": "16 through 64 inclusive every 4 steps",
+    "decision_count_per_episode": 13,
+    "history_window_steps": 16,
+    "risk_horizon_steps": 32,
+    "candidate_count": 4,
+    "candidate_schedule": "each frozen catalogue command is repeated unchanged for the 32-step label horizon"
+  },
+  "features": {
+    "source": "verified operational snapshot projection only",
+    "history_summary": "last projected numeric row, window mean, and last-minus-first delta",
+    "action": "one complete frozen catalogue command vector",
+    "layout": "float32[610] = 194 last + 194 mean + 194 delta + 27 action + 1 bias",
+    "prohibited_inputs": [
+      "hidden plant truth",
+      "fault labels or future fault schedule",
+      "future measurements",
+      "HMC arbitration outcome",
+      "reserve audit state",
+      "unavailable validation or final data"
+    ]
+  },
+  "labels": {
+    "source": "offline deterministic true-plant counterfactual rollout",
+    "event": "any target crosses a frozen safety bound during the next 32 transitions",
+    "exposure": "sum of normalized lower and upper bound crossings over all target cells and 32 transitions",
+    "maximum_crossing": "maximum normalized bound crossing over all target cells and 32 transitions",
+    "eligibility": "incomplete or infeasible counterfactuals are excluded, never assigned a finite penalty"
+  },
+  "model": {
+    "kind": "train-only normalized ridge multi-output risk regressor",
+    "outputs": ["log1p_safety_exposure", "crossing_probability_score", "log1p_maximum_crossing"],
+    "normalizers": "fit on TRAIN only",
+    "regularization": 0.1,
+    "float_policy": "fit float64, frozen inference output float32",
+    "seeds": [560056]
+  },
+  "calibration": {
+    "source": "VALIDATION families only",
+    "residual_quantile": 0.9,
+    "upper_exposure_formula": "expm1(max(0, predicted_log1p_exposure + validation_abs_residual_P90))",
+    "upper_maximum_formula": "expm1(max(0, predicted_log1p_maximum + validation_abs_residual_P90))",
+    "hard_exposure_gate": 0.5,
+    "hard_crossing_probability_gate": 0.5,
+    "abstain_if": "all candidates are hard-ineligible or no finite calibrated prediction exists"
+  },
+  "ranking": {
+    "metric_id": "issue56-calibrated-risk-first-ranking-v1",
+    "score": "upper_exposure + 0.25 * crossing_probability + 0.01 * intervention",
+    "hard_ineligible": "upper_exposure > 0.5 OR crossing_probability >= 0.5 OR non-finite output",
+    "tie_break": "score, upper_exposure, crossing_probability, intervention, hold_preference, action_id",
+    "proposal": "at most one standard advisory proposal bound to the verified current snapshot",
+    "existing_point_model": "measured as a comparator, not modified by this lane"
+  },
+  "metrics": {
+    "primary": "true-plant safety exposure and safety violation steps",
+    "secondary": [
+      "comfort deviation",
+      "resource composite",
+      "proposal and abstention rate",
+      "risk upper-bound coverage",
+      "crossing-event recall",
+      "Brier score",
+      "authority violations",
+      "replay failures",
+      "provenance violations",
+      "non-finite outputs",
+      "p99 inference latency"
+    ],
+    "family_aggregation": "equal-weight family means; paired family identities retained",
+    "bootstrap": "10,000 deterministic whole-family resamples using SHA256 counter sampling seed 560056"
+  },
+  "success_criteria": {
+    "hard_gates": {
+      "authority_violation_count": 0,
+      "replay_failure_count": 0,
+      "provenance_violation_count": 0,
+      "non_finite_metric_count": 0,
+      "proposal_admission_failure_count": 0
+    },
+    "safety_gate": "EVALUATION true-plant safety exposure point and upper paired interval must be <= rules_only",
+    "crossing_gate": "crossing-event recall difference must be >= -0.02 and false-event rate difference <= +0.01",
+    "latency_gate_ms_p99": 250.0,
+    "honest_negative_rule": "utility improvement never overrides a failed safety gate; failed comparative gates are published"
+  },
+  "non_goals": [
+    "no HMC, safety-core, physics, trace, capability, or replay changes",
+    "no ensemble or disagreement-penalty model",
+    "no harder-scenario expansion",
+    "no 32-step forecast or 12-candidate catalogue redesign",
+    "no final-suite or validation data access outside this declared development corpus",
+    "no deployment, qualification, certification, hardware, or real-world safety claim"
+  ],
+  "reproducibility": {
+    "entry_point": "scripts/run_issue56_action_risk.py",
+    "output_rule": "write_once_new_directory_under_ignored_out",
+    "determinism_rule": "no wall-clock values or unseeded randomness in digest-bearing outputs",
+    "artifact_rule": "model, corpus, calibration, results, and source identities are SHA-256 bound"
+  }
+}

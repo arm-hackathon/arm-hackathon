@@ -1,0 +1,140 @@
+{
+  "schema_version": "aeolus_habitat_v2_issue_56_v3_preregistration_v2",
+  "preregistration_id": "habitat_v2_forecast_issue_56_v3_preregistration_v2",
+  "status": "DECLARED_BEFORE_V3_V2_SUPPORT_RERUN",
+  "protocol_change": "new development-only support protocol after the V1 split audit; V1 artifacts remain historical and are not pooled with V2 results",
+  "parent_result": "57ad3f1",
+  "lane": "RESEARCH_STUDY_DEV_EVIDENCE_ONLY",
+  "title": "Policy-aligned multi-horizon HMC action-risk filter with support-stratified groups",
+  "authority": {
+    "final_command_authority": "HMC",
+    "proposal_authority": "none_proposals_are_advisory_and_may_be_rejected_or_modified_by_arbitration",
+    "plant_step_authority": "HMC",
+    "replay_authority": "HMC_and_strict_replay_validator",
+    "model_role": "forecast_only_risk_filter_and_point_ranker_adviser",
+    "model_actuator_authority": false,
+    "v2_immutable": true,
+    "frozen_surfaces_untouched": [
+      "src/aeolus/habitat_v2/hmc.py",
+      "src/aeolus/habitat_v2/physics.py",
+      "src/aeolus/habitat_v2/safety.py",
+      "contracts/habitat_v2_forecast_issue_56_v2_preregistration_v1.json"
+    ]
+  },
+  "suite": {
+    "corpus_id": "issue56_action_risk_v3",
+    "family_count": 32,
+    "family_source": "same Issue #55 v2 development family matrix",
+    "family_split": "fixed condition-stratified split over 16 paired sensor groups; TRAIN=10 groups, VALIDATION=3 groups, EVALUATION=3 groups; every sensor pair remains in one split",
+    "split_algorithm": "canonical family roster order grouped by consecutive sensor pairs; fixed preregistered group labels",
+    "primary_decision_window": "16 through 64 inclusive every 4 steps",
+    "decision_count_per_episode": 13,
+    "history_window_steps": 16,
+    "episode_steps": 96,
+    "candidate_count": 4,
+    "label_horizons": [4, 16, 32, "remaining_episode"],
+    "primary_label_track": "hmc_persistent_remaining",
+    "arms": [
+      "rules_only_common_window",
+      "point_model_common_window",
+      "risk_only_v3",
+      "risk_filtered_point_v3"
+    ]
+  },
+  "label_semantics": {
+    "requested_command": "catalogue command submitted as an advisory HMC proposal",
+    "final_command": "command emitted by HMC arbitration",
+    "executed_command": "command digest confirmed by the plant receipt",
+    "persistence": "the final command remains the HMC safe-hold baseline on later no-proposal cycles",
+    "outcomes": [
+      "PROPOSED_ACCEPTED",
+      "PROPOSED_MODIFIED",
+      "PROPOSED_REJECTED_TO_HOLD",
+      "EMERGENCY_OVERRIDDEN"
+    ],
+    "event": "any target crosses a frozen bound during the selected executed-command horizon",
+    "exposure": "sum of normalized bound crossings during the selected executed-command horizon",
+    "maximum_crossing": "maximum normalized bound crossing during the selected executed-command horizon",
+    "expected_maximum_crossing": "event probability multiplied by the calibrated conditional maximum upper bound"
+  },
+  "features": {
+    "source": "verified operational snapshot projection plus frozen catalogue command",
+    "base_layout": "V2 708-feature public observable projection retained as an initial baseline",
+    "prohibited_inputs": [
+      "hidden plant truth",
+      "future measurements",
+      "fault labels or future fault schedule",
+      "HMC arbitration outcome",
+      "reserve audit state",
+      "validation or evaluation labels at runtime"
+    ]
+  },
+  "model": {
+    "baseline": "V2 ridge event/severity model",
+    "event_baseline": "regularized logistic regression with training-only class weighting",
+    "severity_baseline": "positive-event log1p regression with one-sided validation calibration",
+    "multi_horizon": true,
+    "calibration": "validation-only monotonic probability calibration; every calibrated horizon requires both event classes; positive-severity upper residuals require positive support",
+    "calibration_method": "centered/scaled monotonic Platt fit with fixed slope ridge 1e-4 and deterministic backtracking",
+    "seed": 560057
+  },
+  "risk_policy": {
+    "immediate_horizon": 4,
+    "hard_veto_horizon": "remaining_episode",
+    "immediate_event_veto": "event probability only when the 4-step validation-calibrated event upper bound exceeds the event limit",
+    "remaining_maximum_veto": "event probability multiplied by the remaining-horizon conditional maximum upper bound exceeds the maximum limit",
+    "utility": "existing Issue #55 point-model score among candidates passing every risk horizon",
+    "abstain": "no candidate passes or required history is incomplete",
+    "hmc_fallback": "no proposal; HMC retains its authoritative safe-hold baseline"
+  },
+  "metrics": {
+    "primary": "paired true-plant safety exposure for risk_filtered_point_v3 versus rules_only_common_window",
+    "secondary": [
+      "executed-command dangerous-event recall",
+      "selected-action false-safe rate",
+      "requested-to-final command mismatch rate",
+      "comfort deviation with occupied-row denominator",
+      "resource component metrics",
+      "proposal rate",
+      "abstention rate",
+      "event Brier score",
+      "event reliability and ECE",
+      "conditional severity upper coverage",
+      "remaining-horizon safety coverage",
+      "authority violations",
+      "replay failures",
+      "provenance violations",
+      "non-finite outputs",
+      "p99 inference latency"
+    ],
+    "aggregation": "equal-weight independent condition-group means",
+    "bootstrap": "10,000 deterministic paired condition-group resamples using SHA256 seed 560057"
+  },
+  "gates": {
+    "authority_violation_count": 0,
+    "replay_failure_count": 0,
+    "provenance_violation_count": 0,
+    "non_finite_metric_count": 0,
+    "proposal_admission_failure_count": 0,
+    "safety": "risk_filtered_point_v3 exposure point and 95% upper paired difference <= rules_only_common_window",
+    "crossing_recall_difference_minimum": -0.02,
+    "false_safe_rate_difference_maximum": 0.01,
+    "latency_p99_ms": 250.0,
+    "validation_non_vacuity_required": true,
+    "validation_label_support_required": true,
+    "evaluation_label_support_required_for_diagnostics": true,
+    "honest_negative_rule": "failed utility or calibration is published and never repaired with evaluation-derived thresholds"
+  },
+  "reproducibility": {
+    "entry_point": "scripts/run_action_risk_v3.py",
+    "output_rule": "new write-once ignored output directory",
+    "dirty_worktree": "comparative evaluation refuses dirty source worktree",
+    "artifact_rule": "source, contract, manifest, features, labels, model, calibration, traces, decisions, and results are SHA-256 bound"
+  },
+  "non_goals": [
+    "no HMC, physics, safety-core, capability, trace, or replay changes",
+    "no deployment, qualification, certification, hardware, or real-world safety claim",
+    "no post-hoc threshold changes using evaluation behavior",
+    "no use of protected final-suite data to design the development split"
+  ]
+}
