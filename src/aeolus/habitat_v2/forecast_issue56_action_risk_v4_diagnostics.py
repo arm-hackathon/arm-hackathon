@@ -43,6 +43,7 @@ V4_PROVENANCE_FIELDS = (
     "alarm_manifest_sha256",
     "feature_manifest_sha256",
     "label_manifest_sha256",
+    "risk_model_sha256",
     "point_artifact_sha256",
 )
 

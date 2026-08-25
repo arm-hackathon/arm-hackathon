@@ -44,7 +44,8 @@ Every row is content-addressed. Final and executed command identities must
 match. An abstention cannot carry a selected action or requested command. A
 proposal cannot be marked as an abstention. Candidate and executed metrics use
 different input types so the V3 reporting ambiguity cannot be repeated by
-accident.
+accident. The provenance set binds both the risk-model artifact and the
+point-model artifact; neither may be substituted for the other.
 
 ## Frozen population and data boundary
 

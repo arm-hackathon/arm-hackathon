@@ -77,6 +77,7 @@
       "alarm_manifest_sha256",
       "feature_manifest_sha256",
       "label_manifest_sha256",
+      "risk_model_sha256",
       "point_artifact_sha256"
     ],
     "observation_manifest_scheme": "sorted_canonical_rows_sha256_v1",
