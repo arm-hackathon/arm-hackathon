@@ -201,7 +201,10 @@ authority. The full closed-loop paired campaign (238 runs; 78 better / 24
 equal / 0 worse on pre-registered safety-exceedance metrics) is documented in
 merged PR
 [#40](https://github.com/arm-hackathon/arm-hackathon/pull/40). This is
-development evidence only — not qualification, not deployment.
+development evidence only — not qualification, not deployment. The [historical
+evidence index](docs/evidence/closed-loop-advisory-historical-index.md) records
+the exact archived files and the limits on reproducing that campaign from
+current `main`.
 
 **Native Arm64 evidence.** The same trained-MLP forecast runs natively on
 Arm server silicon (GitHub-hosted `ubuntu-24.04-arm` runner: Arm Neoverse-N2,
@@ -227,6 +230,9 @@ Model documentation and assurance:
   tradeoffs we made (authority, resources, portability, model size,
   determinism, quantization, abstention, scoping), what each cost, and why
   we chose safety and verifiability at every fork.
+- [`docs/evidence/closed-loop-advisory-historical-index.md`](docs/evidence/closed-loop-advisory-historical-index.md)
+  — immutable source identities, file hashes, static consistency checks, and
+  disclosed custody/reproduction gaps for the historical campaign.
 - `scripts/check_habitat_v2_mlp_drift.py` — scores live telemetry against
   the training distribution and flags drift (diagnostic only).
 
@@ -253,8 +259,12 @@ alone, once with the model advising):
 - **The honest cost:** advised runs consumed more resources (median
   +757 Wh battery, +1.97 mol oxygen, +6.04 mol sorbent) — the safety margin
   is bought with consumables, and all runs stayed above resource floors.
-- **Reproducibility:** every run replays bit-for-bit; the same commands
-  produce the same numbers and trace hashes on any machine.
+- **Historical reproducibility boundary:** current `main` reproduces the
+  supported NumPy demo, not the full 2026-08-18/19 campaign. The compact V1/V2
+  summary and full V3 result are hash-identified and internally coherent, but
+  raw V1/V2 results, old runner dependencies, and the execution-environment
+  receipt are absent. See the [historical evidence
+  index](docs/evidence/closed-loop-advisory-historical-index.md).
 
 ## Source-checkout verification
 

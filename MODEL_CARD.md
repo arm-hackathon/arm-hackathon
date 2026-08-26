@@ -11,7 +11,7 @@ this model.
 | --- | --- |
 | Artifact (NumPy, main branch) | `artifacts/demo-only/habitat-v2-forecast/action-aware-mlp-v1.npz` |
 | Artifact SHA-256 | `a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd` |
-| Source checkpoint (Torch) | `experiments/closed-loop-advisory-20260818/action-aware-mlp-v1.pt` (qualification branch) |
+| Source checkpoint (Torch) | Historical archive; SHA-256 `873cb77bb82a06b4c862a13275b55133c3ef26c969d3055a799c80dcd98854a6`; see the [evidence index](docs/evidence/closed-loop-advisory-historical-index.md#exact-archived-file-manifest) |
 | Training run | `full-v1-20260818-a` |
 | Training seed | `20260818` |
 
@@ -55,6 +55,11 @@ Historical V2 archive — see `CORPUS_DATASHEET.md`. 4,680 simulation packets,
   exceedance. HMC overrode 81 of 793 proposals.
 - **Demo scenario:** canonical HMC integrated exceedance 19.94 (29 steps
   above the CO2 warning line); model-advised 0.0.
+
+These are recorded historical development results. The [historical evidence
+index](docs/evidence/closed-loop-advisory-historical-index.md) identifies the
+archived bytes, static consistency checks, and missing material that prevents a
+fresh-clone rerun of the complete campaign from current `main`.
 
 ## Limitations and failure modes
 

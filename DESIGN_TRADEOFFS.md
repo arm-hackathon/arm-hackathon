@@ -25,8 +25,8 @@ where the model has full freedom.
 model proposals (and 138 of 1,248 in the ensemble variant). Some overrides
 rejected proposals that would have been fine. We accept that cost deliberately.
 
-**Evidence:** `experiments/closed-loop-advisory-20260818/CLOSED_LOOP_REPORT_V2.md`,
-`CLOSED_LOOP_REPORT_V3.md`.
+**Evidence:** [historical closed-loop advisory evidence
+index](docs/evidence/closed-loop-advisory-historical-index.md#recorded-findings-and-static-audit).
 
 ## 2. Safety over resources in the original campaign
 
@@ -46,7 +46,8 @@ tradeoff would need active management.
 resources are the budget you spend to avoid them. We state the price openly
 rather than presenting the safety win as free.
 
-**Evidence:** `experiments/closed-loop-advisory-20260818/CLOSED_LOOP_REPORT_V2.md`.
+**Evidence:** [historical closed-loop advisory evidence
+index](docs/evidence/closed-loop-advisory-historical-index.md#recorded-findings-and-static-audit).
 
 **Later finding:** this tradeoff is not a general property of learned advice.
 In the Issue #55 controller race, the point-model arm improved mean comfort but
@@ -89,11 +90,12 @@ steps, partly because an MLP cannot carry long temporal dependencies.
 
 **Why:** a small MLP trains in hours on one GPU, can be fully understood by a
 reviewer, and is honest about what it is. A larger architecture would be a
-claim we could not yet evaluate with our scenario roster (the v3 ensemble
-campaign proved the roster already cannot distinguish model quality
-differences in outcomes).
+claim we could not yet evaluate with our scenario roster (the recorded V3
+ensemble campaign did not distinguish model quality differences in outcomes on
+that roster).
 
-**Evidence:** `MODEL_CARD.md`, `experiments/closed-loop-advisory-20260818/CLOSED_LOOP_REPORT_V3.md`.
+**Evidence:** `MODEL_CARD.md` and the [historical closed-loop advisory evidence
+index](docs/evidence/closed-loop-advisory-historical-index.md#recorded-findings-and-static-audit).
 
 ## 5. The simpler single model over the measured-better ensemble
 
@@ -108,23 +110,23 @@ disagreement penalty changed zero realized outcomes across 102 fault scenarios
 Publishing the bigger number as the headline would conflate forecast accuracy
 with closed-loop benefit. The ensemble is filed as a research study instead.
 
-**Evidence:** `experiments/closed-loop-advisory-20260818/CLOSED_LOOP_REPORT_V3.md`,
-`preregistration-v3.json`.
+**Evidence:** [historical closed-loop advisory evidence
+index](docs/evidence/closed-loop-advisory-historical-index.md#recorded-findings-and-static-audit).
 
 ## 6. Determinism over stochastic richness
 
-**Decision:** scenarios run with seeded, byte-replayable determinism; every
-artifact is hash-chained.
+**Decision:** active scenarios use seeded, byte-replayable determinism, and
+active artifacts are hash-bound where their controlling contracts require it.
 
 **Gave up:** the realism of richer stochastic simulation.
 
-**Why:** every claim in this repository can be independently re-run and
-verified byte-for-byte. For a project whose credibility rests on its evidence,
-reproducibility outranks realism.
+**Why:** current claims should carry an exact replay or verification path. The
+historical 2026-08-18/19 campaign does not meet that current standard: its
+committed records are hash-identified and internally coherent, but several raw
+inputs and its execution-environment receipt are absent.
 
-**Evidence:** replay verification commands in `README.md`; paired-experiment
-determinism guard in `run_ensemble_paired.py` (control-arm reruns matched the
-frozen v2 record to 16 decimal places).
+**Evidence:** replay verification commands in `README.md`; [historical evidence
+gaps](docs/evidence/closed-loop-advisory-historical-index.md#known-custody-and-reproduction-gaps).
 
 ## 7. Float32 over quantization
 

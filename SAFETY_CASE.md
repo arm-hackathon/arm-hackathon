@@ -18,10 +18,14 @@ that an HMC-admitted proposal is beneficial.**
   The adviser emits proposals; HMC validates each against fixed safety
   rules and may accept, override, or reject. No code path executes model
   output directly.
-- **Evidence:** `experiments/closed-loop-advisory-20260818/aeolus_closed_loop.py`
-  (arbitration on every advised step); 81 recorded HMC overrides of 793
-  proposals in the paired campaign; `SYSTEM.md` authority boundaries;
-  enforced `DEMO_ONLY_PERMANENTLY_EXCLUDED` release tier in artifacts.
+- **Evidence:** current authority implementation and tests in
+  `src/aeolus/habitat_v2/hmc.py`,
+  `src/aeolus/habitat_v2/forecast/live_demo.py`, and
+  `tests/habitat_v2/test_forecast_live_mlp_demo.py`; the [historical evidence
+  index](docs/evidence/closed-loop-advisory-historical-index.md) records the
+  former arbitration harness, authority document, and 81 historical overrides
+  of 793 proposals; artifacts enforce the
+  `DEMO_ONLY_PERMANENTLY_EXCLUDED` release tier.
 - **Residual risk:** future code could add a bypass path — mitigated by
   contract tests and code review, not by proof.
 
@@ -32,8 +36,10 @@ that an HMC-admitted proposal is beneficial.**
   unavailable; HMC continues alone. The separate Issue #53 successor carries
   missingness as explicit input and may forecast only within its frozen,
   independently dropped observation contract. It remains forecast-only.
-- **Evidence:** the original abstention guard in `aeolus_closed_loop.py`
-  (merged PR #41), `adviser_abstentions_unavailable` counters, and
+- **Evidence:** the original abstention guard and
+  `adviser_abstentions_unavailable` counters are identified in the [historical
+  evidence index](docs/evidence/closed-loop-advisory-historical-index.md)
+  (merged PR #41), alongside
   `docs/evidence/issue-53-dropout-card.md`, whose sealed model passed every
   preregistered forecast-lane gate.
 - **Residual risk:** Issue #53 does not qualify correlated or mixed dropout,
@@ -42,12 +48,16 @@ that an HMC-admitted proposal is beneficial.**
 
 ### C3 — Benefit and harm are both reported under frozen scoring
 
-- **Argument:** the original 2026-08-18 campaign's benefit is claimed only on
-  outcomes frozen before results were seen, on scenarios the model never
-  trained on, against canonical HMC, with identical noise/seeds per pair. It is
-  not generalized to other controller fixtures or learned advisory lanes.
-- **Evidence:** the original frozen preregistration and 238-run result remain
-  78 safer / 24 equal / 0 worse across 102 fault pairs. The later Issue #55
+- **Argument:** the original 2026-08-18 campaign records a preregistered scoring
+  plan, scenarios the model did not train on, canonical-HMC comparison, and
+  identical noise/seeds per pair. The preregistration and result first entered
+  Git together, so repository history alone does not independently establish
+  pre-outcome freezing. The result is not generalized to other controller
+  fixtures or learned advisory lanes.
+- **Evidence:** the [historical evidence
+  index](docs/evidence/closed-loop-advisory-historical-index.md) records the
+  preregistration, custody limitation, and 238-run result: 78 safer / 24 equal /
+  0 worse across 102 fault pairs. The later Issue #55
   controller race is the required counter-evidence: HMC admitted and applied
   all eight point-model proposals, while mean normalized safety exposure was
   `15.678536800` versus `0.000217557` for rules-only. The Issue #56 V3
@@ -59,16 +69,18 @@ that an HMC-admitted proposal is beneficial.**
   authority prevents a learned bypass; it does not prove non-degradation after
   HMC admits a proposal, broad useful action selection, or generalization.
 
-### C4 — The evidence itself is intact and replayable
+### C4 — Current replay paths and historical gaps are explicit
 
-- **Argument:** Hash-chained control traces are validated by re-executing
-  the deterministic policy and plant, not by hash checks alone — an
-  internally consistent forgery is rejected. Demo artifacts are hash-pinned
-  and loaders refuse modified bytes.
+- **Argument:** Current-main hash-chained control traces are validated by
+  re-executing the deterministic policy and plant, not by hash checks alone.
+  Current demo artifacts are hash-pinned and loaders refuse modified bytes.
 - **Evidence:** replay/validation tooling in `src/aeolus/habitat_v2/`;
-  adversarial forgery tests in the suite; tour replay artifact hash check;
-  fresh-clone reproduction of headline numbers.
-- **Residual risk:** none identified within the simulation scope.
+  adversarial forgery tests in the suite; and the tour replay artifact hash
+  check.
+- **Residual risk:** the historical 2026-08-18/19 campaign is not reproducible
+  from a fresh current-main checkout. Raw V1/V2 results, training/environment
+  receipts, and old runner dependencies are missing; see the [historical
+  evidence index](docs/evidence/closed-loop-advisory-historical-index.md#known-custody-and-reproduction-gaps).
 
 ### C5 — Known limitations are part of the case, not footnotes
 
@@ -153,9 +165,10 @@ Initiative at Cortex," *Cortex* 49(3), 2013,
 <https://doi.org/10.1016/j.cortex.2012.12.016>) and the NeurIPS
 reproducibility program (Pineau et al., "Improving Reproducibility in
 Machine Learning Research," *JMLR* 22(164), 2021,
-<https://www.jmlr.org/papers/v22/20-303.html>). The one-command
-reproduction path and independently re-executed trace validation are
-aligned with ACM artifact review and badging, v1.1
+<https://www.jmlr.org/papers/v22/20-303.html>). Current-main replay paths and
+independently re-executed trace validation are aligned with ACM artifact review
+and badging, v1.1; the historical campaign's disclosed gaps prevent making the
+same claim for that archive
 (<https://www.acm.org/publications/policies/artifact-review-and-badging-current>).
 
 **Domain grounding.** Katipamula & Brambley, "Methods for Fault Detection,
