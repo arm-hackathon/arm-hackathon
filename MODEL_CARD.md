@@ -58,11 +58,13 @@ Historical V2 archive — see `CORPUS_DATASHEET.md`. 4,680 simulation packets,
 
 ## Limitations and failure modes
 
-- **Complete telemetry only.** The model was trained without availability
-  masks; it must not forecast from missing/broken sensors. The advisory
-  harness enforces abstention in that case (verified guard, PR #41). An
-  availability-aware successor is planned future work — it does not exist
-  yet and no claims are made for it.
+- **Complete telemetry only for this artifact.** The model was trained without
+  availability masks; it must not forecast from missing/broken sensors. The
+  advisory harness enforces abstention in that case (verified guard, PR #41).
+  A distinct Issue #53 dropout-aware successor now exists and is qualified only
+  for its frozen independent-dropout forecast lane; its evidence does not
+  change this artifact's input contract or grant either model plant authority.
+  See `docs/evidence/issue-53-dropout-card.md`.
 - **Point predictions.** No calibrated uncertainty; HMC treats every
   forecast identically regardless of input novelty.
 - **Greedy one-step scoring** over a 4-action catalogue; not a general

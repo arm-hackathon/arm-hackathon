@@ -28,13 +28,14 @@ rejected proposals that would have been fine. We accept that cost deliberately.
 **Evidence:** `experiments/closed-loop-advisory-20260818/CLOSED_LOOP_REPORT_V2.md`,
 `CLOSED_LOOP_REPORT_V3.md`.
 
-## 2. Safety over resources
+## 2. Safety over resources in the original campaign
 
-**Decision:** the model-advised controller spends consumables aggressively to
-keep air-quality metrics inside safety limits.
+**Decision:** in the 2026-08-18 paired campaign, the original model-advised
+controller spent consumables aggressively to keep air-quality metrics inside
+safety limits.
 
 **Gave up:** resource frugality. The rule-based baseline is cheaper; the
-advised controller is safer.
+advised arm was safer on that frozen 102-fault-pair roster.
 
 **Measured cost:** median per-scenario deltas of approximately +757 Wh
 battery, +1.97 mol oxygen, and +6.04 mol sorbent versus the canonical HMC.
@@ -46,6 +47,14 @@ resources are the budget you spend to avoid them. We state the price openly
 rather than presenting the safety win as free.
 
 **Evidence:** `experiments/closed-loop-advisory-20260818/CLOSED_LOOP_REPORT_V2.md`.
+
+**Later finding:** this tradeoff is not a general property of learned advice.
+In the Issue #55 controller race, the point-model arm improved mean comfort but
+worsened mean normalized safety exposure to `15.678536800`, versus
+`0.000217557` for rules-only, while also using more resources. HMC authority
+prevented a learned bypass, but did not prevent admitted proposals from causing
+harm over the episode. See
+`docs/evidence/issue-55-race-card.md`.
 
 ## 3. Pure-NumPy inference over optimized runtimes
 
@@ -125,26 +134,32 @@ frozen v2 record to 16 decimal places).
 quantization.
 
 **Why:** exactness. The artifact is hash-pinned and its outputs are reproduced
-bit-for-bit across machines. Quantization is filed as future work under the
-compression research study, gated on proving no safety-relevant degradation.
+bit-for-bit across machines. Quantization remains untested and would require a
+separate gate proving no safety-relevant degradation. Issue #54 instead tested
+knowledge distillation: smaller students often retained forecast accuracy, but
+the tiny MLP lost action-ranking quality even while passing the accuracy gate.
 
-**Evidence:** `MODEL_CARD.md`; issue #54 tracks the compression study.
+**Evidence:** `MODEL_CARD.md`;
+`docs/evidence/issue-54-distillation-card.md`.
 
-## 8. Conservative abstention over model uptime
+## 8. Conservative abstention for the original model
 
-**Decision:** if a required sensor goes silent, the adviser abstains and hands
-control back to HMC rather than forecasting from incomplete telemetry.
+**Decision:** if a required sensor goes silent, `action_aware_mlp_v1` abstains
+and hands control back to HMC rather than forecasting outside its
+complete-telemetry training domain.
 
-**Gave up:** model availability — one broken sensor disables the model
-entirely.
+**Gave up:** availability of that model — one broken required sensor disables
+its advisory output entirely.
 
-**Why:** forecasting from missing inputs means guessing with confidence
-scores that no longer mean anything. Abstention keeps every proposal inside
-the model's validated domain. The availability-aware model (issue #53) is the
-planned fix, gated on a proper masked-telemetry corpus.
+**Why:** imputing unsupported inputs into this artifact would create an
+unmeasured extrapolation. Abstention keeps its proposals inside the measured
+domain. A separate Issue #53 dropout-aware forecast lane now exists and passed
+its frozen independent-dropout gates. That evidence does not cover correlated
+or mixed dropout, resource-gauge dropout, adversarial channel loss, deployment,
+or actuator authority.
 
-**Evidence:** `SAFETY_CASE.md`; abstention guard tests
-(`tests/habitat_v2/` forecast tests).
+**Evidence:** `SAFETY_CASE.md`; `docs/evidence/issue-53-dropout-card.md`;
+abstention guard tests (`tests/habitat_v2/` forecast tests).
 
 ## 9. Honest scoping over marketing
 

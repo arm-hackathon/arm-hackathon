@@ -242,10 +242,14 @@ alone, once with the model advising):
   finished with zero threshold exceedance.
 - **The authority boundary is exercised, not just asserted:** HMC overrode
   81 of 793 model proposals — the model advises, it never commands.
-- **Broken sensors:** the adviser verifiably abstains whenever any telemetry
-  is missing and HMC continues alone (merged PR
-  [#41](https://github.com/arm-hackathon/arm-hackathon/pull/41)).
-  Forecasting *with* missing sensors is future work, not claimed here.
+- **Broken sensors:** the original `action_aware_mlp_v1` adviser verifiably
+  abstains whenever any required telemetry is missing and HMC continues alone
+  (merged PR [#41](https://github.com/arm-hackathon/arm-hackathon/pull/41)).
+  A separate Issue #53 dropout-aware lane is now qualified for its frozen,
+  independent-dropout forecast-only contract; correlated or mixed dropout,
+  resource-gauge dropout, adversarial channel loss, deployment, and actuator
+  authority remain outside that evidence. See the
+  [Issue #53 capability card](docs/evidence/issue-53-dropout-card.md).
 - **The honest cost:** advised runs consumed more resources (median
   +757 Wh battery, +1.97 mol oxygen, +6.04 mol sorbent) — the safety margin
   is bought with consumables, and all runs stayed above resource floors.
