@@ -26,7 +26,7 @@ REPO_ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from aeolus_closed_loop import HistoricalAdviser, StepRecord, run_closed_loop
+from aeolus_closed_loop import HistoricalAdviser, StepRecord, run_closed_loop  # noqa: E402
 
 # Fixed demo scenario: one held-out cluster, one fault member, one repetition.
 DEMO_SCENARIO = (

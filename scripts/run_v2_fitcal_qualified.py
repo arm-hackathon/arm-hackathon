@@ -267,10 +267,12 @@ def _generate_or_resume_corpus(
         return
     # The campaign's resume validator verifies every existing pair before HMC.
     # It never deletes a malformed directory; validation failure is terminal.
-    if health_check: health_check("before-corpus-generation")
+    if health_check:
+        health_check("before-corpus-generation")
     runner(root, design, contracts, preflight=preflight, output_root=corpus,
            pair_limit=None, worker_count=1, resume=corpus.exists(), health_check=health_check)
-    if health_check: health_check("after-corpus-generation")
+    if health_check:
+        health_check("after-corpus-generation")
     _verify_campaign_manifest(corpus, allowed_cluster_ids)
 
 
@@ -361,11 +363,17 @@ def _cal_gate(action_aware: Mapping[str, Any], persistence: Mapping[str, Any]) -
 
 def _seed_deterministic(seed: int) -> Any:
     import torch
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
-    if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True; torch.backends.cudnn.benchmark = False
-    try: torch.use_deterministic_algorithms(True, warn_only=False)
-    except RuntimeError as error: raise QualifiedLaunchError("deterministic torch mode unavailable") from error
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=False)
+    except RuntimeError as error:
+        raise QualifiedLaunchError("deterministic torch mode unavailable") from error
     return torch
 
 
@@ -380,31 +388,45 @@ def _train_candidate(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = torch.nn.Sequential(torch.nn.Linear(fit_x.shape[1], 512), torch.nn.GELU(), torch.nn.Linear(512, 512), torch.nn.GELU(), torch.nn.Linear(512, 256), torch.nn.GELU(), torch.nn.Linear(256, 408)).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0001)
-    x = torch.from_numpy(fit_x); y = torch.from_numpy(((fit_y - target_mean) / target_scale).reshape(len(fit_y), -1).astype(np.float32))
+    x = torch.from_numpy(fit_x)
+    y = torch.from_numpy(((fit_y - target_mean) / target_scale).reshape(len(fit_y), -1).astype(np.float32))
     cal_xt = torch.from_numpy(cal_x).to(device)
-    best_metric = float("inf"); best_epoch = -1; best_state: dict[str, Any] | None = None; stale = 0
+    best_metric = float("inf")
+    best_epoch = -1
+    best_state: dict[str, Any] | None = None
+    stale = 0
     for epoch in range(80):
         if epoch and health_check:
             health_check(f"training-{name}-epoch-{epoch}")
         model.train()
         generator = torch.Generator().manual_seed(seed + epoch)
         for batch, index in enumerate(torch.randperm(len(x), generator=generator).split(128)):
-            if health_check: health_check(f"training-{name}-epoch-{epoch}-batch-{batch}")
-            prediction = model(x[index].to(device)); loss = torch.nn.functional.mse_loss(prediction, y[index].to(device))
-            optimizer.zero_grad(set_to_none=True); loss.backward(); optimizer.step()
+            if health_check:
+                health_check(f"training-{name}-epoch-{epoch}-batch-{batch}")
+            prediction = model(x[index].to(device))
+            loss = torch.nn.functional.mse_loss(prediction, y[index].to(device))
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
         model.eval()
         with torch.no_grad():
             normalized = model(cal_xt).cpu().numpy().reshape(-1, 8, 51)
         metric = _metrics(normalized * target_scale + target_mean, cal_y, target_scale)["aggregate_normalized_mae"]
         if metric < best_metric:
-            best_metric = metric; best_epoch = epoch; stale = 0
+            best_metric = metric
+            best_epoch = epoch
+            stale = 0
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         else:
             stale += 1
-            if stale >= 12: break
-    if best_state is None: raise QualifiedLaunchError("candidate produced no checkpoint")
-    model.load_state_dict(best_state); model.eval()
-    with torch.no_grad(): prediction = model(cal_xt).cpu().numpy().reshape(-1, 8, 51) * target_scale + target_mean
+            if stale >= 12:
+                break
+    if best_state is None:
+        raise QualifiedLaunchError("candidate produced no checkpoint")
+    model.load_state_dict(best_state)
+    model.eval()
+    with torch.no_grad():
+        prediction = model(cal_xt).cpu().numpy().reshape(-1, 8, 51) * target_scale + target_mean
     metrics = _metrics(prediction, cal_y, target_scale)
     with tempfile.NamedTemporaryFile(suffix=".pt") as handle:
         torch.save({"model": name, "epoch": best_epoch, "state_dict": best_state, "target_mean": target_mean, "target_scale": target_scale}, handle.name)
@@ -425,7 +447,8 @@ def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, 
         raise QualifiedLaunchError("FIT/CAL example assignment drift")
     layout = forecast_layout(contracts)
     fit, cal = CorpusArrays(*(getattr(arrays, field)[labels] if field != "clusters" else tuple(c for c, keep in zip(arrays.clusters, labels, strict=True) if keep) for field in ("history", "available", "action", "action_present", "targets", "clusters"))), CorpusArrays(*(getattr(arrays, field)[~labels] if field != "clusters" else tuple(c for c, keep in zip(arrays.clusters, ~labels, strict=True) if keep) for field in ("history", "available", "action", "action_present", "targets", "clusters")))
-    mean = fit.targets.mean(axis=(0, 1), dtype=np.float64).astype(np.float32); scale = np.maximum(fit.targets.std(axis=(0, 1), dtype=np.float64), 1e-6).astype(np.float32)
+    mean = fit.targets.mean(axis=(0, 1), dtype=np.float64).astype(np.float32)
+    scale = np.maximum(fit.targets.std(axis=(0, 1), dtype=np.float64), 1e-6).astype(np.float32)
     aware_args = {
         "name": "action-aware-mlp-v1", "fit_x": _features(fit, layout, action_aware=True),
         "fit_y": fit.targets, "cal_x": _features(cal, layout, action_aware=True),
@@ -436,31 +459,40 @@ def _train_and_record(run_root: Path, corpus: Path, split: Any, contracts: Any, 
     blind, blind_checkpoint = _train_candidate(**blind_args, health_check=health_check)
     persistence = _metrics(_persistence_predictions(cal, layout), cal.targets, scale)
     probe = _determinism_probe(**aware_args, health_check=health_check)
-    if not probe["receipt_equal"] or not probe["checkpoint_sha256_equal"]: raise QualifiedLaunchError("measured determinism probe failed")
+    if not probe["receipt_equal"] or not probe["checkpoint_sha256_equal"]:
+        raise QualifiedLaunchError("measured determinism probe failed")
     checkpoint_hashes: dict[str, str] = {}
     for name, raw in (("action-aware-selected.pt", aware_checkpoint), ("action-blind-selected.pt", blind_checkpoint)):
         path = run_root / name
         try:
             with path.open("xb") as handle:
-                handle.write(raw); handle.flush(); os.fsync(handle.fileno())
-        except FileExistsError as error: raise QualifiedLaunchError(f"refusing to overwrite checkpoint: {path}") from error
+                handle.write(raw)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except FileExistsError as error:
+            raise QualifiedLaunchError(f"refusing to overwrite checkpoint: {path}") from error
         checkpoint_hashes[name] = _sha_bytes(raw)
     result = {"schema_version": "aeolus_habitat_v2_fitcal_training_receipt_v2", "protocol_sha256": protocol["protocol_sha256"], "validation_accessed": False, "fit_target_mean": mean.tolist(), "fit_target_scale": scale.tolist(), "checkpoint_sha256": checkpoint_hashes, "models": {"action_aware": aware, "action_blind": blind, "persistence": persistence}, "determinism_probe": probe, "cal_gate_action_aware_strictly_below_persistence": _cal_gate(aware["cal_metrics"], persistence)}
     result["training_receipt_sha256"] = _sha_bytes(canonical_json_bytes(result))
     _write_new_json(run_root / "training-receipt.json", result)
-    if not result["cal_gate_action_aware_strictly_below_persistence"]: raise QualifiedLaunchError("CAL gate failed: action-aware normalized MAE is not strictly below persistence")
+    if not result["cal_gate_action_aware_strictly_below_persistence"]:
+        raise QualifiedLaunchError("CAL gate failed: action-aware normalized MAE is not strictly below persistence")
     return result
 
 
 def run(root: Path, run_root: Path, *, dry_run: bool = False) -> None:
-    root = root.resolve(); run_root = run_root.resolve()
+    root = root.resolve()
+    run_root = run_root.resolve()
     protocol, amendment = _verify_protocol(root)
     source_commit = _assert_source_provenance(root, protocol, amendment)
-    design = load_approved_pilot_design(root); contracts = load_forecast_contracts(root); split = build_qualification_split(design, load_qualified_protocol(root))
+    design = load_approved_pilot_design(root)
+    contracts = load_forecast_contracts(root)
+    split = build_qualification_split(design, load_qualified_protocol(root))
     if (len(split.fit_cluster_ids), len(split.cal_cluster_ids), len(split.validation_cluster_ids)) != (FIT_CLUSTERS, CAL_CLUSTERS, 12) or len(split.authorized_cluster_ids) != AUTHORIZED_CLUSTERS:
         raise QualifiedLaunchError("frozen cluster split cardinality drifts")
     if dry_run:
-        print(json.dumps({"verdict": "PASS", "validation_accessed": False, "authorized_clusters": AUTHORIZED_CLUSTERS, "authorized_packets": AUTHORIZED_PACKETS, "authorized_examples": AUTHORIZED_EXAMPLES}, sort_keys=True)); return
+        print(json.dumps({"verdict": "PASS", "validation_accessed": False, "authorized_clusters": AUTHORIZED_CLUSTERS, "authorized_packets": AUTHORIZED_PACKETS, "authorized_examples": AUTHORIZED_EXAMPLES}, sort_keys=True))
+        return
     _start_or_resume_run(run_root, protocol=protocol, source_commit=source_commit)
     preflight = _load_pinned_resource_preflight(root)
     limits = protocol["resource_limits"]
@@ -473,8 +505,10 @@ def run(root: Path, run_root: Path, *, dry_run: bool = False) -> None:
             custody = _verify_exact_custody(root, corpus, split, protocol)
             custody_path = run_root / "custody-receipt.json"
             if custody_path.exists():
-                if _read_json(custody_path) != custody: raise QualifiedLaunchError("existing custody receipt does not match corpus")
-            else: _write_new_json(custody_path, custody)
+                if _read_json(custody_path) != custody:
+                    raise QualifiedLaunchError("existing custody receipt does not match corpus")
+            else:
+                _write_new_json(custody_path, custody)
             training_path = run_root / "training-receipt.json"
             checkpoint_paths = (run_root / "action-aware-selected.pt", run_root / "action-blind-selected.pt")
             if training_path.exists():
@@ -504,9 +538,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--run-root", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true", help="verify sealed protocol/provenance only; no output, HMC, corpus, or training")
     args = parser.parse_args(argv)
-    try: run(args.root, args.run_root, dry_run=args.dry_run)
+    try:
+        run(args.root, args.run_root, dry_run=args.dry_run)
     except QualifiedLaunchError as error:
-        print(f"FAIL-CLOSED: {error}", file=sys.stderr); return 2
+        print(f"FAIL-CLOSED: {error}", file=sys.stderr)
+        return 2
     return 0
 
 if __name__ == "__main__":

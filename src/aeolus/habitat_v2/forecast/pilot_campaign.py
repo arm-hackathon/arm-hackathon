@@ -514,18 +514,22 @@ def run_pilot_campaign(
     if worker_count == 1:
         new_pair_manifests = []
         for payload, group in zip(payloads, missing_groups, strict=True):
-            if health_check: health_check(f"before-pair-{group[0].pair_id}")
+            if health_check:
+                health_check(f"before-pair-{group[0].pair_id}")
             new_pair_manifests.append(_execute_and_stage_pair(payload))
-            if health_check: health_check(f"after-pair-{group[0].pair_id}")
+            if health_check:
+                health_check(f"after-pair-{group[0].pair_id}")
     else:
         # A process pool cannot safely share a live guard callback. Check before
         # dispatch and after every completed pair so a breach stops new work.
-        if health_check: health_check("before-parallel-pair-dispatch")
+        if health_check:
+            health_check("before-parallel-pair-dispatch")
         with ProcessPoolExecutor(max_workers=worker_count) as executor:
             new_pair_manifests = []
             for group, manifest in zip(missing_groups, executor.map(_execute_and_stage_pair, payloads), strict=True):
                 new_pair_manifests.append(manifest)
-                if health_check: health_check(f"after-pair-{group[0].pair_id}")
+                if health_check:
+                    health_check(f"after-pair-{group[0].pair_id}")
     all_pair_manifests = {
         **existing_by_id,
         **{item["pair_id"]: item for item in new_pair_manifests},

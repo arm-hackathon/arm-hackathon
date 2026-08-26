@@ -8,7 +8,6 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 
 class QualifiedRuntimeGuardError(RuntimeError):
@@ -39,7 +38,8 @@ class QualifiedRuntimeGuard:
         try:
             with self.lock_path.open("x", encoding="utf-8") as stream:
                 stream.write(json.dumps({"pid": os.getpid(), "started_unix": time.time()}, sort_keys=True))
-                stream.flush(); os.fsync(stream.fileno())
+                stream.flush()
+                os.fsync(stream.fileno())
         except FileExistsError as error:
             raise QualifiedRuntimeGuardError("exclusive qualified launcher lock already exists") from error
         self._held = True
@@ -48,15 +48,18 @@ class QualifiedRuntimeGuard:
 
     def __exit__(self, *_: object) -> None:
         if self._held:
-            try: self.lock_path.unlink()
-            except OSError: pass
+            try:
+                self.lock_path.unlink()
+            except OSError:
+                pass
             self._held = False
 
     def _gpu(self) -> tuple[int, int]:
         try:
             output = subprocess.check_output(["nvidia-smi", "--query-gpu=memory.free,temperature.gpu", "--format=csv,noheader,nounits"], text=True, stderr=subprocess.DEVNULL, timeout=5)
             rows = [line.strip().split(",") for line in output.splitlines() if line.strip()]
-            if len(rows) != 1 or len(rows[0]) != 2: raise ValueError("ambiguous GPU inventory")
+            if len(rows) != 1 or len(rows[0]) != 2:
+                raise ValueError("ambiguous GPU inventory")
             return int(rows[0][0].strip()) * 1024 * 1024, int(rows[0][1].strip())
         except (OSError, subprocess.SubprocessError, ValueError) as error:
             raise QualifiedRuntimeGuardError("cannot obtain an unambiguous live GPU VRAM/temperature reading") from error
@@ -67,14 +70,16 @@ class QualifiedRuntimeGuard:
         except ImportError as error:
             raise QualifiedRuntimeGuardError("psutil is required for live concurrent-process enforcement") from error
         for process in psutil.process_iter(("pid", "cmdline")):
-            if process.info["pid"] == os.getpid(): continue
+            if process.info["pid"] == os.getpid():
+                continue
             command = " ".join(process.info.get("cmdline") or ()).lower()
             if "aeolus" in command and any(token in command for token in ("train", "fitcal", "pilot_campaign", "run_v2_fitcal")):
                 return True
         return False
 
     def check(self, phase: str) -> None:
-        if not self._held: raise QualifiedRuntimeGuardError("live guard is not holding its lock")
+        if not self._held:
+            raise QualifiedRuntimeGuardError("live guard is not holding its lock")
         if time.monotonic() - self.started > self.limits.wall_clock_seconds:
             raise QualifiedRuntimeGuardError(f"wall-clock timeout exceeded at {phase}")
         if self._other_training_process():

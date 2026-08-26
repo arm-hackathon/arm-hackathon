@@ -11,7 +11,7 @@ REPO_ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from aeolus_closed_loop import HistoricalAdviser, run_closed_loop
+from aeolus_closed_loop import HistoricalAdviser, run_closed_loop  # noqa: E402
 
 MEMBERS_V1 = ("T01", "T07")
 MEMBERS_V2 = ("T01", "T07", "T12")

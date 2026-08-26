@@ -85,7 +85,10 @@ def test_resume_preserves_existing_custody_validated_output_and_uses_exact_allow
     contracts = load_forecast_contracts(ROOT)
     split = build_qualification_split(design, load_qualified_protocol(ROOT))
     preflight = _preflight()
-    corpus = tmp_path / "corpus"; corpus.mkdir(); sentinel = corpus / "validated-pair"; sentinel.mkdir()
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    sentinel = corpus / "validated-pair"
+    sentinel.mkdir()
     received: dict[str, object] = {}
     def runner(*args: object, **kwargs: object) -> dict[str, object]:
         received.update(kwargs)
@@ -99,10 +102,14 @@ def test_resume_preserves_existing_custody_validated_output_and_uses_exact_allow
 
 
 def test_corrupt_partial_pair_fails_closed_without_deletion(tmp_path: Path) -> None:
-    design = load_approved_pilot_design(ROOT); contracts = load_forecast_contracts(ROOT)
+    design = load_approved_pilot_design(ROOT)
+    contracts = load_forecast_contracts(ROOT)
     split = build_qualification_split(design, load_qualified_protocol(ROOT))
     preflight = _preflight()
-    corpus = tmp_path / "corpus"; bad = corpus / "corrupt-pair"; bad.mkdir(parents=True); (bad / "partial").write_text("do not delete", encoding="utf-8")
+    corpus = tmp_path / "corpus"
+    bad = corpus / "corrupt-pair"
+    bad.mkdir(parents=True)
+    (bad / "partial").write_text("do not delete", encoding="utf-8")
     with pytest.raises(PilotCampaignError):
         launcher._generate_or_resume_corpus(ROOT, corpus, design=design, contracts=contracts, preflight=preflight, allowed_cluster_ids=split.authorized_cluster_ids)
     assert (bad / "partial").read_text(encoding="utf-8") == "do not delete"
@@ -125,7 +132,8 @@ def test_action_aware_action_blind_and_persistence_baseline_paths() -> None:
 
 
 def test_cal_metric_and_strict_gate_boundary() -> None:
-    targets = np.zeros((1, 8, 51), dtype=np.float32); scale = np.ones(51, dtype=np.float32)
+    targets = np.zeros((1, 8, 51), dtype=np.float32)
+    scale = np.ones(51, dtype=np.float32)
     good = launcher._metrics(np.full_like(targets, 0.5), targets, scale)
     tied = launcher._metrics(np.full_like(targets, 1.0), targets, scale)
     persistence = launcher._metrics(np.full_like(targets, 1.0), targets, scale)
@@ -143,7 +151,8 @@ def test_qualification_custody_cli_has_no_validation_escape_hatch(monkeypatch: p
 
 def test_runtime_guard_refuses_existing_lock_without_deleting_it(tmp_path: Path) -> None:
     from aeolus.habitat_v2.forecast.qualified_runtime_guard import QualifiedRuntimeGuard, QualifiedRuntimeGuardError, QualifiedRuntimeLimits
-    lock = tmp_path / ".aeolus-v2-qualified.lock"; lock.write_text("do not delete", encoding="utf-8")
+    lock = tmp_path / ".aeolus-v2-qualified.lock"
+    lock.write_text("do not delete", encoding="utf-8")
     guard = QualifiedRuntimeGuard(tmp_path, QualifiedRuntimeLimits(1, 1, 1, 82, 1))
     with pytest.raises(QualifiedRuntimeGuardError, match="exclusive"):
         guard.__enter__()
@@ -152,7 +161,8 @@ def test_runtime_guard_refuses_existing_lock_without_deleting_it(tmp_path: Path)
 
 def test_caller_selected_cluster_roster_is_refused_before_pair_execution(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from aeolus.habitat_v2.forecast import pilot_campaign
-    design = load_approved_pilot_design(ROOT); contracts = load_forecast_contracts(ROOT)
+    design = load_approved_pilot_design(ROOT)
+    contracts = load_forecast_contracts(ROOT)
     monkeypatch.setattr(pilot_campaign, "run_pilot_pair", lambda *args: pytest.fail("must not execute HMC"))
     with pytest.raises(PilotCampaignError, match="unknown roster IDs"):
         pilot_campaign.run_pilot_campaign(ROOT, design, contracts, preflight=_preflight(), output_root=tmp_path, allowed_cluster_ids=frozenset({"validation"}), pair_limit=1, worker_count=1, resume=False)
@@ -169,7 +179,8 @@ def test_guard_lock_is_cleaned_after_injected_body_exception(tmp_path: Path, mon
 
 def test_campaign_health_check_aborts_between_pairs_and_preserves_partial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from aeolus.habitat_v2.forecast import pilot_campaign
-    design = load_approved_pilot_design(ROOT); contracts = load_forecast_contracts(ROOT)
+    design = load_approved_pilot_design(ROOT)
+    contracts = load_forecast_contracts(ROOT)
     calls: list[str] = []
     def stop(phase: str) -> None:
         calls.append(phase)
@@ -178,7 +189,8 @@ def test_campaign_health_check_aborts_between_pairs_and_preserves_partial(tmp_pa
     def fake_pair(payload: object) -> dict[str, object]:
         _root, target, group = payload  # type: ignore[misc]
         pair = group[0].pair_id
-        directory = Path(target) / pair; directory.mkdir(parents=True, exist_ok=True)
+        directory = Path(target) / pair
+        directory.mkdir(parents=True, exist_ok=True)
         (directory / "partial-evidence").write_text("retain", encoding="utf-8")
         return {"pair_id": pair, "manifest_sha256": "0" * 64, "training_packet_sha256": "1" * 64, "training_packet_byte_length": 1}
     monkeypatch.setattr(pilot_campaign, "_execute_and_stage_pair", fake_pair)
@@ -206,7 +218,8 @@ def test_campaign_manifest_byte_tamper_fails_before_campaign_resume(tmp_path: Pa
     monkeypatch.setattr(launcher, "AUTHORIZED_EXAMPLES", 5)
     body = {"pairs_completed": 1, "hmc_runs_executed": 5, "allowed_cluster_ids": ["fit-a"]}
     body["campaign_manifest_sha256"] = hashlib.sha256(canonical_json_bytes(body)).hexdigest()
-    path = tmp_path / "campaign-manifest.json"; path.write_bytes(canonical_json_bytes(body))
+    path = tmp_path / "campaign-manifest.json"
+    path.write_bytes(canonical_json_bytes(body))
     path.write_bytes(path.read_bytes().replace(b"fit-a", b"fit-b", 1))
     with pytest.raises(launcher.QualifiedLaunchError, match="self-hash"):
         launcher._verify_campaign_manifest(tmp_path, allowed)
@@ -214,7 +227,9 @@ def test_campaign_manifest_byte_tamper_fails_before_campaign_resume(tmp_path: Pa
 
 def test_npz_byte_tamper_fails_before_npz_load(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(launcher, "AUTHORIZED_PACKETS", 1)
-    packet_dir = tmp_path / "pair"; packet_dir.mkdir(); packet = packet_dir / "training.npz"
+    packet_dir = tmp_path / "pair"
+    packet_dir.mkdir()
+    packet = packet_dir / "training.npz"
     packet.write_bytes(b"fixture-packet")
     custody = {"splits": {"fit": {"packet_paths": [str(packet)], "packet_sha256s": [hashlib.sha256(b"original").hexdigest()]}, "cal": {"packet_paths": [], "packet_sha256s": []}}}
     monkeypatch.setattr(launcher.np, "load", lambda *_a, **_kw: pytest.fail("must not decode tampered NPZ"))
