@@ -196,6 +196,15 @@ unavailable in this offline-only path, and candidates that cannot satisfy the
 registered validation calibration target are recorded as fail-closed rather
 than receiving an altered threshold.
 
+The completed full development run is negative evidence, not a deployment
+claim. The verified corpus contains 1,664 samples and 1,696 replayable traces.
+Of the five preregistered candidates, three failed closed during validation
+calibration. The two evaluated candidates met the dangerous-event recall and
+false-safe checks, but both selected zero useful actions and therefore failed
+the registered minimum-useful-action gate. HMC execution metrics were not
+available because this study was offline-only; no protected final-suite data
+was accessed, and V3 artifacts remain unchanged.
+
 ## Try it: the verified forecast report
 
 **New here? Take the guided tour instead** — an interactive walkthrough that
