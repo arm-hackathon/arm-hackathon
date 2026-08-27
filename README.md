@@ -183,10 +183,11 @@ claim, and every row has `actionAuthority: "none"`.
 
 ## Try it: the trained forecaster (development evidence)
 
-The repository also carries the action-aware MLP trained on the Historical V2
-pilot archive (training run `full-v1-20260818-a`; 23,400 simulator examples;
-held-out normalized MAE 0.1146 on 17 unseen scenario clusters). From a source
-checkout:
+The repository also carries the action-aware MLP artifact associated with the
+recorded Historical V2 training run `full-v1-20260818-a` (reported as 23,400
+simulator examples and held-out normalized MAE 0.1146 on 17 unseen scenario
+clusters). The historical evidence needed to independently retrace that
+training result is incomplete. From a source checkout:
 
 ```bash
 uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_mlp_forecast.py
@@ -197,9 +198,13 @@ model, lets HMC execute one operator-selected action, and prints each
 candidate's forecast error against the realized simulator truth alongside the
 trace and replay identities. The model is pure NumPy at inference (no torch
 install needed) and advisory-only; deterministic HMC remains the sole command
-authority. The full closed-loop paired campaign (238 runs; 78 better / 24
-equal / 0 worse on pre-registered safety-exceedance metrics) is documented in
-merged PR
+authority. The historical V2 archive records 238 total runs: 119
+control/advised pairs, including 102 fault pairs and 17 healthy pairs. Across
+the fault pairs it reports 78 better, 24 equal, and 0 worse on the declared
+threshold-exceedance metrics. The archived plan labels itself frozen before
+outcomes, but the plan and result first entered Git together, so repository
+history does not independently establish that chronology. The campaign is
+documented in merged PR
 [#40](https://github.com/arm-hackathon/arm-hackathon/pull/40). This is
 development evidence only — not qualification, not deployment. The [historical
 evidence index](docs/evidence/closed-loop-advisory-historical-index.md) records
@@ -236,34 +241,43 @@ Model documentation and assurance:
 - `scripts/check_habitat_v2_mlp_drift.py` — scores live telemetry against
   the training distribution and flags drift (diagnostic only).
 
-Headline results from the paired closed-loop campaign (each scenario run
-twice with identical scenario, noise, and reset — once with canonical HMC
-alone, once with the model advising):
+Headline results from the paired closed-loop campaign. The archived plan
+describes each scenario as run twice with identical scenario, noise, and reset
+— once with canonical HMC alone, once with the model advising. The compact V2
+rows preserve scenario identities but omit the noise/reset details:
 
-- **The demo scenario:** canonical HMC drifted past the CO2 warning threshold
-  and stayed there for 29 steps (integrated exceedance 19.94); the
-  model-advised arm never crossed it (0.0). The adviser acted at step 37 of
-  72 — before the first violation at step 43.
-- **Across 102 fault pairs:** 78 safer, 24 equal, 0 worse; 72 advised runs
-  finished with zero threshold exceedance.
-- **The authority boundary is exercised, not just asserted:** HMC overrode
-  81 of 793 model proposals — the model advises, it never commands.
-- **Broken sensors:** the original `action_aware_mlp_v1` adviser verifiably
-  abstains whenever any required telemetry is missing and HMC continues alone
-  (merged PR [#41](https://github.com/arm-hackathon/arm-hackathon/pull/41)).
+- **The recorded historical V1 demo pair:** canonical HMC accumulated
+  integrated threshold exceedance 19.94 across 29 steps; the model-advised arm
+  recorded 0.0. The later checked-in replay artifact records the adviser acting
+  at step 37 of 72 — before its first recorded exceedance at step 43.
+- **Across 102 fault pairs:** 78 safer, 24 equal, and 0 worse. **96/102**
+  advised fault runs finished with zero threshold exceedance; 72 of the 78
+  improved pairs were driven to zero.
+- **The authority boundary is exercised, not just asserted:** HMC modified or
+  replaced 81 of 793 model proposals — the model advises, it never commands.
+- **Broken sensors:** the historical `action_aware_mlp_v1` harness implements
+  abstention when any required telemetry availability bit is missing, after
+  which HMC continues alone. See the [archived authority and availability
+  surfaces](docs/evidence/closed-loop-advisory-historical-index.md#archived-authority-and-availability-surfaces)
+  and merged PR [#41](https://github.com/arm-hackathon/arm-hackathon/pull/41).
+  The retained V3 campaign records zero unavailable-input abstentions and does
+  not independently exercise that path.
   A separate Issue #53 dropout-aware lane is now qualified for its frozen,
   independent-dropout forecast-only contract; correlated or mixed dropout,
   resource-gauge dropout, adversarial channel loss, deployment, and actuator
   authority remain outside that evidence. See the
   [Issue #53 capability card](docs/evidence/issue-53-dropout-card.md).
-- **The honest cost:** advised runs consumed more resources (median
-  +757 Wh battery, +1.97 mol oxygen, +6.04 mol sorbent) — the safety margin
-  is bought with consumables, and all runs stayed above resource floors.
+- **The honest cost:** across the 102 fault pairs, median
+  advised-minus-control deltas were +757 Wh battery, +1.97 mol oxygen, and
+  +6.04 mol sorbent — the safety margin is bought with consumables. The
+  historical report states that all runs stayed above resource floors; the raw
+  V2 step records needed to check that path directly are absent.
 - **Historical reproducibility boundary:** current `main` reproduces the
   supported NumPy demo, not the full 2026-08-18/19 campaign. The compact V1/V2
-  summary and full V3 result are hash-identified and internally coherent, but
-  raw V1/V2 results, old runner dependencies, and the execution-environment
-  receipt are absent. See the [historical evidence
+  summary and full V3 result are hash-identified, and selected top-level fields
+  reconcile, but record discrepancies, raw V1/V2 results, old runner
+  dependencies, and the execution-environment receipt remain. See the detailed
+  limitations in the [historical evidence
   index](docs/evidence/closed-loop-advisory-historical-index.md).
 
 ## Source-checkout verification
@@ -271,8 +285,10 @@ alone, once with the model advising):
 ```bash
 uv sync --locked --python 3.11 --extra dev
 uv run --locked --python 3.11 --extra dev python -m pytest -q
-uvx ruff@0.14.10 check .
-uv run --locked --python 3.11 --extra dev python -m compileall -q src tests
+uv run --locked --python 3.11 --extra dev ruff check .
+uv run --locked --python 3.11 --extra dev python -m compileall -q src tests scripts
+uv lock --check
+git diff --check
 ```
 
 Run the checked-in Habitat Plant V2 reference scenario from a source checkout:
@@ -308,7 +324,7 @@ Scenario-v3 replaces direct per-zone airflow commands with a fan-speed command
 and one damper command per declared zone. The deterministic solver derives a
 single fan/system operating point, per-zone volumetric flow in `m³/s`, fixed-
 reference-density mass flow in `kg/s`, pressure losses in Pa, and fan power in
-Trace-v3 records commanded and achieved actuator positions plus an explicit
+W. Trace-v3 records commanded and achieved actuator positions plus an explicit
 network receipt. The validator recomputes the canonical transition from the
 parsed scenario and exact pre-step plant state, cross-checks fan electrical
 power against the electrical bus receipt, and then replays the full scenario

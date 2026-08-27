@@ -24,7 +24,8 @@ Python dependencies resolve reproducibly.
    ```bash
    uv run --locked --python 3.11 --extra dev python -m pytest -q
    uv run --locked --python 3.11 --extra dev ruff check .
-   python -m compileall -q src tests
+   uv run --locked --python 3.11 --extra dev python -m compileall -q src tests scripts
+   uv lock --check
    git diff --check
    ```
 
@@ -42,24 +43,23 @@ Python dependencies resolve reproducibly.
 
 | Path | Purpose |
 |---|---|
-| `scenarios/` | Closed-schema v9 standard and v10 recovery scenarios; historical and development sweep specifications. |
-| `src/aeolus/config.py` | Scenario parsing and validation. |
-| `src/aeolus/plant.py` | Deterministic plant, primary/reserve airflow, and CO₂ mass transfer. |
-| `src/aeolus/scenario.py` | Warm-up, measured runs, fault scheduling, and recovery-arm execution. |
-| `src/aeolus/recovery.py` | Deterministic reserve authority, settings, validation, and state machine. |
-| `src/aeolus/recovery_evidence.py` | Write-once four-arm development evidence runner and gates. |
-| `src/aeolus/trace.py` | JSONL writers and strict telemetry/model-feature boundaries. |
-| `tests/` | Unit, scenario, replay, evidence, and contract tests. |
-| `docs/` | Current simulation, telemetry, recovery, and historical protocol records. |
-| `out/` | Ignored generated traces, corpora, packages, and local closeout receipts. |
+| `scenarios/` | Closed-schema legacy and Habitat V2 simulator inputs. |
+| `src/aeolus/` | Legacy simulator, recovery/evidence code, CLI, and trace handling. |
+| `src/aeolus/habitat_v2/` | Habitat V2 physics, telemetry, HMC, safety, replay, and forecast fixtures. |
+| `contracts/` | Versioned HMC, forecast, observability, and reviewed-source contracts. |
+| `artifacts/` | Historical or demo-only artifacts; read the local artifact README before use. |
+| `tests/` | Unit, scenario, replay, evidence, forecast, and contract tests. |
+| `scripts/` | Reproducible source, package, benchmark, demo, and verification entry points. |
+| `docs/` | Current simulation, telemetry, evidence, plan, and historical records. |
+| `demo/browser-simulator/` | Offline fixture explorer with no controller authority. |
+| `out/` | Ignored generated traces, corpora, packages, and local receipts. |
 
 ## Current boundaries
 
-C4 recovery development is a documented negative result, not an accepted
-recovery result. The mandatory transient handback acknowledgement and physical
-reserve-delivery benefit gates are false. C5 adviser work is closed: do not train,
-tune, export, integrate, or inspect final-suite data on the strength of C4.
-
-AEOLUS includes deterministic simulation/replay and historical model/FP32 ONNX
-code, but no C4-qualified adviser, INT8 result, Arm benchmark, hardware
-integration, cloud service, physical deployment, or production control claim.
+C4 recovery development remains a documented negative result, not an accepted
+recovery result. Later Habitat V2 work includes bounded forecast-only research,
+demo artifacts, and native Arm64 development measurements; none rewrites C4 or
+authorizes final-suite access, model training/export/integration, deployment,
+hardware integration, production control, or a physical-performance claim.
+HMC remains the sole actuator authority for the local forecast demo; the browser
+fixture has no authority.

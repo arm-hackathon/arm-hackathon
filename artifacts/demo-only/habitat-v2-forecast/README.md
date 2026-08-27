@@ -28,17 +28,20 @@ never selects, modifies, approves, or executes that action.
 
 ## Trained development MLP artifact (2026-08-18)
 
-- `action-aware-mlp-v1.npz`: the action-aware MLP from the verified Historical
-  V2 development training run `full-v1-20260818-a` (23,400 examples, 60
-  clusters; outer holdout 17 clusters / 6,630 examples; held-out normalized
-  MAE 0.1146 vs 0.2880 action-blind). Converted from the torch checkpoint to
-  pure NumPy for dependency-free inference; conversion cross-checked against
-  torch (max abs diff 2.1e-07 on a fixed-seed forward pass).
+- `action-aware-mlp-v1.npz`: the action-aware MLP artifact associated with the
+  recorded Historical V2 development training run `full-v1-20260818-a`
+  (reported as 23,400 examples, 60 clusters; outer holdout 17 clusters / 6,630
+  examples; held-out normalized MAE 0.1146 vs 0.2880 action-blind). It is
+  recorded as converted from the historical Torch checkpoint to a Torch-free
+  NumPy runtime; current tests pin the NumPy bytes and a fixed-seed reference
+  output. The original MLP training and conversion receipts are not retained.
 - Release tier: `DEVELOPMENT_EVIDENCE_ONLY`; no actuator authority; no
   availability masks (missing-sensor robustness unproven); not D2
   qualification evidence.
-- Closed-loop evidence: merged PR #40 (238-run paired campaign,
-  pre-registered scoring, HMC sole authority throughout).
+- Closed-loop evidence: merged PR #40 records a 238-run paired campaign and a
+  scoring plan labelled frozen before outcomes. The plan and result first
+  entered Git together, so repository history does not independently establish
+  that chronology. HMC is recorded as sole authority throughout.
 
 SHA-256 for `action-aware-mlp-v1.npz`:
 
@@ -46,14 +49,17 @@ SHA-256 for `action-aware-mlp-v1.npz`:
 a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd
 ```
 
-Source checkpoint SHA-256 (local training evidence, not committed):
+Source checkpoint SHA-256 (retained in the historical branch, not current
+`main`):
 
 ```text
 873cb77bb82a06b4c862a13275b55133c3ef26c969d3055a799c80dcd98854a6
 ```
 
-(The full hash set is recorded in the training run's `artifact_hashes.json`;
-the committed npz is the judge-runnable artifact.)
+The cited `artifact_hashes.json` is not retained. The [historical evidence
+index](../../../docs/evidence/closed-loop-advisory-historical-index.md) records
+the exact archived files and the missing training/conversion evidence. The
+committed NumPy artifact remains judge-runnable under its current demo tests.
 
 The `model-v1/...` paths inside the preserved training report and receipt are
 historical paths from the original local training output. This committed demo

@@ -21,11 +21,13 @@ that an HMC-admitted proposal is beneficial.**
 - **Evidence:** current authority implementation and tests in
   `src/aeolus/habitat_v2/hmc.py`,
   `src/aeolus/habitat_v2/forecast/live_demo.py`, and
+  `src/aeolus/habitat_v2/forecast/live_mlp_demo.py`, plus
   `tests/habitat_v2/test_forecast_live_mlp_demo.py`; the [historical evidence
   index](docs/evidence/closed-loop-advisory-historical-index.md) records the
   former arbitration harness, authority document, and 81 historical overrides
-  of 793 proposals; artifacts enforce the
-  `DEMO_ONLY_PERMANENTLY_EXCLUDED` release tier.
+  of 793 proposals; the current loaders enforce non-authority release tiers
+  (`DEVELOPMENT_EVIDENCE_ONLY` for the MLP and
+  `DEMO_ONLY_PERMANENTLY_EXCLUDED` for the ridge demo).
 - **Residual risk:** future code could add a bypass path — mitigated by
   contract tests and code review, not by proof.
 
@@ -36,24 +38,28 @@ that an HMC-admitted proposal is beneficial.**
   unavailable; HMC continues alone. The separate Issue #53 successor carries
   missingness as explicit input and may forecast only within its frozen,
   independently dropped observation contract. It remains forecast-only.
-- **Evidence:** the original abstention guard and
-  `adviser_abstentions_unavailable` counters are identified in the [historical
-  evidence index](docs/evidence/closed-loop-advisory-historical-index.md)
-  (merged PR #41), alongside
-  `docs/evidence/issue-53-dropout-card.md`, whose sealed model passed every
-  preregistered forecast-lane gate.
+- **Evidence:** the [archived authority and availability
+  surfaces](docs/evidence/closed-loop-advisory-historical-index.md#archived-authority-and-availability-surfaces)
+  identify the historical guard, proposal path, counter, and their limitations.
+  PR #41 records the change, but the retained V3 result contains zero
+  unavailable-input abstentions and does not itself exercise the guard.
+  `docs/evidence/issue-53-dropout-card.md` separately records the Issue #53
+  successor's preregistered forecast-lane gates.
 - **Residual risk:** Issue #53 does not qualify correlated or mixed dropout,
   resource-gauge dropout, adversarial channel loss, other out-of-distribution
   missingness, or partial-but-present corruption.
 
-### C3 — Benefit and harm are both reported under frozen scoring
+### C3 — Benefit and harm are reported under declared scoring
 
-- **Argument:** the original 2026-08-18 campaign records a preregistered scoring
-  plan, scenarios the model did not train on, canonical-HMC comparison, and
-  identical noise/seeds per pair. The preregistration and result first entered
-  Git together, so repository history alone does not independently establish
-  pre-outcome freezing. The result is not generalized to other controller
-  fixtures or learned advisory lanes.
+- **Argument:** the original archive labels its scoring plan frozen before
+  outcomes and records held-out scenarios, canonical-HMC comparison, and paired
+  seeds/noise. The plan and result first entered Git together, and the raw V2
+  runs and training archive are absent. Repository history therefore does not
+  independently establish freeze chronology, training exclusion, or every
+  paired-run detail. The recorded V3 freeze time also conflicts with its commit
+  chronology, as detailed in the evidence index. These are recorded historical
+  claims, not current-main rerun results, and are not generalized to other
+  controller fixtures or learned advisory lanes.
 - **Evidence:** the [historical evidence
   index](docs/evidence/closed-loop-advisory-historical-index.md) records the
   preregistration, custody limitation, and 238-run result: 78 safer / 24 equal /
@@ -86,8 +92,8 @@ that an HMC-admitted proposal is beneficial.**
 
 - One healthy EVA-transition pair scored 0.038 vs control 8.35 — a 99.5%
   reduction, not literal zero; reported as such.
-- Advised runs cost more consumables (median +757 Wh, +1.97 mol O2,
-  +6.04 mol sorbent); safety is bought with resources.
+- Across the 102 fault pairs, the advised-minus-control medians were +757 Wh,
+  +1.97 mol O2, and +6.04 mol sorbent; safety is bought with resources.
 - The original model has no calibrated uncertainty and uses a rule-based
   missing-input guard. Issue #53 adds bounded missingness calibration and
   abstention; Issue #56 adds development-only action-risk lanes. Neither result

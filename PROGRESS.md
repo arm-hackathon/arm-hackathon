@@ -1,6 +1,6 @@
 # AEOLUS progression
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 Audited snapshot: GitHub `main` through `056170f` (PR #67) contains the
 deterministic Habitat V2 world and replay boundary, the Issue #52/#53 forecast
@@ -18,6 +18,9 @@ and advisory; HMC remains the sole final-command and plant-step authority.
 - Issue #55 controller-race evidence: PR #65
 - Issue #56 V1 and V3 evidence plus V2/V3 development lineage: PR #66
 - Issue #56 V4 diagnostics-only groundwork: PR #67
+- historical 2026-08-18/19 closed-loop advisory disposition: PR #68 preserves
+  the off-main PR #50/#59 identities and evidence boundary without integrating
+  their obsolete ensemble stack
 
 ## Current research findings
 
@@ -34,6 +37,13 @@ and advisory; HMC remains the sole final-command and plant-step authority.
   only two proposals and abstained 76 times. V4 is diagnostic groundwork only:
   model training, export, quantization, integration, and threshold changes are
   not authorized.
+- The older five-model V3 ensemble is historical development evidence from a
+  former forecast stack. Its retained file records 119 runs whose aggregate
+  threshold-exceedance and terminal-status fields match V2; resource, trace,
+  final-state, proposal, and override fields often differ. Current `main`
+  neither carries that ensemble nor supports rerunning the campaign. See the
+  [historical evidence
+  index](docs/evidence/closed-loop-advisory-historical-index.md).
 
 ## Verified foundations
 
@@ -220,13 +230,16 @@ threshold changes; any such work requires a new explicit gate.
 - focused tests during each slice
 - one complete suite per meaningful PR boundary
 - no repeated broad test runs without new evidence
-- environment-bound commands use `python -m pytest`, not a global `pytest` executable
+- environment-bound commands use locked `uv run ... python -m pytest`, not a
+  global `pytest` executable
 - one bounded independent review per slice
-- code PR publication requires Ben's diff-grounded comprehension gate
+- PR publication and merge require explicit repository-owner authorization and
+  diff-grounded review
 
 ## Submission claims boundary
 
 AEOLUS is a deterministic, reduced-order, physics-informed research simulator and AI-control evaluation environment. It is not CFD, a certified spacecraft digital twin, flight software or real-world validation.
+
 ## Habitat V2 operational observability qualification (inserted evidence gate)
 
 The bounded V5 observability slice is implemented at package version `0.8.0`.
