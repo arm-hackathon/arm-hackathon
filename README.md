@@ -127,12 +127,17 @@ and HMC dispositions, aggregates by paired condition groups, and binds the
 source, HMC, scenario, feature, label, risk-model, point-artifact, and
 observation identities with SHA-256. V3 behavior and evidence remain frozen.
 
-The machine-readable draft is
+The machine-readable diagnostic draft is
 [`contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json),
 with rationale in
 [`docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md`](docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md).
-The draft is explicitly pending authorization and does not authorize learned
-model training, export, quantization, integration, or threshold changes.
+That diagnostic document remains a pre-model historical boundary and does not
+authorize learned-model work by itself. A separate user-authorized development
+study is now bound by
+[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json).
+It permits development-data model implementation and training only; protected
+final-suite access remains prohibited, V3 remains immutable, and HMC remains
+the sole final-command, plant-step, and replay authority.
 
 To audit an existing full Issue #56 V3 receipt without training or changing any
 artifact, use a new ignored output directory:
@@ -149,6 +154,47 @@ retain counterfactual trace bytes, so this diagnostic path intentionally reports
 that counterfactual label replay is incomplete. This remains simulator
 development evidence only; HMC is still the sole final-command and plant-step
 authority.
+
+To build a separate replayable V4 development corpus from the checked-in
+development roster, use a new ignored output directory:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/build_action_risk_v4_corpus.py \
+  --output out/issue56-v4-corpus-smoke-next \
+  --families 6 \
+  --allow-dirty-smoke
+```
+
+The corpus builder retains each serialized action and no-proposal hold HMC
+trace, reloads the rows, and independently strict-replays every trace after
+writing. It also binds the causal temporal feature manifest, observable action
+mask, relative action-minus-hold targets, model protocol, and source identities.
+It is a development-data command only: it does not train, export, quantize,
+tune, or integrate a learned model, and it does not change V3 or HMC authority.
+Full comparative corpus generation requires a clean source worktree.
+
+Verify a generated corpus independently with:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/verify_action_risk_v4_corpus.py \
+  --corpus out/issue56-v4-corpus-smoke-next
+```
+
+To run the separately authorized development-only model study on that corpus,
+use another new ignored output directory:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/run_action_risk_v4_model.py \
+  --corpus out/issue56-v4-corpus-smoke-next \
+  --output out/issue56-v4-model-smoke-next \
+  --allow-dirty-smoke
+```
+
+The model runner fits and reloads the five preregistered candidates without
+issuing proposals or plant steps. HMC-dependent metrics are reported as
+unavailable in this offline-only path, and candidates that cannot satisfy the
+registered validation calibration target are recorded as fail-closed rather
+than receiving an altered threshold.
 
 ## Try it: the verified forecast report
 
