@@ -344,6 +344,30 @@ def test_v4_smoke_family_selection_preserves_all_three_splits() -> None:
     )
 
 
+def test_v4_resume_keeps_only_complete_ordered_family_prefix() -> None:
+    from scripts.build_action_risk_v4_corpus import V4CorpusRunError, _resume_family_groups
+
+    family_ids = ("family-a", "family-b", "family-c")
+    rows = [
+        {"base_sample": {"family_id": "family-a"}}
+        for _ in range(4)
+    ] + [
+        {"base_sample": {"family_id": "family-b"}}
+        for _ in range(2)
+    ]
+
+    groups, retained = _resume_family_groups(rows, family_ids, 4)
+
+    assert [len(group) for group in groups] == [4]
+    assert retained == 4
+    with pytest.raises(V4CorpusRunError, match="rows after an incomplete family"):
+        _resume_family_groups(
+            rows + [{"base_sample": {"family_id": "family-c"}}] * 4,
+            family_ids,
+            4,
+        )
+
+
 def test_v4_offline_gate_status_does_not_fabricate_hmc_metrics() -> None:
     metrics = {
         "metrics_finite_verified": True,

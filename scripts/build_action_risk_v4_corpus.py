@@ -13,6 +13,7 @@ import argparse
 from collections.abc import Mapping
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -138,6 +139,20 @@ def _write_json(path: Path, value: object) -> str:
     return _sha_bytes(payload)
 
 
+def _write_json_atomic(path: Path, value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        allow_nan=False,
+        indent=2,
+    ).encode("utf-8")
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_bytes(payload)
+    temporary.replace(path)
+    return _sha_bytes(payload)
+
+
 def _write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> str:
     payload = b"".join(canonical_json_bytes(row) + b"\n" for row in rows)
     path.write_bytes(payload)
@@ -157,10 +172,232 @@ def _write_jsonl_rows(
         digest.update(payload)
 
 
-def _resolve_output(path: Path) -> Path:
+def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise V4CorpusRunError("V4 resume sample contains duplicate JSON keys")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise V4CorpusRunError(f"non-finite JSON value {value}")
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_pairs,
+            parse_constant=_reject_json_constant,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, V4CorpusRunError) as error:
+        raise V4CorpusRunError(f"cannot read V4 resume state: {path}") from error
+    if type(value) is not dict:
+        raise V4CorpusRunError("V4 resume state must be an object")
+    return value
+
+
+def _read_resume_rows(path: Path) -> list[dict[str, Any]]:
+    """Read the complete canonical row prefix from an interrupted build."""
+
+    if not path.exists():
+        return []
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise V4CorpusRunError("V4 resume samples cannot be read") from error
+    rows: list[dict[str, Any]] = []
+    for line_number, line in enumerate(raw.splitlines(keepends=True), start=1):
+        if not line.endswith(b"\n"):
+            break
+        try:
+            row = json.loads(
+                line.decode("utf-8"),
+                object_pairs_hook=_reject_duplicate_pairs,
+                parse_constant=_reject_json_constant,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, V4CorpusRunError) as error:
+            raise V4CorpusRunError(
+                f"V4 resume samples contain malformed JSON at line {line_number}"
+            ) from error
+        if type(row) is not dict:
+            raise V4CorpusRunError("V4 resume sample row is not an object")
+        if canonical_json_bytes(row) + b"\n" != line:
+            raise V4CorpusRunError("V4 resume sample row is not canonical JSON")
+        rows.append(row)
+    return rows
+
+
+def _resume_family_groups(
+    rows: list[dict[str, Any]],
+    selected_ids: tuple[str, ...],
+    rows_per_family: int,
+) -> tuple[list[list[dict[str, Any]]], int]:
+    """Return only complete, ordered family prefixes from a partial corpus."""
+
+    if rows_per_family <= 0:
+        raise V4CorpusRunError("V4 resume family row count is invalid")
+    groups: list[list[dict[str, Any]]] = []
+    for row in rows:
+        base_sample = row.get("base_sample")
+        family_id = base_sample.get("family_id") if isinstance(base_sample, dict) else None
+        previous_base = groups[-1][0].get("base_sample") if groups else None
+        previous_family_id = (
+            previous_base.get("family_id") if isinstance(previous_base, dict) else None
+        )
+        if groups and previous_family_id == family_id:
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+
+    complete: list[list[dict[str, Any]]] = []
+    for index, group in enumerate(groups):
+        if index >= len(selected_ids):
+            raise V4CorpusRunError("V4 resume samples contain an unknown family suffix")
+        family_id = selected_ids[index]
+        if any(
+            not isinstance(row.get("base_sample"), dict)
+            or row["base_sample"].get("family_id") != family_id
+            for row in group
+        ):
+            raise V4CorpusRunError("V4 resume samples are not in roster order")
+        if len(group) < rows_per_family:
+            if index != len(groups) - 1:
+                raise V4CorpusRunError("V4 resume samples contain rows after an incomplete family")
+            break
+        if len(group) != rows_per_family:
+            raise V4CorpusRunError("V4 resume family contains too many rows")
+        complete.append(group)
+    return complete, sum(len(group) for group in complete)
+
+
+def _resume_state(
+    path: Path,
+    expected: Mapping[str, Any],
+) -> dict[str, Any]:
+    state = _read_json(path)
+    required = {
+        "schema_version",
+        "status",
+        "source_identity",
+        "source_identity_sha256",
+        "corpus_schema_version",
+        "preregistration_id",
+        "model_protocol_sha256",
+        "family_ids",
+        "family_split",
+        "scenario_manifest",
+        "scenario_manifest_sha256",
+        "feature_manifest_sha256",
+        "label_manifest_sha256",
+        "completed_family_ids",
+        "sample_count",
+        "sample_counts",
+        "samples_prefix_sha256",
+        "trace_manifest_sha256",
+        "manifest_sha256",
+        "results_sha256",
+    }
+    if set(state) != required:
+        raise V4CorpusRunError("V4 resume state fields drift")
+    if state["schema_version"] != "issue56-v4-corpus-build-state-v1":
+        raise V4CorpusRunError("V4 resume state schema drift")
+    if state["status"] != "IN_PROGRESS":
+        raise V4CorpusRunError("V4 resume state is already finalized")
+    for key in (
+        "source_identity",
+        "source_identity_sha256",
+        "corpus_schema_version",
+        "preregistration_id",
+        "model_protocol_sha256",
+        "family_ids",
+        "family_split",
+        "scenario_manifest",
+        "scenario_manifest_sha256",
+        "feature_manifest_sha256",
+        "label_manifest_sha256",
+    ):
+        if state[key] != expected[key]:
+            raise V4CorpusRunError(f"V4 resume state identity drift: {key}")
+    if state["manifest_sha256"] is not None or state["results_sha256"] is not None:
+        raise V4CorpusRunError("V4 resume state finalization fields are inconsistent")
+    completed = state["completed_family_ids"]
+    if type(completed) is not list or completed != expected["family_ids"][: len(completed)]:
+        raise V4CorpusRunError("V4 resume family checkpoint is not an ordered prefix")
+    if type(state["sample_count"]) is not int or state["sample_count"] < 0:
+        raise V4CorpusRunError("V4 resume sample count is malformed")
+    if type(state["sample_counts"]) is not dict:
+        raise V4CorpusRunError("V4 resume split counts are malformed")
+    if set(state["sample_counts"]) != {"TRAIN", "VALIDATION", "EVALUATION"}:
+        raise V4CorpusRunError("V4 resume split count fields drift")
+    if any(
+        type(value) is not int or value < 0 for value in state["sample_counts"].values()
+    ):
+        raise V4CorpusRunError("V4 resume split counts are malformed")
+    if (
+        type(state["samples_prefix_sha256"]) is not str
+        or type(state["trace_manifest_sha256"]) is not str
+    ):
+        raise V4CorpusRunError("V4 resume prefix identities are malformed")
+    return state
+
+
+def _write_resume_state(
+    output: Path,
+    *,
+    expected: Mapping[str, Any],
+    completed_family_ids: list[str],
+    sample_count: int,
+    sample_counts: Mapping[str, int],
+    samples_prefix_sha256: str,
+    trace_manifest_sha256: str,
+) -> None:
+    state = {
+        "schema_version": "issue56-v4-corpus-build-state-v1",
+        "status": "IN_PROGRESS",
+        "source_identity": expected["source_identity"],
+        "source_identity_sha256": expected["source_identity_sha256"],
+        "corpus_schema_version": expected["corpus_schema_version"],
+        "preregistration_id": expected["preregistration_id"],
+        "model_protocol_sha256": expected["model_protocol_sha256"],
+        "family_ids": expected["family_ids"],
+        "family_split": expected["family_split"],
+        "scenario_manifest": expected["scenario_manifest"],
+        "scenario_manifest_sha256": expected["scenario_manifest_sha256"],
+        "feature_manifest_sha256": expected["feature_manifest_sha256"],
+        "label_manifest_sha256": expected["label_manifest_sha256"],
+        "completed_family_ids": completed_family_ids,
+        "sample_count": sample_count,
+        "sample_counts": dict(sample_counts),
+        "samples_prefix_sha256": samples_prefix_sha256,
+        "trace_manifest_sha256": trace_manifest_sha256,
+        "manifest_sha256": None,
+        "results_sha256": None,
+    }
+    _write_json_atomic(output / ".build-state.json", state)
+
+
+def _remove_unreferenced_traces(output: Path, expected: set[str]) -> None:
+    trace_root = output / "counterfactual-traces"
+    for path in trace_root.rglob("*"):
+        if path.is_file() and path.relative_to(output).as_posix() not in expected:
+            path.unlink()
+
+
+def _resolve_output(path: Path, *, resume: bool) -> Path:
     resolved = path.resolve()
     if OUT_ROOT not in resolved.parents:
         raise V4CorpusRunError("V4 corpus output must be below repository out/")
+    if resume:
+        if not resolved.is_dir():
+            raise V4CorpusRunError("V4 resume output directory must already exist")
+        if not (resolved / "counterfactual-traces").is_dir():
+            raise V4CorpusRunError("V4 resume trace directory is missing")
+        if (resolved / "results.json").exists():
+            raise V4CorpusRunError("V4 resume output is already finalized")
+        return resolved
     if resolved.exists():
         raise V4CorpusRunError("V4 corpus output directory must be new and write-once")
     resolved.mkdir(parents=True, exist_ok=False)
@@ -230,6 +467,7 @@ def build_v4_corpus(
     *,
     families: int,
     allow_dirty_smoke: bool,
+    resume: bool = False,
 ) -> dict[str, Any]:
     if not 6 <= families <= FAMILY_COUNT or families % 2:
         raise V4CorpusRunError(f"--families must be an even number between 6 and {FAMILY_COUNT}")
@@ -242,7 +480,7 @@ def build_v4_corpus(
             "full V4 corpus generation refuses a dirty source worktree; use a smoke run "
             "with --allow-dirty-smoke while developing"
         )
-    output = _resolve_output(output_path)
+    output = _resolve_output(output_path, resume=resume)
 
     bundle = load_forecast_contracts(REPO_ROOT)
     _, model_protocol_sha256 = load_v4_model_protocol(REPO_ROOT)
@@ -259,6 +497,19 @@ def build_v4_corpus(
     }
     scenario_manifest = {
         family_id: scenario.scenario_sha256 for family_id, scenario in scenarios.items()
+    }
+    expected_resume_identity = {
+        "source_identity": source_identity,
+        "source_identity_sha256": source_identity_sha256,
+        "corpus_schema_version": ISSUE56_V4_CORPUS_SCHEMA_VERSION,
+        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_ID,
+        "model_protocol_sha256": model_protocol_sha256,
+        "family_ids": list(selected_ids),
+        "family_split": {family_id: split[family_id] for family_id in selected_ids},
+        "scenario_manifest": scenario_manifest,
+        "scenario_manifest_sha256": _sha(scenario_manifest),
+        "feature_manifest_sha256": feature_manifest_sha256,
+        "label_manifest_sha256": label_manifest_sha256,
     }
     manifest = {
         "schema_version": f"{ISSUE56_V4_CORPUS_SCHEMA_VERSION}.manifest",
@@ -294,8 +545,77 @@ def build_v4_corpus(
     samples_digest = hashlib.sha256()
     sample_count = 0
     counts = {label: 0 for label in ("TRAIN", "VALIDATION", "EVALUATION")}
-    with samples_path.open("wb") as samples_handle:
-        for index, family_id in enumerate(selected_ids, start=1):
+    completed_groups: list[list[dict[str, Any]]] = []
+    if resume:
+        state = _resume_state(output / ".build-state.json", expected_resume_identity)
+        rows = _read_resume_rows(samples_path)
+        available_groups, _ = _resume_family_groups(
+            rows,
+            selected_ids,
+            len(v2_decision_steps()) * len(bundle.actions),
+        )
+        checkpoint_count = len(state["completed_family_ids"])
+        if len(available_groups) < checkpoint_count:
+            raise V4CorpusRunError("V4 resume samples are shorter than the checkpoint")
+        completed_groups = available_groups[:checkpoint_count]
+        retained_rows = [row for group in completed_groups for row in group]
+        retained_payload = b"".join(canonical_json_bytes(row) + b"\n" for row in retained_rows)
+        if _sha_bytes(retained_payload) != state["samples_prefix_sha256"]:
+            raise V4CorpusRunError("V4 resume sample prefix identity drift")
+        temporary_samples_path = samples_path.with_name(f".{samples_path.name}.tmp")
+        temporary_samples_path.write_bytes(retained_payload)
+        temporary_samples_path.replace(samples_path)
+        for row in retained_rows:
+            samples_digest.update(canonical_json_bytes(row) + b"\n")
+        for group in completed_groups:
+            family_id = group[0]["base_sample"]["family_id"]
+            try:
+                reloaded_family = load_v4_samples(
+                    group,
+                    output,
+                    bundle,
+                    {family_id: scenarios[family_id]},
+                )
+            except Exception as error:
+                raise V4CorpusRunError(
+                    f"V4 resume verification failed for family {family_id}"
+                ) from error
+            sample_count += len(reloaded_family)
+            counts[split[family_id]] += len(reloaded_family)
+            for sample in reloaded_family:
+                trace_manifest[sample.counterfactual_trace_relative_path] = (
+                    sample.counterfactual_trace_sha256
+                )
+                trace_manifest[sample.hold_trace_relative_path] = sample.hold_trace_sha256
+        trace_manifest_sha256 = _write_json_atomic(
+            output / "trace-manifest.json", trace_manifest
+        )
+        if trace_manifest_sha256 != state["trace_manifest_sha256"]:
+            raise V4CorpusRunError("V4 resume trace manifest identity drift")
+        _remove_unreferenced_traces(output, set(trace_manifest))
+        if state["sample_count"] != sample_count or state["sample_counts"] != counts:
+            raise V4CorpusRunError("V4 resume sample counts drift")
+        if state["completed_family_ids"] != list(selected_ids[:checkpoint_count]):
+            raise V4CorpusRunError("V4 resume family checkpoint identity drift")
+        if len(retained_rows) != sample_count:
+            raise V4CorpusRunError("V4 resume sample count differs after verification")
+    else:
+        trace_manifest_sha256 = _write_json_atomic(output / "trace-manifest.json", {})
+        _write_resume_state(
+            output,
+            expected=expected_resume_identity,
+            completed_family_ids=[],
+            sample_count=0,
+            sample_counts=counts,
+            samples_prefix_sha256=samples_digest.hexdigest(),
+            trace_manifest_sha256=trace_manifest_sha256,
+        )
+
+    with samples_path.open("ab" if resume else "wb") as samples_handle:
+        for index, family_id in enumerate(
+            selected_ids[len(completed_groups) :],
+            start=len(completed_groups) + 1,
+        ):
             family_samples = collect_v4_family_samples(
                 bundle,
                 scenarios[family_id],
@@ -337,6 +657,21 @@ def build_v4_corpus(
                 raise V4CorpusRunError("V4 serialized family sample count differs")
             sample_count += len(reloaded_family)
             counts[split[family_id]] += len(reloaded_family)
+            samples_handle.flush()
+            os.fsync(samples_handle.fileno())
+            completed_groups.append(family_rows)
+            trace_manifest_sha256 = _write_json_atomic(
+                output / "trace-manifest.json", trace_manifest
+            )
+            _write_resume_state(
+                output,
+                expected=expected_resume_identity,
+                completed_family_ids=list(selected_ids[:index]),
+                sample_count=sample_count,
+                sample_counts=counts,
+                samples_prefix_sha256=samples_digest.hexdigest(),
+                trace_manifest_sha256=trace_manifest_sha256,
+            )
             print(
                 f"  family {index}/{len(selected_ids)}: {family_id} ({len(family_samples)} samples)",
                 file=sys.stderr,
@@ -377,6 +712,7 @@ def build_v4_corpus(
         "status": "SMOKE_PATH_ONLY" if families < FAMILY_COUNT else "DEVELOPMENT_CORPUS",
     }
     results_sha256 = _write_json(output / "results.json", result)
+    (output / ".build-state.json").unlink(missing_ok=True)
     return {"output": str(output), "results_sha256": results_sha256, **result}
 
 
@@ -385,11 +721,17 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--families", type=int, default=FAMILY_COUNT)
     parser.add_argument("--allow-dirty-smoke", action="store_true")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue a partial write-once corpus directory after family verification",
+    )
     args = parser.parse_args()
     result = build_v4_corpus(
         args.output,
         families=args.families,
         allow_dirty_smoke=args.allow_dirty_smoke,
+        resume=args.resume,
     )
     print(json.dumps(result, sort_keys=True), file=sys.stderr)
     return 0
