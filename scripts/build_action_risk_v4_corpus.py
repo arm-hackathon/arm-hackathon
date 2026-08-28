@@ -144,6 +144,19 @@ def _write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> str:
     return _sha_bytes(payload)
 
 
+def _write_jsonl_rows(
+    handle: Any,
+    rows: list[Mapping[str, Any]],
+    digest: "hashlib._Hash",
+) -> None:
+    """Append canonical rows without retaining the complete corpus in memory."""
+
+    for row in rows:
+        payload = canonical_json_bytes(row) + b"\n"
+        handle.write(payload)
+        digest.update(payload)
+
+
 def _resolve_output(path: Path) -> Path:
     resolved = path.resolve()
     if OUT_ROOT not in resolved.parents:
@@ -276,57 +289,67 @@ def build_v4_corpus(
         "label_manifest_sha256": label_manifest_sha256,
         "smoke_only": families < FAMILY_COUNT,
     }
-    samples: list[V4RiskSample] = []
     trace_manifest: dict[str, str] = {}
-    for index, family_id in enumerate(selected_ids, start=1):
-        family_samples = collect_v4_family_samples(
-            bundle,
-            scenarios[family_id],
-            family_id,
-            split=split[family_id],
-        )
-        for sample in family_samples:
-            trace_digest = _write_trace_artifact(
-                output,
-                sample.counterfactual_trace_relative_path,
-                sample.counterfactual_trace_bytes,
+    samples_path = output / "samples.jsonl"
+    samples_digest = hashlib.sha256()
+    sample_count = 0
+    counts = {label: 0 for label in ("TRAIN", "VALIDATION", "EVALUATION")}
+    with samples_path.open("wb") as samples_handle:
+        for index, family_id in enumerate(selected_ids, start=1):
+            family_samples = collect_v4_family_samples(
+                bundle,
+                scenarios[family_id],
+                family_id,
+                split=split[family_id],
             )
-            if trace_digest != sample.counterfactual_trace_sha256:
-                raise V4CorpusRunError("V4 written trace digest differs from sample")
-            trace_manifest[sample.counterfactual_trace_relative_path] = trace_digest
-            hold_digest = _write_trace_artifact(
-                output,
-                sample.hold_trace_relative_path,
-                sample.hold_trace_bytes,
-            )
-            if hold_digest != sample.hold_trace_sha256:
-                raise V4CorpusRunError("V4 written hold trace digest differs from sample")
-            trace_manifest[sample.hold_trace_relative_path] = hold_digest
-        samples.extend(family_samples)
-        print(
-            f"  family {index}/{len(selected_ids)}: {family_id} ({len(family_samples)} samples)",
-            file=sys.stderr,
-        )
+            for sample in family_samples:
+                trace_digest = _write_trace_artifact(
+                    output,
+                    sample.counterfactual_trace_relative_path,
+                    sample.counterfactual_trace_bytes,
+                )
+                if trace_digest != sample.counterfactual_trace_sha256:
+                    raise V4CorpusRunError("V4 written trace digest differs from sample")
+                trace_manifest[sample.counterfactual_trace_relative_path] = trace_digest
+                hold_digest = _write_trace_artifact(
+                    output,
+                    sample.hold_trace_relative_path,
+                    sample.hold_trace_bytes,
+                )
+                if hold_digest != sample.hold_trace_sha256:
+                    raise V4CorpusRunError("V4 written hold trace digest differs from sample")
+                trace_manifest[sample.hold_trace_relative_path] = hold_digest
 
-    sample_rows = [sample.to_mapping() for sample in samples]
-    samples_sha256 = _write_jsonl(output / "samples.jsonl", sample_rows)
-    try:
-        reloaded_samples = load_v4_samples(sample_rows, output, bundle, scenarios)
-    except Exception as error:
-        raise V4CorpusRunError("V4 serialized corpus verification failed") from error
-    if len(reloaded_samples) != len(samples):
-        raise V4CorpusRunError("V4 serialized sample count differs")
+            family_rows = [sample.to_mapping() for sample in family_samples]
+            _write_jsonl_rows(samples_handle, family_rows, samples_digest)
+            try:
+                reloaded_family = load_v4_samples(
+                    family_rows,
+                    output,
+                    bundle,
+                    {family_id: scenarios[family_id]},
+                )
+            except Exception as error:
+                raise V4CorpusRunError(
+                    f"V4 serialized corpus verification failed for family {family_id}"
+                ) from error
+            if len(reloaded_family) != len(family_samples):
+                raise V4CorpusRunError("V4 serialized family sample count differs")
+            sample_count += len(reloaded_family)
+            counts[split[family_id]] += len(reloaded_family)
+            print(
+                f"  family {index}/{len(selected_ids)}: {family_id} ({len(family_samples)} samples)",
+                file=sys.stderr,
+            )
+
+    samples_sha256 = samples_digest.hexdigest()
 
     trace_manifest_sha256 = _write_json(output / "trace-manifest.json", trace_manifest)
-    counts = {
-        label: sum(sample.split == label for sample in reloaded_samples)
-        for label in ("TRAIN", "VALIDATION", "EVALUATION")
-    }
     manifest.update(
         {
             "samples_sha256": samples_sha256,
             "trace_manifest_sha256": trace_manifest_sha256,
-            "sample_count": len(reloaded_samples),
+            "sample_count": sample_count,
             "sample_counts": counts,
             "trace_count": len(trace_manifest),
         }
@@ -338,7 +361,7 @@ def build_v4_corpus(
         "samples_sha256": samples_sha256,
         "trace_manifest_sha256": trace_manifest_sha256,
         "family_count": len(selected_ids),
-        "sample_count": len(reloaded_samples),
+        "sample_count": sample_count,
         "sample_counts": counts,
         "trace_count": len(trace_manifest),
         "independent_trace_replay_verified": True,
