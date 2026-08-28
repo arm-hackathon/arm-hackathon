@@ -58,7 +58,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = (REPO_ROOT / "out").resolve()
 VERIFY_MODULE = "scripts.verify_action_risk_v4_corpus"
 MODEL_SOURCE_PATHS = (
-    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json"),
+    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json"),
     Path("src/aeolus/habitat_v2/forecast/contracts.py"),
     Path("src/aeolus/habitat_v2/forecast/projection.py"),
     Path("src/aeolus/habitat_v2/forecast_issue55_race.py"),
@@ -895,7 +895,7 @@ def run_v4_model_study(
         for item in candidate_gate_status.values()
     )
     result = {
-        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_model_study_v1.result",
+        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_model_study_v2.result",
         "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_ID,
         "corpus_manifest_sha256": corpus_manifest_sha256,
         "source_identity": source_identity,
@@ -924,7 +924,7 @@ def run_v4_model_study(
     }
     results_sha256 = _write_json(output / "results.json", result)
     manifest_output = {
-        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_model_study_v1.manifest",
+        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_model_study_v2.manifest",
         "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_ID,
         "corpus_manifest_sha256": corpus_manifest_sha256,
         "source_identity_sha256": result["source_identity_sha256"],

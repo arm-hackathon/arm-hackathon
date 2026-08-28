@@ -26,6 +26,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_diagnostics import (
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_corpus import (
     Issue56V4CorpusError,
+    _v4_feature_histories,
     collect_v4_family_samples,
     load_v4_samples,
     verify_v4_serialized_trace,
@@ -41,8 +42,11 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v3 import (
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_features import (
     V4_TEMPORAL_FEATURE_COUNT,
+    observable_operating_mode,
+    v4_observable_action_mask,
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v2 import FEATURE_COUNT
+from aeolus.habitat_v2.forecast.projection import MODE_ORDER
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     Issue56V4ModelProtocolError,
     load_v4_model_protocol,
@@ -285,8 +289,9 @@ def test_v4_authorized_model_protocol_binds_temporal_corpus() -> None:
 
     assert validate_v4_model_protocol(protocol) == protocol
     assert len(digest) == 64
-    assert protocol["data_contract"]["corpus_schema_version"].endswith("_v3")
+    assert protocol["data_contract"]["corpus_schema_version"].endswith("_v4")
     assert protocol["feature_variants"][1]["feature_count"] == V4_TEMPORAL_FEATURE_COUNT
+    assert protocol["policy"]["hmc_compatibility_mask"] == "validated_catalogue_actions"
 
     tampered = dict(protocol)
     tampered["data_contract"] = dict(protocol["data_contract"])
@@ -466,7 +471,7 @@ def test_v4_candidate_models_fit_calibrate_and_round_trip() -> None:
             _digest(base_body),
         )
         mapping = {
-            "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_corpus_v3.sample",
+            "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_corpus_v4.sample",
             "base_sample": base_sample.to_mapping(),
             "counterfactual_trace_relative_path": f"counterfactual-traces/{action_sha}.json",
             "counterfactual_trace_sha256": action_sha,
@@ -530,6 +535,30 @@ def v4_corpus_fixture() -> tuple[object, str, object, tuple[V4RiskSample, ...]]:
     scenario = build_family_scenario(bundle.development_scenario, 0)
     samples = collect_v4_family_samples(bundle, scenario, family_id, split="TRAIN")
     return bundle, family_id, scenario, samples
+
+
+def test_v4_observable_action_mask_admits_every_valid_catalogue_action(
+    v4_corpus_fixture: tuple[object, str, object, tuple[V4RiskSample, ...]],
+) -> None:
+    bundle, family_id, scenario, samples = v4_corpus_fixture
+
+    histories = _v4_feature_histories(bundle, scenario, family_id)
+    assert histories
+    history = next(iter(histories.values()))
+    for mode_index, mode in enumerate(MODE_ORDER):
+        mode_values = np.zeros_like(history.mode_f32)
+        mode_values[:, mode_index] = 1.0
+        mode_history = replace(history, mode_f32=mode_values)
+        assert observable_operating_mode(mode_history) == mode
+        assert v4_observable_action_mask(bundle, mode_history) == (
+            True,
+            True,
+            True,
+            True,
+        )
+    assert {sample.observable_action_mask for sample in samples} == {
+        (True, True, True, True)
+    }
 
 
 def _write_v4_trace_files(root: Path, samples: tuple[V4RiskSample, ...]) -> None:

@@ -2,8 +2,9 @@
 
 The feature path consumes only an already verified operational history and a
 catalogue command.  It never reads scenario truth, future state, or HMC
-arbitration output.  The action mask is derived from the latest observed mode
-and the frozen catalogue's public source-mode identity.
+arbitration output.  The action mask admits every command that has already
+passed the frozen catalogue and external-command contract; HMC applies the
+operating-mode and reserve policies during arbitration.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from .forecast_issue56_action_risk_v2 import (
 )
 
 
-V4_TEMPORAL_FEATURE_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v4_temporal_features_v1"
+V4_TEMPORAL_FEATURE_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v4_temporal_features_v2"
 HISTORY_FEATURE_COUNT = 194
 V4_TEMPORAL_EXTRA_FEATURE_COUNT = HISTORY_FEATURE_COUNT * 3
 V4_TEMPORAL_FEATURE_COUNT = FEATURE_COUNT + V4_TEMPORAL_EXTRA_FEATURE_COUNT
@@ -83,11 +84,16 @@ def v4_observable_action_mask(
     bundle: ForecastContracts,
     history: ForecastHistory,
 ) -> tuple[bool, ...]:
-    """Mask catalogue actions whose public source mode differs from the mode."""
+    """Admit all validated catalogue actions for HMC policy arbitration.
+
+    ``source_mode`` describes the catalogue entry; it is not an exclusivity
+    constraint.  HMC remains responsible for applying the mode and reserve
+    policies to each valid proposal.
+    """
 
     if type(bundle) is not ForecastContracts or not _history_is_complete(history):
         raise Issue56V4FeatureError("V4 action mask requires frozen contracts and history")
-    mode = observable_operating_mode(history)
+    observable_operating_mode(history)
     actions = tuple(bundle.actions)
     if (
         len(actions) != 4
@@ -96,7 +102,7 @@ def v4_observable_action_mask(
         or any(action.source_mode not in MODE_ORDER for action in actions)
     ):
         raise Issue56V4FeatureError("V4 action catalogue identity is malformed")
-    return tuple(action.source_mode == mode for action in actions)
+    return (True,) * len(actions)
 
 
 def v4_temporal_summary_blocks(
@@ -185,7 +191,8 @@ def v4_feature_manifest(bundle: ForecastContracts) -> dict[str, Any]:
         "blocks": list(V4_TEMPORAL_BLOCKS),
         "causal_time_source": "verified_completed_times_s",
         "action_mask": {
-            "source": "latest_verified_observable_mode_and_catalogue_source_mode",
+            "source": "validated_catalogue_actions",
+            "mode_metadata_is_not_exclusive": True,
             "catalogue_sha256": bundle.action_catalogue_sha256,
             "ordering": [action.action_id for action in bundle.actions],
         },

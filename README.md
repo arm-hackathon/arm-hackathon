@@ -133,8 +133,11 @@ with rationale in
 [`docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md`](docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md).
 That diagnostic document remains a pre-model historical boundary and does not
 authorize learned-model work by itself. A separate user-authorized development
-study is now bound by
-[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json).
+ study was originally bound by
+[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json),
+whose negative result remains historical and immutable. The follow-up mask
+correction is separately bound by
+[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json).
 It permits development-data model implementation and training only; protected
 final-suite access remains prohibited, V3 remains immutable, and HMC remains
 the sole final-command, plant-step, and replay authority.
@@ -196,7 +199,7 @@ unavailable in this offline-only path, and candidates that cannot satisfy the
 registered validation calibration target are recorded as fail-closed rather
 than receiving an altered threshold.
 
-The completed full development run is negative evidence, not a deployment
+The completed V4 V1 full development run is negative evidence, not a deployment
 claim. The verified corpus contains 1,664 samples and 1,696 replayable traces.
 Of the five preregistered candidates, three failed closed during validation
 calibration. The two evaluated candidates met the dangerous-event recall and

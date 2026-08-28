@@ -50,7 +50,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = (REPO_ROOT / "out").resolve()
 CORPUS_SOURCE_PATHS = (
     Path("contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json"),
-    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json"),
+    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json"),
     Path("src/aeolus/habitat_v2/forecast/projection.py"),
     Path("src/aeolus/habitat_v2/forecast_issue55_race.py"),
     Path("src/aeolus/habitat_v2/forecast_issue56_action_risk_v2.py"),

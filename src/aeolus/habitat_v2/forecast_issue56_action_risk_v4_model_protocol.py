@@ -10,12 +10,12 @@ from typing import Any
 
 
 ISSUE56_V4_MODEL_PROTOCOL_SCHEMA_VERSION = (
-    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v1"
+    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v2"
 )
-ISSUE56_V4_MODEL_PROTOCOL_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v1"
+ISSUE56_V4_MODEL_PROTOCOL_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v2"
 ISSUE56_V4_MODEL_PROTOCOL_STATUS = "AUTHORIZED_DEVELOPMENT_MODEL_STUDY"
 ISSUE56_V4_MODEL_PROTOCOL_FILENAME = (
-    "habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json"
+    "habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json"
 )
 V4_MODEL_CANDIDATE_IDS = (
     "c0_v3_refit",
@@ -187,7 +187,7 @@ def validate_v4_model_protocol(protocol: Mapping[str, Any]) -> dict[str, Any]:
     )
     if (
         data_contract["corpus_schema_version"]
-        != "aeolus_habitat_v2_risk_issue_56_v4_corpus_v3"
+        != "aeolus_habitat_v2_risk_issue_56_v4_corpus_v4"
         or data_contract["counterfactual_trace_bytes_required"] is not True
         or data_contract["hold_trace_bytes_required"] is not True
         or data_contract["relative_targets_are_action_minus_no_proposal_hold"] is not True
@@ -229,7 +229,7 @@ def validate_v4_model_protocol(protocol: Mapping[str, Any]) -> dict[str, Any]:
         or "future_measurements" not in item["exclude"]
         or "hidden_truth" not in item["exclude"]
         or "hmc_outcomes" not in item["exclude"]
-        or item.get("mask") != "observable_mode_and_catalogue_identity"
+        or item.get("mask") != "validated_catalogue_actions"
         for item in feature_variants
     ):
         raise Issue56V4ModelProtocolError("V4 feature leakage boundary is incomplete")
@@ -340,7 +340,7 @@ def validate_v4_model_protocol(protocol: Mapping[str, Any]) -> dict[str, Any]:
         policy["candidate_screening_scope"] != "all_catalogue_actions"
         or policy["selection_scope"] != "compatible_safe_candidates"
         or policy["abstention_allowed"] is not True
-        or policy["hmc_compatibility_mask"] != "observable_mode_and_catalogue_identity"
+        or policy["hmc_compatibility_mask"] != "validated_catalogue_actions"
         or policy["selection_order"]
         != ["safety_gate", "calibrated_expected_utility", "hmc_compatibility", "resource_cost", "action_id"]
         or policy["model_proposal_source_type"] != "issue56-risk-v4-model"

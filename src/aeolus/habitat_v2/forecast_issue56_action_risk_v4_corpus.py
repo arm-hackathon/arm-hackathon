@@ -71,7 +71,7 @@ from .physics import (
 from .scenario import Scenario
 
 
-ISSUE56_V4_CORPUS_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v4_corpus_v3"
+ISSUE56_V4_CORPUS_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v4_corpus_v4"
 V4_CORPUS_TRACE_DIRECTORY = "counterfactual-traces"
 
 
