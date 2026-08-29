@@ -42,7 +42,7 @@ from .forecast_issue56_action_risk_v4_features import (
 )
 
 
-V4_MODEL_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v4_model_v2"
+V4_MODEL_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v4_model_v3"
 V4_HORIZON_KEYS = (4, 16, 32, 0)
 V4_MODEL_CANDIDATES = (
     "c0_v3_refit",
@@ -50,6 +50,8 @@ V4_MODEL_CANDIDATES = (
     "c2_shared_hazard_temporal",
     "c3_small_shared_mlp",
     "c4_advantage_ranker",
+    "c5_action_conditioned_ridge",
+    "c6_action_conditioned_temporal",
 )
 V4_ACTION_IDS = (
     "normal-occupied-v1",
@@ -64,6 +66,8 @@ V4_CANDIDATE_FEATURE_VARIANTS = {
     "c2_shared_hazard_temporal": "v4_temporal_past_only",
     "c3_small_shared_mlp": "v4_temporal_past_only",
     "c4_advantage_ranker": "v4_temporal_past_only",
+    "c5_action_conditioned_ridge": "v3_708_past_only",
+    "c6_action_conditioned_temporal": "v4_temporal_past_only",
 }
 V4_CANDIDATE_SEMANTICS = {
     "c0_v3_refit": ("ridge", "cumulative_logistic"),
@@ -71,6 +75,8 @@ V4_CANDIDATE_SEMANTICS = {
     "c2_shared_hazard_temporal": ("ridge", "shared_hazard"),
     "c3_small_shared_mlp": ("small_shared_mlp", "shared_hazard"),
     "c4_advantage_ranker": ("advantage_ranker", "shared_hazard"),
+    "c5_action_conditioned_ridge": ("action_conditioned_ridge", "shared_hazard"),
+    "c6_action_conditioned_temporal": ("action_conditioned_ridge", "shared_hazard"),
 }
 V4_EVENT_LIMIT = 0.50
 V4_EXPECTED_EXPOSURE_LIMIT = 0.50
@@ -89,6 +95,7 @@ V4_CALIBRATION_QUANTILE = 0.90
 V4_MIN_VALIDATION_POSITIVES = 2
 V4_MIN_VALIDATION_DECISION_COVERAGE = 0.20
 V4_THRESHOLD_GRID = (0.2, 0.35, 0.5, 0.65, 0.8)
+V4_THRESHOLD_GRID_EXTENDED = (0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8)
 V4_THRESHOLD_RECALL_TARGET = 0.98
 V4_MODEL_PROVENANCE_FIELDS = (
     "source_identity_sha256",
@@ -106,6 +113,11 @@ V4_UTILITY_WEIGHTS = {
     "comfort_deviation": 0.25,
     "resource_composite": 0.10,
     "intervention": 0.01,
+}
+V4_COMPOSITE_SELECTION_WEIGHTS = {
+    "safety_exposure": 1.0,
+    "comfort_deviation": 0.25,
+    "resource_composite": 0.10,
 }
 
 
@@ -522,6 +534,46 @@ def _fit_ridge(
     return target_mean, target_scale, coefficients
 
 
+def _fit_relative_action_heads(
+    normalized_features: np.ndarray,
+    relative: np.ndarray,
+    action_indices: np.ndarray,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Fit one 3-target ridge head per catalogue action on global-standardized deltas."""
+
+    values = np.asarray(relative, dtype=np.float64)
+    indices = np.asarray(action_indices)
+    if (
+        values.ndim != 2
+        or values.shape[1] != 3
+        or values.shape[0] != normalized_features.shape[0]
+        or indices.shape != (values.shape[0],)
+        or not np.isfinite(values).all()
+    ):
+        raise Issue56V4ModelError("V4 relative action head targets are malformed")
+    target_mean = np.mean(values, axis=0)
+    target_scale = np.std(values, axis=0)
+    target_scale = np.where(target_scale > 1e-8, target_scale, 1.0)
+    normalized_targets = (values - target_mean) / target_scale
+    feature_count = normalized_features.shape[1]
+    heads = np.zeros((len(V4_ACTION_IDS), 3, feature_count), dtype=np.float64)
+    for action_index in range(len(V4_ACTION_IDS)):
+        selected = indices == action_index
+        if int(np.sum(selected)) < 2:
+            raise Issue56V4ModelError("V4 relative action head lacks training support")
+        gram = normalized_features[selected] @ normalized_features[selected].T
+        gram += np.eye(int(np.sum(selected)), dtype=np.float64) * float(alpha)
+        try:
+            dual = np.linalg.solve(gram, normalized_targets[selected])
+        except np.linalg.LinAlgError as error:
+            raise Issue56V4ModelError("V4 relative action head fit is singular") from error
+        heads[action_index] = (dual.T @ normalized_features[selected]).astype(np.float64)
+    if not np.isfinite(heads).all():
+        raise Issue56V4ModelError("V4 relative action head coefficients are non-finite")
+    return target_mean, target_scale, heads
+
+
 def _fit_logistic(
     normalized_features: np.ndarray,
     labels: np.ndarray,
@@ -816,6 +868,7 @@ def _fit_mlp(
 def _select_event_thresholds(
     probabilities: np.ndarray,
     labels: np.ndarray,
+    grid: Sequence[float] = V4_THRESHOLD_GRID,
 ) -> tuple[float, ...]:
     values = np.asarray(probabilities, dtype=np.float64)
     targets = np.asarray(labels, dtype=np.float64)
@@ -829,6 +882,9 @@ def _select_event_thresholds(
         or np.any((targets < 0.0) | (targets > 1.0))
     ):
         raise Issue56V4ModelError("V4 event threshold inputs are malformed")
+    ordered_grid = tuple(sorted(float(item) for item in grid))
+    if not ordered_grid or any(not 0.0 <= item <= 1.0 for item in ordered_grid):
+        raise Issue56V4ModelError("V4 event threshold grid is malformed")
     thresholds: list[float] = []
     for index in range(values.shape[1]):
         positive = targets[:, index] >= 0.5
@@ -836,7 +892,7 @@ def _select_event_thresholds(
         if positive_count < V4_MIN_VALIDATION_POSITIVES:
             raise Issue56V4ModelError("V4 threshold selection lacks positive validation support")
         selected: float | None = None
-        for threshold in V4_THRESHOLD_GRID:
+        for threshold in ordered_grid:
             predicted = values[:, index] >= threshold
             recall = float(np.sum(predicted & positive) / positive_count)
             if recall >= V4_THRESHOLD_RECALL_TARGET:
@@ -1041,6 +1097,7 @@ class V4RiskModel:
     event_thresholds: tuple[float, ...] = V4_DEFAULT_EVENT_THRESHOLDS
     model_sha256: str | None = None
     provenance: tuple[tuple[str, str], ...] = ()
+    relative_action_coefficients: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         feature_count = _feature_count(self.feature_variant)
@@ -1178,6 +1235,20 @@ class V4RiskModel:
             raise Issue56V4ModelError("V4 model provenance is incomplete")
         if self.provenance != _provenance_tuple(_provenance_mapping(self.provenance)):
             raise Issue56V4ModelError("V4 model provenance is not canonical")
+        if self.model_kind == "action_conditioned_ridge":
+            if self.relative_action_coefficients is None:
+                raise Issue56V4ModelError("V4 action-conditioned model lacks per-action heads")
+            object.__setattr__(
+                self,
+                "relative_action_coefficients",
+                _finite_array(
+                    self.relative_action_coefficients,
+                    (len(V4_ACTION_IDS), 3, feature_count),
+                    "relative action coefficients",
+                ),
+            )
+        elif self.relative_action_coefficients is not None:
+            raise Issue56V4ModelError("V4 model carries unexpected per-action heads")
 
     @classmethod
     def fit(
@@ -1208,10 +1279,9 @@ class V4RiskModel:
         intervals, at_risk = _interval_events(items)
         cumulative = _cumulative_events(items)
         exposure, maximum, comfort, resource, relative = _continuous_targets(items)
-        hazard_mode = "cumulative_logistic" if candidate_id == "c0_v3_refit" else "shared_hazard"
-        model_kind = "advantage_ranker" if candidate_id == "c4_advantage_ranker" else "ridge"
+        model_kind, hazard_mode = V4_CANDIDATE_SEMANTICS[candidate_id]
+        relative_action_heads: np.ndarray | None = None
         if candidate_id == "c3_small_shared_mlp":
-            model_kind = "small_shared_mlp"
             (
                 mlp_targets,
                 mlp_at_risk,
@@ -1266,9 +1336,18 @@ class V4RiskModel:
             )
             comfort_fit = _fit_ridge(normalized_features, comfort, alpha)
             resource_fit = _fit_ridge(normalized_features, resource, alpha)
-            relative_means, relative_scales, relative_coefficients = _fit_ridge(
-                normalized_features, relative, alpha
-            )
+            if model_kind == "action_conditioned_ridge":
+                action_indices = np.asarray(
+                    [_action_index(item.action_id) for item in items], dtype=np.int64
+                )
+                relative_means, relative_scales, relative_action_heads = (
+                    _fit_relative_action_heads(normalized_features, relative, action_indices, alpha)
+                )
+                relative_coefficients = np.zeros((3, features.shape[1]), dtype=np.float64)
+            else:
+                relative_means, relative_scales, relative_coefficients = _fit_ridge(
+                    normalized_features, relative, alpha
+                )
             comfort_mean, comfort_scale, comfort_coefficients = (
                 float(comfort_fit[0][0]),
                 float(comfort_fit[1][0]),
@@ -1331,9 +1410,12 @@ class V4RiskModel:
             output_weights,
             output_biases,
             provenance=_provenance_tuple({} if provenance is None else provenance),
+            relative_action_coefficients=relative_action_heads,
         )
 
-    def _linear_values(self, features: np.ndarray) -> tuple[np.ndarray, ...]:
+    def _linear_values(
+        self, features: np.ndarray, *, action_index: int | None = None
+    ) -> tuple[np.ndarray, ...]:
         normalized = _normalise(features, self.feature_mean, self.feature_scale)
         if self.model_kind == "small_shared_mlp":
             if self.hidden_weights is None or self.hidden_biases is None or self.output_weights is None or self.output_biases is None:
@@ -1379,9 +1461,22 @@ class V4RiskModel:
                 ],
                 dtype=np.float64,
             )
-            relative = self.relative_target_means + (
-                normalized @ self.relative_coefficients.T
-            ) * self.relative_target_scales
+            if self.model_kind == "action_conditioned_ridge":
+                if self.relative_action_coefficients is None:
+                    raise Issue56V4ModelError("V4 action-conditioned model lacks per-action heads")
+                if action_index is None or isinstance(action_index, bool) or not 0 <= action_index < len(
+                    V4_ACTION_IDS
+                ):
+                    raise Issue56V4ModelError(
+                        "V4 action-conditioned inference requires a catalogue action index"
+                    )
+                relative = self.relative_target_means + (
+                    normalized @ self.relative_action_coefficients[action_index].T
+                ) * self.relative_target_scales
+            else:
+                relative = self.relative_target_means + (
+                    normalized @ self.relative_coefficients.T
+                ) * self.relative_target_scales
         advantage = float(self.advantage_intercept + normalized @ self.advantage_coefficients)
         return event, exposure, maximum, comfort, resource, relative, advantage
 
@@ -1417,7 +1512,9 @@ class V4RiskModel:
             isinstance(action_index, bool) or not 0 <= action_index < 4
         ):
             raise Issue56V4ModelError("V4 action index is invalid")
-        raw_event, raw_exposure, raw_maximum, raw_comfort, raw_resource, raw_relative, advantage = self._linear_values(values)
+        raw_event, raw_exposure, raw_maximum, raw_comfort, raw_resource, raw_relative, advantage = (
+            self._linear_values(values, action_index=action_index)
+        )
         probabilities, upper_probabilities = self._event_probabilities(raw_event)
         horizons: list[V4HorizonPrediction] = []
         for index, horizon in enumerate(V4_HORIZON_KEYS):
@@ -1514,10 +1611,18 @@ class V4RiskModel:
             observable_action_mask=observable_action_mask,
         )
 
-    def calibrate(self, samples: Sequence[V4RiskSample | V4ModelSample]) -> "V4RiskModel":
+    def calibrate(
+        self,
+        samples: Sequence[V4RiskSample | V4ModelSample],
+        *,
+        threshold_grid: Sequence[float] = V4_THRESHOLD_GRID,
+    ) -> "V4RiskModel":
         items = _require_v4_samples(samples, "VALIDATION")
         features = _feature_matrix(items, self.feature_variant)
-        raw_values = [self._linear_values(row) for row in features]
+        raw_values = [
+            self._linear_values(row, action_index=_action_index(item.action_id))
+            for row, item in zip(features, items, strict=True)
+        ]
         raw_event = np.stack([value[0] for value in raw_values])
         cumulative = _cumulative_events(items)
         intervals, at_risk = _interval_events(items)
@@ -1583,6 +1688,7 @@ class V4RiskModel:
             event_thresholds=_select_event_thresholds(
                 calibrated_probabilities,
                 cumulative,
+                grid=threshold_grid,
             ),
         )
         coverage = calibrated._validation_decision_coverage(items)
@@ -1697,6 +1803,100 @@ class V4RiskModel:
             ),
         )
 
+    def score_actions_composite(
+        self,
+        bundle: ForecastContracts,
+        history: ForecastHistory,
+        *,
+        decision_step: int,
+        current_command: np.ndarray,
+    ) -> tuple[V4ActionScore, ...]:
+        """Score catalogue actions by signed point composite action-versus-hold deltas.
+
+        The upper-bound risk screen is retained through ``hard_ineligible``; the
+        ranking utility uses the signed point relative deltas so that action
+        contrast survives calibration.
+        """
+
+        if type(bundle) is not ForecastContracts:
+            raise Issue56V4ModelError("V4 action scoring requires frozen contracts")
+        actions = tuple(bundle.actions)
+        if (
+            tuple(action.action_id for action in actions) != V4_ACTION_IDS
+            or len(actions) != len(V4_ACTION_IDS)
+            or len({action.action_id for action in actions}) != len(actions)
+        ):
+            raise Issue56V4ModelError("V4 action catalogue is malformed")
+        current = np.asarray(current_command, dtype=np.float64)
+        if current.shape != (ACTION_COUNT,) or not np.isfinite(current).all():
+            raise Issue56V4ModelError("V4 current command is malformed")
+        mask = v4_observable_action_mask(bundle, history)
+        alarm_slots = alarm_family_slot_indices(bundle)
+        scores: list[V4ActionScore] = []
+        for index, action in enumerate(actions):
+            action_vector = project_proposed_action(bundle, action.command)
+            prediction = self.predict(
+                history,
+                action_vector,
+                decision_step=decision_step,
+                alarm_family_slots=alarm_slots,
+                action_index=index,
+                observable_action_mask=mask,
+            )
+            command_vector = _command_vector(
+                bundle.development_scenario,
+                action.command.to_mapping(),
+            )
+            intervention = float(np.mean(np.abs(command_vector - current)))
+            utility = (
+                V4_COMPOSITE_SELECTION_WEIGHTS["safety_exposure"]
+                * prediction.relative_safety_exposure
+                + V4_COMPOSITE_SELECTION_WEIGHTS["comfort_deviation"]
+                * prediction.relative_comfort_deviation
+                + V4_COMPOSITE_SELECTION_WEIGHTS["resource_composite"]
+                * prediction.relative_resource_composite
+            )
+            hard = prediction.hard_ineligible or not mask[index]
+            scores.append(
+                V4ActionScore(
+                    action.action_id,
+                    index,
+                    bool(mask[index]),
+                    hard,
+                    float(utility) if not hard else math.inf,
+                    intervention,
+                    prediction,
+                    prediction.reason,
+                )
+            )
+        return tuple(scores)
+
+    def select_action_composite(self, scores: Sequence[V4ActionScore]) -> V4ActionScore | None:
+        """Select only when a predicted improvement over hold exists.
+
+        An action is eligible when it passes the calibrated upper-bound risk
+        screen, is observable-compatible, and its signed point safety delta is
+        negative.  Among eligible actions the smallest composite point delta
+        wins; otherwise the model abstains.
+        """
+
+        items = tuple(scores)
+        if not items:
+            raise Issue56V4ModelError("V4 action selection requires scores")
+        identifiers = [item.action_id for item in items]
+        if len(identifiers) != len(set(identifiers)):
+            raise Issue56V4ModelError("V4 action selection received duplicate actions")
+        eligible = [
+            item
+            for item in items
+            if not item.hard_ineligible
+            and item.compatible
+            and item.prediction.relative_safety_exposure < 0.0
+        ]
+        if not eligible:
+            return None
+        return min(eligible, key=lambda item: (item.utility_score, item.action_id))
+
     def _body(self) -> dict[str, Any]:
         def values(array: np.ndarray) -> list[float]:
             return array.tolist()
@@ -1748,6 +1948,11 @@ class V4RiskModel:
             "validation_decision_coverage": self.validation_decision_coverage,
             "event_thresholds": list(self.event_thresholds),
             "provenance": _provenance_mapping(self.provenance),
+            "relative_action_coefficients": (
+                None
+                if self.relative_action_coefficients is None
+                else values(self.relative_action_coefficients)
+            ),
         }
 
     def to_mapping(self) -> dict[str, Any]:
@@ -1803,6 +2008,7 @@ class V4RiskModel:
             "validation_decision_coverage",
             "event_thresholds",
             "provenance",
+            "relative_action_coefficients",
             "model_sha256",
         }
         if type(mapping) is not dict or set(mapping) != expected:
@@ -1872,6 +2078,13 @@ class V4RiskModel:
             _strict_scalar_list(body["event_thresholds"], "event thresholds"),
             str(digest),
             _provenance_tuple(body["provenance"]),
+            None
+            if body["relative_action_coefficients"] is None
+            else _strict_array(
+                body["relative_action_coefficients"],
+                (len(V4_ACTION_IDS), 3, feature_count),
+                "relative action coefficients",
+            ),
         )
 
 
@@ -1938,6 +2151,9 @@ __all__ = [
     "V4_MODEL_CANDIDATES",
     "V4_MODEL_SCHEMA_VERSION",
     "V4_FEATURE_VARIANTS",
+    "V4_THRESHOLD_GRID",
+    "V4_THRESHOLD_GRID_EXTENDED",
+    "V4_COMPOSITE_SELECTION_WEIGHTS",
     "load_v4_model",
     "write_v4_model",
 ]

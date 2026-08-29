@@ -52,6 +52,8 @@ from .scenario import Scenario
 ISSUE56_V3_SCHEMA_VERSION = "aeolus_habitat_v2_risk_issue_56_v3_v2"
 PREREGISTRATION_ID = "habitat_v2_forecast_issue_56_v3_preregistration_v2"
 MODEL_SOURCE_TYPE = "issue56-risk-filtered-point-v3"
+V4_MODEL_ARM = "risk_v4_model_common_window"
+V4_MODEL_SOURCE_TYPE = "issue56-risk-v4-model"
 V3_HORIZONS = (4, 16, 32)
 V3_LABEL_TRACK = "hmc_persistent_remaining"
 V3_ARMS = ("risk_only_v3", "risk_filtered_point_v3")
@@ -356,15 +358,18 @@ def build_v3_proposal(
     step: int,
     command: Mapping[str, Any],
     action_id: str,
+    source_type: str = MODEL_SOURCE_TYPE,
 ) -> dict[str, Any]:
     """Build one advisory proposal bound to the current verified snapshot."""
 
+    if type(source_type) is not str or not source_type:
+        raise Issue56V3RiskError("V3 proposal source type is invalid")
     body = {
         "schema_version": "aeolus_habitat_v2_control_proposal_v1",
         "control_run_id": hmc.control_run_id,
         "authority_epoch": hmc.authority_epoch,
         "source_id": action_id,
-        "source_type": MODEL_SOURCE_TYPE,
+        "source_type": source_type,
         "completed_observation_step": step,
         "observation_snapshot_sha256": snapshot_sha256,
         "requested_application_step": step,
@@ -1729,6 +1734,7 @@ class V3EpisodeRecord:
             "point_model_common_window",
             "risk_only_v3",
             "risk_filtered_point_v3",
+            V4_MODEL_ARM,
         }:
             raise Issue56V3RiskError("V3 episode arm is invalid")
         if type(self.family_id) is not str or not self.family_id:
@@ -1858,6 +1864,7 @@ def run_v3_episode(
     family_index: int,
     model: V3RiskModel,
     point_predictor: Any,
+    v4_model: Any = None,
 ) -> V3EpisodeRecord:
     """Run one common-window policy arm through HMC and strict replay."""
 
@@ -1866,6 +1873,7 @@ def run_v3_episode(
         "point_model_common_window",
         "risk_only_v3",
         "risk_filtered_point_v3",
+        V4_MODEL_ARM,
     }
     if arm not in valid_arms or type(model) is not V3RiskModel or type(scenario) is not Scenario:
         raise Issue56V3RiskError("V3 episode inputs are invalid")
@@ -1873,6 +1881,13 @@ def run_v3_episode(
         getattr(point_predictor, "predict", None)
     ):
         raise Issue56V3RiskError("V3 point arm requires a point predictor")
+    if arm == V4_MODEL_ARM:
+        from .forecast_issue56_action_risk_v4_model import V4RiskModel
+
+        if type(v4_model) is not V4RiskModel or len(v4_model.calibration_support) != 4:
+            raise Issue56V3RiskError("V4 model arm requires a calibrated V4 model")
+        if v4_model.actuator_authority is not False:
+            raise Issue56V3RiskError("V4 model arm cannot claim actuator authority")
     actions = tuple(bundle.actions)
     if len(actions) != 4 or len({item.action_id for item in actions}) != 4:
         raise Issue56V3RiskError("V3 episode requires four unique actions")
@@ -1930,6 +1945,15 @@ def run_v3_episode(
                 selected = select_risk_only_v3(
                     risk_only_scores_v3(bundle, history, model, decision_step=step)
                 )
+            elif arm == V4_MODEL_ARM:
+                selected = v4_model.select_action_composite(
+                    v4_model.score_actions_composite(
+                        bundle,
+                        history,
+                        decision_step=step,
+                        current_command=current_vector,
+                    )
+                )
             else:
                 selected = select_risk_filtered_point_v3(
                     risk_filter_point_scores_v3(
@@ -1952,6 +1976,9 @@ def run_v3_episode(
                     step,
                     action.command.to_mapping(),
                     action.action_id,
+                    source_type=(
+                        V4_MODEL_SOURCE_TYPE if arm == V4_MODEL_ARM else MODEL_SOURCE_TYPE
+                    ),
                 )
                 proposal_count += 1
         proposal_receipt = hmc.propose(proposal, handle).to_mapping()
@@ -2116,6 +2143,8 @@ __all__ = [
     "V3RiskPrediction",
     "V3RiskScore",
     "V3_ARMS",
+    "V4_MODEL_ARM",
+    "V4_MODEL_SOURCE_TYPE",
     "build_v3_proposal",
     "collect_v3_family_samples",
     "calibration_metrics_v3",
