@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+import gc
 import hashlib
 import json
 from pathlib import Path
@@ -346,36 +347,53 @@ def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
     ]:
         raise V4CorpusVerificationError("V4 trace manifest digest drift")
 
-    try:
-        samples = load_v4_samples(rows, corpus, bundle, scenarios)
-    except Issue56V4CorpusError as error:
-        raise V4CorpusVerificationError("V4 serialized trace replay failed") from error
-    expected_trace_manifest = {
-        sample.counterfactual_trace_relative_path: sample.counterfactual_trace_sha256
-        for sample in samples
-    }
-    expected_trace_manifest.update(
-        {
-            sample.hold_trace_relative_path: sample.hold_trace_sha256
-            for sample in samples
-        }
-    )
+    rows_by_family: dict[str | None, list[dict[str, Any]]] = {}
+    for row in rows:
+        base_sample = row.get("base_sample")
+        family_id = base_sample.get("family_id") if type(base_sample) is dict else None
+        rows_by_family.setdefault(family_id, []).append(row)
+    if set(rows_by_family) != set(family_ids):
+        raise V4CorpusVerificationError("V4 sample family coverage is incomplete")
+
+    expected_trace_manifest: dict[str, str] = {}
+    observed_keys: set[tuple[str, int, str]] = set()
+    observed_counts = {split: 0 for split in ("TRAIN", "VALIDATION", "EVALUATION")}
+    verified_sample_count = 0
+    for family_id in family_ids:
+        try:
+            family_samples = load_v4_samples(
+                rows_by_family[family_id],
+                corpus,
+                bundle,
+                {family_id: scenarios[family_id]},
+            )
+        except Issue56V4CorpusError as error:
+            raise V4CorpusVerificationError(
+                f"V4 serialized trace replay failed for family {family_id}"
+            ) from error
+        verified_sample_count += len(family_samples)
+        for sample in family_samples:
+            key = (sample.family_id, sample.decision_step, sample.action_id)
+            if key in observed_keys:
+                raise V4CorpusVerificationError("V4 samples contain duplicate decision/action rows")
+            observed_keys.add(key)
+            if sample.split != manifest["family_split"][sample.family_id]:
+                raise V4CorpusVerificationError("V4 sample split identity drift")
+            observed_counts[sample.split] += 1
+            expected_trace_manifest[sample.counterfactual_trace_relative_path] = (
+                sample.counterfactual_trace_sha256
+            )
+            expected_trace_manifest[sample.hold_trace_relative_path] = sample.hold_trace_sha256
+        del family_samples
+        gc.collect()
     expected_keys = {
         (family_id, decision_step, action.action_id)
         for family_id in family_ids
         for decision_step in v2_decision_steps()
         for action in bundle.actions
     }
-    observed_keys = {
-        (sample.family_id, sample.decision_step, sample.action_id) for sample in samples
-    }
     if observed_keys != expected_keys:
         raise V4CorpusVerificationError("V4 sample Cartesian coverage is incomplete")
-    if any(
-        sample.split != manifest["family_split"][sample.family_id]
-        for sample in samples
-    ):
-        raise V4CorpusVerificationError("V4 sample split identity drift")
     if trace_manifest != expected_trace_manifest:
         raise V4CorpusVerificationError("V4 trace manifest coverage or identity drift")
     actual_trace_files = {
@@ -387,10 +405,6 @@ def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
         raise V4CorpusVerificationError("V4 trace directory contains unexpected files")
     if manifest["trace_count"] != len(expected_trace_manifest):
         raise V4CorpusVerificationError("V4 trace count drift")
-    observed_counts = {
-        split: sum(sample.split == split for sample in samples)
-        for split in ("TRAIN", "VALIDATION", "EVALUATION")
-    }
     if manifest["sample_counts"] != observed_counts:
         raise V4CorpusVerificationError("V4 split sample counts drift")
 
@@ -429,7 +443,7 @@ def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
         raise V4CorpusVerificationError("V4 result trace manifest digest drift")
     if result["source_identity"] != manifest["source_identity"]:
         raise V4CorpusVerificationError("V4 result source identity drift")
-    if result["family_count"] != len(family_ids) or result["sample_count"] != len(samples):
+    if result["family_count"] != len(family_ids) or result["sample_count"] != verified_sample_count:
         raise V4CorpusVerificationError("V4 result counts drift")
     if result["sample_counts"] != observed_counts or result["trace_count"] != len(expected_trace_manifest):
         raise V4CorpusVerificationError("V4 result split or trace counts drift")
@@ -457,7 +471,7 @@ def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
     return {
         "corpus": str(corpus),
         "family_count": len(family_ids),
-        "sample_count": len(samples),
+        "sample_count": verified_sample_count,
         "trace_count": len(expected_trace_manifest),
         "sample_counts": observed_counts,
         "strict_trace_replay_verified": True,

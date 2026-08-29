@@ -28,7 +28,11 @@ from .forecast_issue56_action_risk_v2 import (
     v2_feature_vector,
 )
 from .forecast_issue56_action_risk_v3 import V3RiskSample
-from .forecast_issue56_action_risk_v4_corpus import V4RiskSample
+from .forecast_issue56_action_risk_v4_corpus import (
+    V4RelativeActionTargets,
+    V4RiskSample,
+    V4TrajectoryMetrics,
+)
 from .forecast_issue55_race import deterministic_family_ids
 from .forecast_issue56_action_risk_v4_features import (
     HISTORY_FEATURE_COUNT,
@@ -107,6 +111,87 @@ V4_UTILITY_WEIGHTS = {
 
 class Issue56V4ModelError(ValueError):
     """Raised when a V4 model, artifact, or prediction is malformed."""
+
+
+@dataclass(frozen=True, slots=True)
+class V4ModelSample:
+    """A semantically verified V4 row without retained trace payloads."""
+
+    base_sample: V3RiskSample
+    temporal_features_f32: np.ndarray
+    observable_action_mask: tuple[bool, ...]
+    trajectory_metrics: V4TrajectoryMetrics
+    hold_trajectory_metrics: V4TrajectoryMetrics
+    relative_action_targets: V4RelativeActionTargets
+
+    def __post_init__(self) -> None:
+        if type(self.base_sample) is not V3RiskSample:
+            raise Issue56V4ModelError("V4 model sample base record is invalid")
+        temporal = np.asarray(self.temporal_features_f32, dtype=np.float32)
+        if temporal.shape != (V4_TEMPORAL_FEATURE_COUNT,) or not np.isfinite(temporal).all():
+            raise Issue56V4ModelError("V4 model temporal features are malformed")
+        temporal = temporal.copy()
+        temporal.setflags(write=False)
+        object.__setattr__(self, "temporal_features_f32", temporal)
+        if (
+            type(self.observable_action_mask) is not tuple
+            or len(self.observable_action_mask) != len(V4_ACTION_IDS)
+            or any(type(value) is not bool for value in self.observable_action_mask)
+        ):
+            raise Issue56V4ModelError("V4 model observable action mask is malformed")
+        if type(self.trajectory_metrics) is not V4TrajectoryMetrics:
+            raise Issue56V4ModelError("V4 model action trajectory metrics are invalid")
+        if type(self.hold_trajectory_metrics) is not V4TrajectoryMetrics:
+            raise Issue56V4ModelError("V4 model hold trajectory metrics are invalid")
+        if type(self.relative_action_targets) is not V4RelativeActionTargets:
+            raise Issue56V4ModelError("V4 model relative targets are invalid")
+        expected_relative = V4RelativeActionTargets(
+            self.trajectory_metrics.safety_exposure
+            - self.hold_trajectory_metrics.safety_exposure,
+            self.trajectory_metrics.comfort_deviation
+            - self.hold_trajectory_metrics.comfort_deviation,
+            self.trajectory_metrics.resource_composite
+            - self.hold_trajectory_metrics.resource_composite,
+        )
+        if self.relative_action_targets != expected_relative:
+            raise Issue56V4ModelError("V4 model relative targets are inconsistent")
+
+    @classmethod
+    def from_verified(cls, sample: V4RiskSample) -> "V4ModelSample":
+        if type(sample) is not V4RiskSample:
+            raise Issue56V4ModelError("V4 model sample requires a verified corpus row")
+        return cls(
+            sample.base_sample,
+            sample.temporal_features_f32,
+            sample.observable_action_mask,
+            sample.trajectory_metrics,
+            sample.hold_trajectory_metrics,
+            sample.relative_action_targets,
+        )
+
+    @property
+    def family_id(self) -> str:
+        return self.base_sample.family_id
+
+    @property
+    def decision_step(self) -> int:
+        return self.base_sample.decision_step
+
+    @property
+    def split(self) -> str:
+        return self.base_sample.split
+
+    @property
+    def action_id(self) -> str:
+        return self.base_sample.action_id
+
+    @property
+    def features_f32(self) -> np.ndarray:
+        return self.base_sample.features_f32
+
+    @property
+    def label(self) -> Any:
+        return self.base_sample.label
 
 
 def _sha(value: object) -> str:
@@ -257,11 +342,11 @@ def _sample_features(sample: V3RiskSample, feature_variant: str) -> np.ndarray:
 
 
 def _require_v4_samples(
-    samples: Sequence[V4RiskSample],
+    samples: Sequence[V4RiskSample | V4ModelSample],
     split: str,
-) -> tuple[V4RiskSample, ...]:
+) -> tuple[V4RiskSample | V4ModelSample, ...]:
     items = tuple(samples)
-    if not items or any(type(item) is not V4RiskSample for item in items):
+    if not items or any(type(item) not in {V4RiskSample, V4ModelSample} for item in items):
         raise Issue56V4ModelError("V4 model operation requires semantically verified V4 samples")
     if any(item.split != split for item in items):
         raise Issue56V4ModelError(f"V4 model operation accepts {split} samples only")
@@ -1097,7 +1182,7 @@ class V4RiskModel:
     @classmethod
     def fit(
         cls,
-        samples: Sequence[V4RiskSample],
+        samples: Sequence[V4RiskSample | V4ModelSample],
         *,
         candidate_id: str,
         feature_variant: str | None = None,
@@ -1429,7 +1514,7 @@ class V4RiskModel:
             observable_action_mask=observable_action_mask,
         )
 
-    def calibrate(self, samples: Sequence[V3RiskSample]) -> "V4RiskModel":
+    def calibrate(self, samples: Sequence[V4RiskSample | V4ModelSample]) -> "V4RiskModel":
         items = _require_v4_samples(samples, "VALIDATION")
         features = _feature_matrix(items, self.feature_variant)
         raw_values = [self._linear_values(row) for row in features]
@@ -1505,7 +1590,9 @@ class V4RiskModel:
             raise Issue56V4ModelError("V4 validation decision coverage is below the minimum")
         return replace(calibrated, validation_decision_coverage=coverage)
 
-    def _validation_decision_coverage(self, samples: Sequence[V3RiskSample]) -> float:
+    def _validation_decision_coverage(
+        self, samples: Sequence[V4RiskSample | V4ModelSample]
+    ) -> float:
         groups: dict[tuple[str, int], list[V3RiskSample]] = defaultdict(list)
         for sample in samples:
             groups[(sample.family_id, sample.decision_step)].append(sample)
@@ -1845,6 +1932,7 @@ __all__ = [
     "V4_ACTION_IDS",
     "V4_HORIZON_KEYS",
     "V4HorizonPrediction",
+    "V4ModelSample",
     "V4RiskModel",
     "V4RiskPrediction",
     "V4_MODEL_CANDIDATES",

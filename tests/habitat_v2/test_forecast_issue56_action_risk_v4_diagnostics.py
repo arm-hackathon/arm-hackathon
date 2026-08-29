@@ -56,6 +56,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
     Issue56V4ModelError,
     V4_ACTION_IDS,
     V4_HORIZON_KEYS,
+    V4ModelSample,
     V4RiskModel,
     _select_event_thresholds,
 )
@@ -532,13 +533,16 @@ def test_v4_candidate_models_fit_calibrate_and_round_trip() -> None:
 
     train = tuple(sample(index, "TRAIN") for index in range(10))
     validation = tuple(sample(index, "VALIDATION") for index in range(10))
+    model_train = tuple(V4ModelSample.from_verified(item) for item in train)
+    model_validation = tuple(V4ModelSample.from_verified(item) for item in validation)
+    assert not hasattr(model_train[0], "counterfactual_trace_bytes")
     for candidate in ("c0_v3_refit", "c1_shared_hazard_ridge"):
-        model = V4RiskModel.fit(train, candidate_id=candidate)
-        calibrated = model.calibrate(validation)
+        model = V4RiskModel.fit(model_train, candidate_id=candidate)
+        calibrated = model.calibrate(model_validation)
         assert tuple(item.horizon_steps for item in calibrated.predict_features(
-            train[0].features_f32
+            model_train[0].features_f32
             if calibrated.feature_variant == "v3_708_past_only"
-            else train[0].temporal_features_f32
+            else model_train[0].temporal_features_f32
         ).horizons) == V4_HORIZON_KEYS
         assert V4RiskModel.from_mapping(calibrated.to_mapping()).to_mapping() == calibrated.to_mapping()
 

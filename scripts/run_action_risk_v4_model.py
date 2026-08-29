@@ -13,6 +13,7 @@ import argparse
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
+import gc
 import hashlib
 import json
 import math
@@ -32,7 +33,6 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v2 import (
 )
 from aeolus.habitat_v2.forecast_issue55_race import build_family_scenario, deterministic_family_ids
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_corpus import (
-    V4RiskSample,
     load_v4_samples,
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_features import HISTORY_FEATURE_COUNT
@@ -42,6 +42,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
     V4_MODEL_CANDIDATES,
     V4_MODEL_PROVENANCE_FIELDS,
     V4_MODEL_SEEDS,
+    V4ModelSample,
     V4_UTILITY_WEIGHTS,
     V4RiskModel,
     load_v4_model,
@@ -247,6 +248,44 @@ def _independent_verify(corpus: Path) -> None:
         raise V4ModelRunError(f"independent V4 corpus verification failed: {detail}") from error
 
 
+def _load_verified_model_samples(
+    rows: Sequence[Mapping[str, Any]],
+    corpus: Path,
+    bundle: Any,
+    scenarios: Mapping[str, Any],
+    family_ids: Sequence[str],
+) -> tuple[V4ModelSample, ...]:
+    """Verify and retain only trace-free rows needed by model fitting."""
+
+    rows_by_family: dict[str | None, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        base_sample = row.get("base_sample")
+        family_id = base_sample.get("family_id") if type(base_sample) is dict else None
+        rows_by_family[family_id].append(row)
+    if set(rows_by_family) != set(family_ids):
+        raise V4ModelRunError("V4 model sample family coverage is incomplete")
+
+    samples: list[V4ModelSample] = []
+    for family_id in family_ids:
+        try:
+            verified = load_v4_samples(
+                rows_by_family[family_id],
+                corpus,
+                bundle,
+                {family_id: scenarios[family_id]},
+            )
+        except Exception as error:
+            raise V4ModelRunError(
+                f"V4 corpus family reload failed after independent verification: {family_id}"
+            ) from error
+        samples.extend(V4ModelSample.from_verified(sample) for sample in verified)
+        del verified
+        gc.collect()
+    if len(samples) != len(rows):
+        raise V4ModelRunError("V4 model sample count differs after family reload")
+    return tuple(samples)
+
+
 def _condition_group(family_id: str) -> str:
     roster = deterministic_family_ids(32)
     try:
@@ -445,7 +484,7 @@ def _provenance(
 
 def _evaluation_metrics(
     model: V4RiskModel,
-    samples: Sequence[V4RiskSample],
+    samples: Sequence[V4ModelSample],
     *,
     bundle: Any,
 ) -> dict[str, Any]:
@@ -512,14 +551,14 @@ def _evaluation_metrics(
             }
         )
 
-    selected: list[tuple[V4RiskSample, Any, float]] = []
-    selected_by_decision: dict[tuple[str, int], tuple[V4RiskSample, Any, float] | None] = {}
+    selected: list[tuple[V4ModelSample, Any, float]] = []
+    selected_by_decision: dict[tuple[str, int], tuple[V4ModelSample, Any, float] | None] = {}
     for decision_key, group in groups.items():
         if len(group) != len(V4_ACTION_IDS) or {
             row["sample"].action_id for row in group
         } != action_ids:
             raise V4ModelRunError("V4 evaluation decision group lacks the full action catalogue")
-        scored: list[tuple[tuple[Any, ...], V4RiskSample, Any, float]] = []
+        scored: list[tuple[tuple[Any, ...], V4ModelSample, Any, float]] = []
         for row in group:
             sample = row["sample"]
             prediction = row["prediction"]
@@ -583,7 +622,9 @@ def _evaluation_metrics(
                 }
             )
     rows_by_condition: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    decisions_by_condition: dict[str, list[tuple[V4RiskSample, Any, float] | None]] = defaultdict(list)
+    decisions_by_condition: dict[
+        str, list[tuple[V4ModelSample, Any, float] | None]
+    ] = defaultdict(list)
     for decision_key, rows in groups.items():
         condition_group = _condition_group(decision_key[0])
         rows_by_condition[condition_group].extend(rows)
@@ -804,10 +845,9 @@ def run_v4_model_study(
         for family_id in family_ids
     }
     rows = _strict_jsonl(corpus / "samples.jsonl")
-    try:
-        samples = load_v4_samples(rows, corpus, bundle, scenarios)
-    except Exception as error:
-        raise V4ModelRunError("V4 corpus reload failed after independent verification") from error
+    samples = _load_verified_model_samples(rows, corpus, bundle, scenarios, family_ids)
+    del rows
+    gc.collect()
     train = tuple(sample for sample in samples if sample.split == "TRAIN")
     validation = tuple(sample for sample in samples if sample.split == "VALIDATION")
     evaluation = tuple(sample for sample in samples if sample.split == "EVALUATION")
