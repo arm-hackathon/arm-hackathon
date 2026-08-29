@@ -305,7 +305,10 @@ def _verify_corpus_binding(
         raise V4StudyV3Error("V4 corpus schema version differs from the protocol requirement")
     if len(manifest.get("family_ids", [])) != requirement["family_count"]:
         raise V4StudyV3Error("V4 corpus family count differs from the protocol requirement")
-    if manifest.get("sample_counts") != requirement["sample_counts"]:
+    required_counts = {
+        key: value for key, value in requirement["sample_counts"].items() if key != "TOTAL"
+    }
+    if manifest.get("sample_counts") != required_counts:
         raise V4StudyV3Error("V4 corpus sample counts differ from the protocol requirement")
     if manifest.get("trace_count") != requirement["trace_count"]:
         raise V4StudyV3Error("V4 corpus trace count differs from the protocol requirement")
