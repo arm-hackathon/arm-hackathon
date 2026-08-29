@@ -208,6 +208,18 @@ the registered minimum-useful-action gate. HMC execution metrics were not
 available because this study was offline-only; no protected final-suite data
 was accessed, and V3 artifacts remain unchanged.
 
+The corrected V4 V2 model study is also complete and remains negative
+development evidence. Its receipt is documented in
+[`docs/evidence/issue-56-action-risk-v4-model-v2.md`](docs/evidence/issue-56-action-risk-v4-model-v2.md).
+The corpus independently passed strict replay with the same 1,664 samples and
+1,696 traces. `c0_v3_refit` selected 12 useful actions but only one distinct
+action, while `c1_shared_hazard_ridge` selected one useful action and one
+distinct action; both failed the registered usefulness and action-diversity
+gates. `c2_shared_hazard_temporal`, `c3_small_shared_mlp`, and
+`c4_advantage_ranker` failed closed during validation calibration. This V2 run
+was offline-only and did not replace or directly outperform the frozen,
+HMC-replayed V3 evidence.
+
 ## Try it: the verified forecast report
 
 **New here? Take the guided tour instead** — an interactive walkthrough that
