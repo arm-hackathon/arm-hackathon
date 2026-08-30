@@ -1946,14 +1946,13 @@ def run_v3_episode(
                     risk_only_scores_v3(bundle, history, model, decision_step=step)
                 )
             elif arm == V4_MODEL_ARM:
-                selected = v4_model.select_action_composite(
-                    v4_model.score_actions_composite(
-                        bundle,
-                        history,
-                        decision_step=step,
-                        current_command=current_vector,
-                    )
+                gated_scores, v4_context = v4_model.score_actions_context(
+                    bundle,
+                    history,
+                    decision_step=step,
+                    current_command=current_vector,
                 )
+                selected = v4_model.select_action_context(gated_scores, v4_context)
             else:
                 selected = select_risk_filtered_point_v3(
                     risk_filter_point_scores_v3(

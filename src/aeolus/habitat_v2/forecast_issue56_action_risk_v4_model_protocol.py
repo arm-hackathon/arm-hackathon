@@ -50,6 +50,22 @@ V4_MODEL_V4_CANDIDATE_IDS = (
     "c7_action_conditioned_cumulative",
 )
 V4_MODEL_V4_STAGE_B_RULE = "stage_a_passer_else_best_safety_passing_usefulness"
+ISSUE56_V4_MODEL_PROTOCOL_V5_SCHEMA_VERSION = (
+    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v5"
+)
+ISSUE56_V4_MODEL_PROTOCOL_V5_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v5"
+ISSUE56_V4_MODEL_PROTOCOL_V5_FILENAME = (
+    "habitat_v2_forecast_issue_56_v4_model_preregistration_v5.json"
+)
+V4_MODEL_V5_SELECTION_CONTRACT = "context_gated_select_v1"
+V4_MODEL_V5_ELIGIBILITY = "risk_screen_passed_and_context_gated"
+V4_MODEL_V5_CONTEXT_GATES = {
+    "critical_health_action": "abstain",
+    "dormant_admission": "nominal_o2_excess_only",
+    "non_nominal_fallback": "current_operating_mode_action",
+    "o2_upper_bound": 0.30,
+    "o2_nominal_margin": 0.015,
+}
 V4_MODEL_V3_STAGE_B_ARMS = (
     "rules_only_common_window",
     "point_model_common_window",
@@ -479,6 +495,9 @@ def _validate_v4_study_protocol(
     parent_results_key: str,
     candidate_ids: tuple[str, ...],
     stage_b_rule: str,
+    selection_contract: str = "composite_point_select_v1",
+    eligibility: str = "risk_screen_passed_and_predicted_safety_improvement",
+    context_gates: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fail closed on an authorized V4 model-study protocol revision."""
 
@@ -554,14 +573,15 @@ def _validate_v4_study_protocol(
         f"{tag} parent evidence",
     )
     _require_sha256(parent_evidence[parent_results_key], "parent results digest")
-    if (
-        type(parent_evidence["oracle_ceiling_useful_decisions"]) is not int
-        or parent_evidence["oracle_ceiling_useful_decisions"] < 16
-        or type(parent_evidence["oracle_ceiling_distinct_actions"]) is not int
-        or parent_evidence["oracle_ceiling_distinct_actions"] < 2
-        or parent_evidence["oracle_policy"] != "composite_point_delta_argmin_over_useful_and_safe_actions"
-    ):
-        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} parent evidence is invalid")
+    if "oracle_ceiling_useful_decisions" in parent_evidence_fields:
+        if (
+            type(parent_evidence["oracle_ceiling_useful_decisions"]) is not int
+            or parent_evidence["oracle_ceiling_useful_decisions"] < 16
+            or type(parent_evidence["oracle_ceiling_distinct_actions"]) is not int
+            or parent_evidence["oracle_ceiling_distinct_actions"] < 2
+            or parent_evidence["oracle_policy"] != "composite_point_delta_argmin_over_useful_and_safe_actions"
+        ):
+            raise Issue56V4ModelProtocolError(f"V4 protocol {tag} parent evidence is invalid")
     if "revision_rationale" in parent_evidence_fields and (
         type(parent_evidence["revision_rationale"]) is not str
         or not parent_evidence["revision_rationale"]
@@ -750,29 +770,32 @@ def _validate_v4_study_protocol(
     ):
         raise Issue56V4ModelProtocolError("V4 protocol v3 calibration contract drifted")
 
-    policy = _exact(
-        root["policy"],
-        {
-            "selection_contract",
-            "candidate_screening_scope",
-            "eligibility",
-            "ranking_order",
-            "abstention_allowed",
-            "hmc_compatibility_mask",
-            "model_proposal_source_type",
-        },
-        "v3 policy",
-    )
+    policy_fields = {
+        "selection_contract",
+        "candidate_screening_scope",
+        "eligibility",
+        "ranking_order",
+        "abstention_allowed",
+        "hmc_compatibility_mask",
+        "model_proposal_source_type",
+    }
+    if context_gates is not None:
+        policy_fields.add("context_gates")
+    policy = _exact(root["policy"], policy_fields, f"{tag} policy")
     if (
-        policy["selection_contract"] != "composite_point_select_v1"
+        policy["selection_contract"] != selection_contract
         or policy["candidate_screening_scope"] != "all_catalogue_actions"
-        or policy["eligibility"] != "risk_screen_passed_and_predicted_safety_improvement"
+        or policy["eligibility"] != eligibility
         or policy["ranking_order"] != ["composite_point_delta", "action_id"]
         or policy["abstention_allowed"] is not True
         or policy["hmc_compatibility_mask"] != "validated_catalogue_actions"
         or policy["model_proposal_source_type"] != "issue56-risk-v4-model"
     ):
-        raise Issue56V4ModelProtocolError("V4 protocol v3 policy contract drifted")
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} policy contract drifted")
+    if context_gates is not None:
+        actual_context_gates = policy.get("context_gates")
+        if type(actual_context_gates) is not dict or actual_context_gates != dict(context_gates):
+            raise Issue56V4ModelProtocolError(f"V4 protocol {tag} context gates drifted")
 
     evaluation = _exact(
         root["evaluation"],
@@ -973,6 +996,38 @@ def load_v4_model_protocol_v4(root: str | Path) -> tuple[dict[str, Any], str]:
     return validate_v4_model_protocol_v4(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
 
 
+def validate_v4_model_protocol_v5(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the authorized V4 model-study protocol revision 5."""
+
+    return _validate_v4_study_protocol(
+        protocol,
+        tag="v5",
+        schema_version=ISSUE56_V4_MODEL_PROTOCOL_V5_SCHEMA_VERSION,
+        preregistration_id=ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
+        parent_evidence_fields={
+            "v4_v4_results_sha256",
+            "revision_rationale",
+        },
+        parent_results_key="v4_v4_results_sha256",
+        candidate_ids=V4_MODEL_V4_CANDIDATE_IDS,
+        stage_b_rule=V4_MODEL_V4_STAGE_B_RULE,
+        selection_contract=V4_MODEL_V5_SELECTION_CONTRACT,
+        eligibility=V4_MODEL_V5_ELIGIBILITY,
+        context_gates=V4_MODEL_V5_CONTEXT_GATES,
+    )
+
+
+def load_v4_model_protocol_v5(root: str | Path) -> tuple[dict[str, Any], str]:
+    """Load and hash the exact authorized V4 model protocol revision 5 bytes."""
+
+    path = Path(root).resolve() / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V5_FILENAME
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise Issue56V4ModelProtocolError("V4 protocol v5 is unreadable") from error
+    return validate_v4_model_protocol_v5(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
+
+
 __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_ID",
@@ -984,6 +1039,9 @@ __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_V4_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_V4_ID",
     "ISSUE56_V4_MODEL_PROTOCOL_V4_SCHEMA_VERSION",
+    "ISSUE56_V4_MODEL_PROTOCOL_V5_FILENAME",
+    "ISSUE56_V4_MODEL_PROTOCOL_V5_ID",
+    "ISSUE56_V4_MODEL_PROTOCOL_V5_SCHEMA_VERSION",
     "Issue56V4ModelProtocolError",
     "V4_MODEL_CANDIDATE_IDS",
     "V4_MODEL_FEATURE_VARIANT_IDS",
@@ -992,10 +1050,15 @@ __all__ = [
     "V4_MODEL_V3_STAGE_B_ARMS",
     "V4_MODEL_V4_CANDIDATE_IDS",
     "V4_MODEL_V4_STAGE_B_RULE",
+    "V4_MODEL_V5_CONTEXT_GATES",
+    "V4_MODEL_V5_ELIGIBILITY",
+    "V4_MODEL_V5_SELECTION_CONTRACT",
     "load_v4_model_protocol",
     "load_v4_model_protocol_v3",
     "load_v4_model_protocol_v4",
+    "load_v4_model_protocol_v5",
     "validate_v4_model_protocol",
     "validate_v4_model_protocol_v3",
     "validate_v4_model_protocol_v4",
+    "validate_v4_model_protocol_v5",
 ]

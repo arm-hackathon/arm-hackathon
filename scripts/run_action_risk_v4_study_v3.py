@@ -61,11 +61,11 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
     write_v4_model,
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
-    ISSUE56_V4_MODEL_PROTOCOL_V4_ID,
+    ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
     V4_MODEL_V3_STAGE_B_ARMS,
     V4_MODEL_V4_CANDIDATE_IDS,
     V4_MODEL_V4_STAGE_B_RULE,
-    load_v4_model_protocol_v4,
+    load_v4_model_protocol_v5,
 )
 
 
@@ -82,7 +82,7 @@ FROZEN_V3_MODEL_FILE_SHA256 = (
     "e977ccb6b4298c5793838621bd819df50f46926ca2c2b73664ea9da232e4fdb8"
 )
 STUDY_SOURCE_PATHS = (
-    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v4.json"),
+    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v5.json"),
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v3.json"),
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json"),
     Path("src/aeolus/habitat_v2/forecast/contracts.py"),
@@ -775,7 +775,7 @@ def main() -> int:
     parser.add_argument("--allow-dirty-smoke", action="store_true")
     args = parser.parse_args()
 
-    protocol, protocol_sha256 = load_v4_model_protocol_v4(REPO_ROOT)
+    protocol, protocol_sha256 = load_v4_model_protocol_v5(REPO_ROOT)
     corpus = _resolve_corpus(args.corpus)
     manifest, corpus_manifest_digest, smoke = _verify_corpus_binding(
         corpus, protocol, allow_smoke=args.allow_dirty_smoke
@@ -940,7 +940,7 @@ def main() -> int:
 
     results = {
         "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v4.result",
-        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V4_ID,
+        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
         "model_protocol_sha256": protocol_sha256,
         "corpus_manifest_sha256": corpus_manifest_digest,
         "corpus_verification": verification_receipt,
@@ -973,7 +973,7 @@ def main() -> int:
     }
     manifest_payload = {
         "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v4.manifest",
-        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V4_ID,
+        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
         "model_protocol_sha256": protocol_sha256,
         "corpus_manifest_sha256": corpus_manifest_digest,
         "candidate_ids": list(V4_MODEL_V4_CANDIDATE_IDS),

@@ -19,7 +19,12 @@ from typing import Any
 import numpy as np
 
 from .forecast.contracts import ForecastContracts, canonical_json_bytes
-from .forecast.projection import ForecastHistory, project_proposed_action
+from .forecast.projection import (
+    HEALTH_ORDER,
+    MODE_ORDER,
+    ForecastHistory,
+    project_proposed_action,
+)
 from .forecast_issue52 import _command_vector
 from .forecast_issue56_action_risk_v2 import (
     ACTION_COUNT,
@@ -122,6 +127,50 @@ V4_COMPOSITE_SELECTION_WEIGHTS = {
     "comfort_deviation": 0.25,
     "resource_composite": 0.10,
 }
+V4_CONTEXT_O2_PRIMARY_INDICES = tuple(zone * 5 + 3 for zone in range(8))
+V4_CONTEXT_O2_UPPER_BOUND = 0.30
+V4_CONTEXT_O2_NOMINAL_MARGIN = 0.015
+V4_CONTEXT_CRITICAL_HEALTH = "CRITICAL"
+V4_CONTEXT_DORMANT_ACTION_ID = "normal-dormant-v1"
+V4_CONTEXT_DORMANT_MODE = "dormant"
+
+
+def detect_v4_context(history: ForecastHistory) -> dict[str, Any]:
+    """Derive the observable operating context used to gate dormant proposals.
+
+    Only causal, already-issued observations are consumed: the latest one-hot
+    operating mode, the latest one-hot HMC health state, and the latest
+    primary-head O2 mole fractions.  No scenario truth or future state is read.
+    """
+
+    if type(history) is not ForecastHistory:
+        raise Issue56V4ModelError("V4 context requires a forecast history")
+    modes = np.asarray(history.mode_f32, dtype=np.float64)
+    healths = np.asarray(history.health_f32, dtype=np.float64)
+    numeric = np.asarray(history.numeric_f32, dtype=np.float64)
+    if modes.ndim != 2 or modes.shape[1] != len(MODE_ORDER) or modes.shape[0] == 0:
+        raise Issue56V4ModelError("V4 context mode history is malformed")
+    if healths.shape != modes.shape or healths.shape[1] != len(HEALTH_ORDER):
+        raise Issue56V4ModelError("V4 context health history is malformed")
+    if numeric.ndim != 2 or numeric.shape[0] != modes.shape[0]:
+        raise Issue56V4ModelError("V4 context numeric history is malformed")
+    max_index = max(V4_CONTEXT_O2_PRIMARY_INDICES)
+    if numeric.shape[1] <= max_index or not np.isfinite(numeric).all():
+        raise Issue56V4ModelError("V4 context numeric history lacks O2 channels")
+    mode = MODE_ORDER[int(np.argmax(modes[-1]))]
+    health = HEALTH_ORDER[int(np.argmax(healths[-1]))]
+    mean_o2 = float(np.mean(numeric[-1, list(V4_CONTEXT_O2_PRIMARY_INDICES)]))
+    nominal_o2_excess = bool(
+        mode == "occupied"
+        and mean_o2 >= V4_CONTEXT_O2_UPPER_BOUND - V4_CONTEXT_O2_NOMINAL_MARGIN
+    )
+    return {
+        "operating_mode": mode,
+        "health_state": health,
+        "mean_primary_o2": mean_o2,
+        "nominal_o2_excess": nominal_o2_excess,
+        "critical_health": bool(health == V4_CONTEXT_CRITICAL_HEALTH),
+    }
 
 
 class Issue56V4ModelError(ValueError):
@@ -1899,6 +1948,96 @@ class V4RiskModel:
         if not eligible:
             return None
         return min(eligible, key=lambda item: (item.utility_score, item.action_id))
+
+    def score_actions_context(
+        self,
+        bundle: ForecastContracts,
+        history: ForecastHistory,
+        *,
+        decision_step: int,
+        current_command: np.ndarray,
+    ) -> tuple[tuple[V4ActionScore, ...], dict[str, Any]]:
+        """Composite scoring plus observable-context gating.
+
+        Dormant is only admissible when the habitat shows an O2-excess nominal
+        profile; when HMC health is critical every proposal is withheld because
+        arbitration would emergency-override it anyway.
+        """
+
+        scores = self.score_actions_composite(
+            bundle,
+            history,
+            decision_step=decision_step,
+            current_command=current_command,
+        )
+        context = detect_v4_context(history)
+        gated: list[V4ActionScore] = []
+        for score in scores:
+            hard = score.hard_ineligible
+            reason = score.reason
+            if context["critical_health"]:
+                hard = True
+                if reason is None:
+                    reason = "context_critical_health"
+            elif (
+                score.action_id == V4_CONTEXT_DORMANT_ACTION_ID
+                and not context["nominal_o2_excess"]
+            ):
+                hard = True
+                if reason is None:
+                    reason = "context_dormant_not_nominal"
+            gated.append(
+                V4ActionScore(
+                    score.action_id,
+                    score.action_index,
+                    score.compatible,
+                    hard,
+                    score.utility_score if not hard else math.inf,
+                    score.intervention,
+                    score.prediction,
+                    reason,
+                )
+            )
+        return tuple(gated), context
+
+    def select_action_context(
+        self,
+        scores: Sequence[V4ActionScore],
+        context: Mapping[str, Any],
+    ) -> V4ActionScore | None:
+        """Context-aware selection.
+
+        In critical health the model abstains.  In an O2-excess nominal profile
+        it uses the composite improvement rule (which admits dormant).  Otherwise
+        it proposes the action matching the current operating mode, which is
+        safe and HMC-consistent, rather than collapsing to dormant.
+        """
+
+        items = tuple(scores)
+        if not items:
+            raise Issue56V4ModelError("V4 action selection requires scores")
+        identifiers = [item.action_id for item in items]
+        if len(identifiers) != len(set(identifiers)):
+            raise Issue56V4ModelError("V4 action selection received duplicate actions")
+        if context.get("critical_health"):
+            return None
+        eligible = [item for item in items if not item.hard_ineligible and item.compatible]
+        if not eligible:
+            return None
+        if context.get("nominal_o2_excess"):
+            improving = [
+                item for item in eligible if item.prediction.relative_safety_exposure < 0.0
+            ]
+            if not improving:
+                return None
+            return min(improving, key=lambda item: (item.utility_score, item.action_id))
+        mode = context.get("operating_mode")
+        target_action_id = f"normal-{mode}-v1" if type(mode) is str else None
+        if target_action_id in V4_ACTION_IDS:
+            for item in eligible:
+                if item.action_id == target_action_id:
+                    return item
+        return None
 
     def _body(self) -> dict[str, Any]:
         def values(array: np.ndarray) -> list[float]:

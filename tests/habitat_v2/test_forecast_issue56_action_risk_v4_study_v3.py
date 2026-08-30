@@ -420,3 +420,79 @@ def test_protocol_v4_loads_and_revises_stage_b_rule() -> None:
     drifted_candidates["candidate_models"] = drifted_candidates["candidate_models"][:2]
     with pytest.raises(Issue56V4ModelProtocolError, match="candidate roster"):
         validate_v4_model_protocol_v4(drifted_candidates)
+
+
+def test_protocol_v5_context_gated_selection() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        ISSUE56_V4_MODEL_PROTOCOL_V5_FILENAME,
+        load_v4_model_protocol_v5,
+        validate_v4_model_protocol_v5,
+    )
+
+    protocol, digest = load_v4_model_protocol_v5(REPO_ROOT)
+    assert protocol["preregistration_id"] == "habitat_v2_forecast_issue_56_v4_model_preregistration_v5"
+    assert len(digest) == 64
+    assert protocol["policy"]["selection_contract"] == "context_gated_select_v1"
+    assert protocol["policy"]["context_gates"]["dormant_admission"] == "nominal_o2_excess_only"
+    assert (REPO_ROOT / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V5_FILENAME).is_file()
+
+    drifted = json.loads(json.dumps(protocol))
+    drifted["policy"]["context_gates"]["o2_nominal_margin"] = 0.5
+    with pytest.raises(Issue56V4ModelProtocolError, match="context gates"):
+        validate_v4_model_protocol_v5(drifted)
+
+
+def _context_model() -> "V4RiskModel":
+    train = _dataset("TRAIN", 10)
+    validation = _dataset("VALIDATION", 10)
+    return V4RiskModel.fit(train, candidate_id="c7_action_conditioned_cumulative").calibrate(
+        validation, threshold_grid=V4_THRESHOLD_GRID_EXTENDED
+    )
+
+
+def test_select_action_context_abstains_when_critical() -> None:
+    model = _context_model()
+    scores = [
+        _score(index, _prediction(relative_safety=-1.0), -1.0) for index in range(4)
+    ]
+    context = {"critical_health": True, "nominal_o2_excess": False, "operating_mode": "occupied"}
+    assert model.select_action_context(scores, context) is None
+
+
+def test_select_action_context_nominal_uses_composite() -> None:
+    model = _context_model()
+    scores = [
+        _score(0, _prediction(relative_safety=-2.0), -2.0),
+        _score(1, _prediction(relative_safety=-1.0), -1.0),
+        _score(2, _prediction(relative_safety=0.5), 0.5),
+        _score(3, _prediction(relative_safety=1.0), 1.0),
+    ]
+    context = {"critical_health": False, "nominal_o2_excess": True, "operating_mode": "occupied"}
+    selected = model.select_action_context(scores, context)
+    assert selected is not None and selected.action_index == 0
+
+
+def test_select_action_context_non_nominal_picks_mode_action() -> None:
+    model = _context_model()
+    # dormant (index 3) would be the composite favourite but context is non-nominal.
+    scores = [
+        _score(0, _prediction(relative_safety=0.1), 0.1),
+        _score(1, _prediction(relative_safety=0.2), 0.2),
+        _score(2, _prediction(relative_safety=0.3), 0.3),
+        _score(3, _prediction(relative_safety=-1.0), -1.0),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": False,
+        "operating_mode": "contingency",
+    }
+    selected = model.select_action_context(scores, context)
+    assert selected is not None and selected.action_id == "normal-contingency-v1"
+
+    occupied_context = {
+        "critical_health": False,
+        "nominal_o2_excess": False,
+        "operating_mode": "occupied",
+    }
+    selected_occupied = model.select_action_context(scores, occupied_context)
+    assert selected_occupied is not None and selected_occupied.action_id == "normal-occupied-v1"
