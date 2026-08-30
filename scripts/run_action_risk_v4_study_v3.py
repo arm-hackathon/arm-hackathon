@@ -61,10 +61,11 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
     write_v4_model,
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
-    ISSUE56_V4_MODEL_PROTOCOL_V3_ID,
-    V4_MODEL_V3_CANDIDATE_IDS,
+    ISSUE56_V4_MODEL_PROTOCOL_V4_ID,
     V4_MODEL_V3_STAGE_B_ARMS,
-    load_v4_model_protocol_v3,
+    V4_MODEL_V4_CANDIDATE_IDS,
+    V4_MODEL_V4_STAGE_B_RULE,
+    load_v4_model_protocol_v4,
 )
 
 
@@ -81,6 +82,7 @@ FROZEN_V3_MODEL_FILE_SHA256 = (
     "e977ccb6b4298c5793838621bd819df50f46926ca2c2b73664ea9da232e4fdb8"
 )
 STUDY_SOURCE_PATHS = (
+    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v4.json"),
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v3.json"),
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json"),
     Path("src/aeolus/habitat_v2/forecast/contracts.py"),
@@ -773,7 +775,7 @@ def main() -> int:
     parser.add_argument("--allow-dirty-smoke", action="store_true")
     args = parser.parse_args()
 
-    protocol, protocol_sha256 = load_v4_model_protocol_v3(REPO_ROOT)
+    protocol, protocol_sha256 = load_v4_model_protocol_v4(REPO_ROOT)
     corpus = _resolve_corpus(args.corpus)
     manifest, corpus_manifest_digest, smoke = _verify_corpus_binding(
         corpus, protocol, allow_smoke=args.allow_dirty_smoke
@@ -813,10 +815,10 @@ def main() -> int:
         _sha_json(source_identity), manifest, corpus_manifest_digest, protocol_sha256
     )
 
-    print(f"Issue #56 V4 study v3 (stage A: {len(V4_MODEL_V3_CANDIDATE_IDS)} candidates)", file=sys.stderr)
+    print(f"Issue #56 V4 study v4 (stage A: {len(V4_MODEL_V4_CANDIDATE_IDS)} candidates)", file=sys.stderr)
     candidates: list[dict[str, Any]] = []
     gate_status_by_candidate: dict[str, Any] = {}
-    for index, candidate_id in enumerate(V4_MODEL_V3_CANDIDATE_IDS):
+    for index, candidate_id in enumerate(V4_MODEL_V4_CANDIDATE_IDS):
         seed = V4_MODEL_SEEDS[index % len(V4_MODEL_SEEDS)]
         try:
             model = V4RiskModel.fit(
@@ -873,16 +875,54 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    stage_b_candidate = next(
-        (
-            candidate_id
-            for candidate_id in V4_MODEL_V3_CANDIDATE_IDS
-            if gate_status_by_candidate.get(candidate_id)
-        ),
-        None,
-    )
+    if protocol["evaluation"]["stage_b_hmc_replay"]["stage_b_candidate_rule"] != (
+        V4_MODEL_V4_STAGE_B_RULE
+    ):
+        raise V4StudyV3Error("V4 study stage B candidate rule drifted from the protocol")
 
-    stage_b: dict[str, Any] = {"ran": False, "candidate_id": stage_b_candidate}
+    evaluated_by_id = {
+        item["candidate_id"]: item for item in candidates if item["status"] == "EVALUATED"
+    }
+
+    def _safety_critical_pass(cid: str) -> bool:
+        item = evaluated_by_id.get(cid)
+        if item is None:
+            return False
+        metrics = item["evaluation"]
+        return bool(
+            metrics["dangerous_event_recall"] is not None
+            and metrics["dangerous_event_recall"] >= 0.98
+            and metrics["authority_violation_count"] == 0
+            and metrics["replay_failure_count"] == 0
+            and metrics["provenance_violation_count"] == 0
+            and metrics["non_finite_metric_count"] == 0
+            and metrics["proposal_admission_failure_count"] == 0
+        )
+
+    full_passers = [
+        cid for cid in V4_MODEL_V4_CANDIDATE_IDS if gate_status_by_candidate.get(cid)
+    ]
+    if full_passers:
+        stage_b_candidate = full_passers[0]
+        stage_b_trigger = "stage_a_gate_passer"
+    else:
+        safety_passers = [cid for cid in V4_MODEL_V4_CANDIDATE_IDS if _safety_critical_pass(cid)]
+        if safety_passers:
+            stage_b_candidate = max(
+                safety_passers,
+                key=lambda cid: evaluated_by_id[cid]["evaluation"]["useful_action_count"],
+            )
+            stage_b_trigger = "best_safety_passing_usefulness"
+        else:
+            stage_b_candidate = None
+            stage_b_trigger = "no_safety_passing_candidate"
+
+    stage_b: dict[str, Any] = {
+        "ran": False,
+        "candidate_id": stage_b_candidate,
+        "candidate_rule": V4_MODEL_V4_STAGE_B_RULE,
+        "trigger": stage_b_trigger,
+    }
     if stage_b_candidate is not None:
         stage_b = _run_stage_b(
             output,
@@ -891,18 +931,16 @@ def main() -> int:
             family_split,
             evaluation,
             stage_b_candidate,
-            next(
-                item
-                for item in candidates
-                if item["candidate_id"] == stage_b_candidate and item["status"] == "EVALUATED"
-            ),
+            evaluated_by_id[stage_b_candidate],
             protocol,
             smoke=smoke,
         )
+        stage_b["candidate_rule"] = V4_MODEL_V4_STAGE_B_RULE
+        stage_b["trigger"] = stage_b_trigger
 
     results = {
-        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v3.result",
-        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V3_ID,
+        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v4.result",
+        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V4_ID,
         "model_protocol_sha256": protocol_sha256,
         "corpus_manifest_sha256": corpus_manifest_digest,
         "corpus_verification": verification_receipt,
@@ -934,11 +972,11 @@ def main() -> int:
         "status": "SMOKE_PATH_ONLY" if smoke else "DEVELOPMENT_EVIDENCE",
     }
     manifest_payload = {
-        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v3.manifest",
-        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V3_ID,
+        "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v4.manifest",
+        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V4_ID,
         "model_protocol_sha256": protocol_sha256,
         "corpus_manifest_sha256": corpus_manifest_digest,
-        "candidate_ids": list(V4_MODEL_V3_CANDIDATE_IDS),
+        "candidate_ids": list(V4_MODEL_V4_CANDIDATE_IDS),
         "stage_b_candidate": stage_b_candidate,
         "stage_b_arms": list(V4_MODEL_V3_STAGE_B_ARMS),
         "hmc_authority_changed": False,

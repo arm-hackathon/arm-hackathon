@@ -36,6 +36,20 @@ V4_MODEL_V3_CANDIDATE_IDS = (
     "c5_action_conditioned_ridge",
     "c6_action_conditioned_temporal",
 )
+ISSUE56_V4_MODEL_PROTOCOL_V4_SCHEMA_VERSION = (
+    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v4"
+)
+ISSUE56_V4_MODEL_PROTOCOL_V4_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v4"
+ISSUE56_V4_MODEL_PROTOCOL_V4_FILENAME = (
+    "habitat_v2_forecast_issue_56_v4_model_preregistration_v4.json"
+)
+V4_MODEL_V4_CANDIDATE_IDS = (
+    "c0_v3_refit",
+    "c5_action_conditioned_ridge",
+    "c6_action_conditioned_temporal",
+    "c7_action_conditioned_cumulative",
+)
+V4_MODEL_V4_STAGE_B_RULE = "stage_a_passer_else_best_safety_passing_usefulness"
 V4_MODEL_V3_STAGE_B_ARMS = (
     "rules_only_common_window",
     "point_model_common_window",
@@ -455,8 +469,18 @@ def _require_sha256(value: object, label: str) -> str:
     return value
 
 
-def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]:
-    """Fail closed on the authorized V4 model-study protocol revision 3."""
+def _validate_v4_study_protocol(
+    protocol: Mapping[str, Any],
+    *,
+    tag: str,
+    schema_version: str,
+    preregistration_id: str,
+    parent_evidence_fields: set[str],
+    parent_results_key: str,
+    candidate_ids: tuple[str, ...],
+    stage_b_rule: str,
+) -> dict[str, Any]:
+    """Fail closed on an authorized V4 model-study protocol revision."""
 
     root = _exact(
         protocol,
@@ -480,14 +504,14 @@ def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]
             "artifact",
             "non_goals",
         },
-        "v3 root",
+        f"{tag} root",
     )
     if (
-        root["schema_version"] != ISSUE56_V4_MODEL_PROTOCOL_V3_SCHEMA_VERSION
-        or root["preregistration_id"] != ISSUE56_V4_MODEL_PROTOCOL_V3_ID
+        root["schema_version"] != schema_version
+        or root["preregistration_id"] != preregistration_id
         or root["status"] != ISSUE56_V4_MODEL_PROTOCOL_STATUS
     ):
-        raise Issue56V4ModelProtocolError("V4 protocol v3 identity drift")
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} identity drift")
 
     authorization = _exact(
         root["authorization"],
@@ -526,15 +550,10 @@ def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]
 
     parent_evidence = _exact(
         root["parent_evidence"],
-        {
-            "v4_v2_results_sha256",
-            "oracle_ceiling_useful_decisions",
-            "oracle_ceiling_distinct_actions",
-            "oracle_policy",
-        },
-        "v3 parent evidence",
+        parent_evidence_fields,
+        f"{tag} parent evidence",
     )
-    _require_sha256(parent_evidence["v4_v2_results_sha256"], "parent results digest")
+    _require_sha256(parent_evidence[parent_results_key], "parent results digest")
     if (
         type(parent_evidence["oracle_ceiling_useful_decisions"]) is not int
         or parent_evidence["oracle_ceiling_useful_decisions"] < 16
@@ -542,7 +561,12 @@ def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]
         or parent_evidence["oracle_ceiling_distinct_actions"] < 2
         or parent_evidence["oracle_policy"] != "composite_point_delta_argmin_over_useful_and_safe_actions"
     ):
-        raise Issue56V4ModelProtocolError("V4 protocol v3 parent evidence is invalid")
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} parent evidence is invalid")
+    if "revision_rationale" in parent_evidence_fields and (
+        type(parent_evidence["revision_rationale"]) is not str
+        or not parent_evidence["revision_rationale"]
+    ):
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} revision rationale is missing")
 
     population = _exact(
         root["population"],
@@ -667,16 +691,16 @@ def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]
     ):
         raise Issue56V4ModelProtocolError("V4 protocol v3 label contract drifted")
 
-    candidates = _require_list(root["candidate_models"], "v3 candidate models")
-    if tuple(item.get("id") for item in candidates) != V4_MODEL_V3_CANDIDATE_IDS:
-        raise Issue56V4ModelProtocolError("V4 protocol v3 candidate roster drifted")
+    candidates = _require_list(root["candidate_models"], f"{tag} candidate models")
+    if tuple(item.get("id") for item in candidates) != candidate_ids:
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} candidate roster drifted")
     if any(
         type(item) is not dict
         or type(item.get("kind")) is not str
         or item.get("feature_variant") not in V4_MODEL_FEATURE_VARIANT_IDS
         for item in candidates
     ):
-        raise Issue56V4ModelProtocolError("V4 protocol v3 candidate descriptor is invalid")
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} candidate descriptor is invalid")
 
     training = _exact(
         root["training"],
@@ -826,12 +850,12 @@ def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]
     )
     if (
         tuple(stage_b["arms"]) != V4_MODEL_V3_STAGE_B_ARMS
-        or stage_b["stage_b_candidate_rule"] != "lowest_index_stage_a_gate_passing_candidate"
+        or stage_b["stage_b_candidate_rule"] != stage_b_rule
         or stage_b["v3_baseline_refit_required"] is not True
         or stage_b["bootstrap_seed"] != 560057
         or stage_b["bootstrap_resamples"] != 10000
     ):
-        raise Issue56V4ModelProtocolError("V4 protocol v3 stage B contract drifted")
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} stage B contract drifted")
     stage_b_gates = _exact(
         stage_b["gates"],
         {
@@ -886,6 +910,47 @@ def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]
     return dict(root)
 
 
+def validate_v4_model_protocol_v3(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the authorized V4 model-study protocol revision 3."""
+
+    return _validate_v4_study_protocol(
+        protocol,
+        tag="v3",
+        schema_version=ISSUE56_V4_MODEL_PROTOCOL_V3_SCHEMA_VERSION,
+        preregistration_id=ISSUE56_V4_MODEL_PROTOCOL_V3_ID,
+        parent_evidence_fields={
+            "v4_v2_results_sha256",
+            "oracle_ceiling_useful_decisions",
+            "oracle_ceiling_distinct_actions",
+            "oracle_policy",
+        },
+        parent_results_key="v4_v2_results_sha256",
+        candidate_ids=V4_MODEL_V3_CANDIDATE_IDS,
+        stage_b_rule="lowest_index_stage_a_gate_passing_candidate",
+    )
+
+
+def validate_v4_model_protocol_v4(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the authorized V4 model-study protocol revision 4."""
+
+    return _validate_v4_study_protocol(
+        protocol,
+        tag="v4",
+        schema_version=ISSUE56_V4_MODEL_PROTOCOL_V4_SCHEMA_VERSION,
+        preregistration_id=ISSUE56_V4_MODEL_PROTOCOL_V4_ID,
+        parent_evidence_fields={
+            "v4_v3_results_sha256",
+            "oracle_ceiling_useful_decisions",
+            "oracle_ceiling_distinct_actions",
+            "oracle_policy",
+            "revision_rationale",
+        },
+        parent_results_key="v4_v3_results_sha256",
+        candidate_ids=V4_MODEL_V4_CANDIDATE_IDS,
+        stage_b_rule=V4_MODEL_V4_STAGE_B_RULE,
+    )
+
+
 def load_v4_model_protocol_v3(root: str | Path) -> tuple[dict[str, Any], str]:
     """Load and hash the exact authorized V4 model protocol revision 3 bytes."""
 
@@ -897,6 +962,17 @@ def load_v4_model_protocol_v3(root: str | Path) -> tuple[dict[str, Any], str]:
     return validate_v4_model_protocol_v3(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
 
 
+def load_v4_model_protocol_v4(root: str | Path) -> tuple[dict[str, Any], str]:
+    """Load and hash the exact authorized V4 model protocol revision 4 bytes."""
+
+    path = Path(root).resolve() / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V4_FILENAME
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise Issue56V4ModelProtocolError("V4 protocol v4 is unreadable") from error
+    return validate_v4_model_protocol_v4(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
+
+
 __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_ID",
@@ -905,14 +981,21 @@ __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_V3_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_V3_ID",
     "ISSUE56_V4_MODEL_PROTOCOL_V3_SCHEMA_VERSION",
+    "ISSUE56_V4_MODEL_PROTOCOL_V4_FILENAME",
+    "ISSUE56_V4_MODEL_PROTOCOL_V4_ID",
+    "ISSUE56_V4_MODEL_PROTOCOL_V4_SCHEMA_VERSION",
     "Issue56V4ModelProtocolError",
     "V4_MODEL_CANDIDATE_IDS",
     "V4_MODEL_FEATURE_VARIANT_IDS",
     "V4_MODEL_SPLIT_COUNTS",
     "V4_MODEL_V3_CANDIDATE_IDS",
     "V4_MODEL_V3_STAGE_B_ARMS",
+    "V4_MODEL_V4_CANDIDATE_IDS",
+    "V4_MODEL_V4_STAGE_B_RULE",
     "load_v4_model_protocol",
     "load_v4_model_protocol_v3",
+    "load_v4_model_protocol_v4",
     "validate_v4_model_protocol",
     "validate_v4_model_protocol_v3",
+    "validate_v4_model_protocol_v4",
 ]

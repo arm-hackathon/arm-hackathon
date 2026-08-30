@@ -52,6 +52,7 @@ V4_MODEL_CANDIDATES = (
     "c4_advantage_ranker",
     "c5_action_conditioned_ridge",
     "c6_action_conditioned_temporal",
+    "c7_action_conditioned_cumulative",
 )
 V4_ACTION_IDS = (
     "normal-occupied-v1",
@@ -68,6 +69,7 @@ V4_CANDIDATE_FEATURE_VARIANTS = {
     "c4_advantage_ranker": "v4_temporal_past_only",
     "c5_action_conditioned_ridge": "v3_708_past_only",
     "c6_action_conditioned_temporal": "v4_temporal_past_only",
+    "c7_action_conditioned_cumulative": "v3_708_past_only",
 }
 V4_CANDIDATE_SEMANTICS = {
     "c0_v3_refit": ("ridge", "cumulative_logistic"),
@@ -77,6 +79,7 @@ V4_CANDIDATE_SEMANTICS = {
     "c4_advantage_ranker": ("advantage_ranker", "shared_hazard"),
     "c5_action_conditioned_ridge": ("action_conditioned_ridge", "shared_hazard"),
     "c6_action_conditioned_temporal": ("action_conditioned_ridge", "shared_hazard"),
+    "c7_action_conditioned_cumulative": ("action_conditioned_ridge", "cumulative_logistic"),
 }
 V4_EVENT_LIMIT = 0.50
 V4_EXPECTED_EXPOSURE_LIMIT = 0.50

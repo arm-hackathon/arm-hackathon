@@ -367,3 +367,56 @@ def _minimal_v3_model(train, validation):
     base = [item.base_sample for item in train]
     base_validation = [item.base_sample for item in validation]
     return V3RiskModel.fit(base).calibrate(base_validation)
+
+
+def test_c7_action_conditioned_cumulative_fits_and_round_trips() -> None:
+    train = _dataset("TRAIN", 10)
+    validation = _dataset("VALIDATION", 10)
+    model = V4RiskModel.fit(train, candidate_id="c7_action_conditioned_cumulative").calibrate(
+        validation, threshold_grid=V4_THRESHOLD_GRID_EXTENDED
+    )
+    assert model.model_kind == "action_conditioned_ridge"
+    assert model.hazard_mode == "cumulative_logistic"
+    assert model.relative_action_coefficients is not None
+    assert model.relative_action_coefficients.shape == (4, 3, FEATURE_COUNT)
+    restored = V4RiskModel.from_mapping(model.to_mapping())
+    assert restored.to_mapping() == model.to_mapping()
+    features = train[0].features_f32
+    relative = [
+        model.predict_features(features, action_index=index).relative_safety_exposure
+        for index in range(4)
+    ]
+    assert len({round(value, 6) for value in relative}) >= 2
+
+
+def test_protocol_v4_loads_and_revises_stage_b_rule() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        ISSUE56_V4_MODEL_PROTOCOL_V4_FILENAME,
+        load_v4_model_protocol_v4,
+        validate_v4_model_protocol_v4,
+    )
+
+    protocol, digest = load_v4_model_protocol_v4(REPO_ROOT)
+    assert protocol["preregistration_id"] == "habitat_v2_forecast_issue_56_v4_model_preregistration_v4"
+    assert len(digest) == 64
+    assert protocol["evaluation"]["stage_b_hmc_replay"]["stage_b_candidate_rule"] == (
+        "stage_a_passer_else_best_safety_passing_usefulness"
+    )
+    candidate_ids = [item["id"] for item in protocol["candidate_models"]]
+    assert candidate_ids == [
+        "c0_v3_refit",
+        "c5_action_conditioned_ridge",
+        "c6_action_conditioned_temporal",
+        "c7_action_conditioned_cumulative",
+    ]
+    assert (REPO_ROOT / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V4_FILENAME).is_file()
+
+    drifted = json.loads(json.dumps(protocol))
+    drifted["evaluation"]["stage_b_hmc_replay"]["stage_b_candidate_rule"] = "something_else"
+    with pytest.raises(Issue56V4ModelProtocolError, match="stage B"):
+        validate_v4_model_protocol_v4(drifted)
+
+    drifted_candidates = json.loads(json.dumps(protocol))
+    drifted_candidates["candidate_models"] = drifted_candidates["candidate_models"][:2]
+    with pytest.raises(Issue56V4ModelProtocolError, match="candidate roster"):
+        validate_v4_model_protocol_v4(drifted_candidates)
