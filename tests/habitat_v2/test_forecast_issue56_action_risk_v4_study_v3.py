@@ -520,6 +520,84 @@ def test_family_split_dispatcher_rejects_unknown_protocol() -> None:
         family_split_for_protocol("not-a-split", roster)
 
 
+def test_protocol_v7_revised_superiority_and_stage_a_gates() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        ISSUE56_V4_MODEL_PROTOCOL_V7_FILENAME,
+        load_v4_model_protocol_v7,
+        validate_v4_model_protocol_v7,
+    )
+
+    protocol, digest = load_v4_model_protocol_v7(REPO_ROOT)
+    assert (
+        protocol["preregistration_id"]
+        == "habitat_v2_forecast_issue_56_v4_model_preregistration_v7"
+    )
+    assert len(digest) == 64
+    assert (REPO_ROOT / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V7_FILENAME).is_file()
+
+    # The distinct-action Stage A gate is dropped; the useful gate is unchanged.
+    stage_a_gates = protocol["evaluation"]["stage_a_offline"]["gates"]
+    assert "minimum_distinct_selected_actions" not in stage_a_gates
+    assert stage_a_gates["minimum_useful_action_count"] == 16
+    assert stage_a_gates["minimum_dangerous_event_recall"] == 0.98
+
+    # Superiority now credits equal-or-more admissions with strictly better safety.
+    superiority = protocol["evaluation"]["stage_b_hmc_replay"]["superiority_over_v3"]
+    assert superiority == {
+        "admitted_proposal_count_must_be_at_least_v3": True,
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "safety_exposure_paired_point_difference_must_be_strictly_negative": True,
+        "safety_exposure_paired_ci_upper_maximum": 0.0,
+        "maximum_hmc_mismatch_count": 0,
+    }
+
+    # The redesigned v6 split is carried over unchanged.
+    assert protocol["population"]["split_protocol"] == "issue56_v4_model_split_v6"
+    assert protocol["corpus_requirement"]["split_protocol"] == "issue56_v4_model_split_v6"
+
+    drifted = json.loads(json.dumps(protocol))
+    drifted["evaluation"]["stage_b_hmc_replay"]["superiority_over_v3"][
+        "safety_exposure_paired_point_difference_must_be_strictly_negative"
+    ] = False
+    with pytest.raises(Issue56V4ModelProtocolError, match="superiority"):
+        validate_v4_model_protocol_v7(drifted)
+
+    drifted_gates = json.loads(json.dumps(protocol))
+    drifted_gates["evaluation"]["stage_a_offline"]["gates"]["minimum_useful_action_count"] = 8
+    with pytest.raises(Issue56V4ModelProtocolError, match="stage A gates"):
+        validate_v4_model_protocol_v7(drifted_gates)
+
+
+def test_superiority_helper_enforces_strictly_better_safety() -> None:
+    import importlib.util
+
+    spec_path = REPO_ROOT / "scripts" / "run_action_risk_v4_study_v3.py"
+    module_spec = importlib.util.spec_from_file_location("study_v3_under_test", spec_path)
+    study = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(study)
+
+    v7_spec = {
+        "admitted_proposal_count_must_be_at_least_v3": True,
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "safety_exposure_paired_point_difference_must_be_strictly_negative": True,
+        "safety_exposure_paired_ci_upper_maximum": 0.0,
+        "maximum_hmc_mismatch_count": 0,
+    }
+    better = {"point_difference": -1e-05, "ci_lower": -3e-05, "ci_upper": -1e-07}
+    equal = {"point_difference": 0.0, "ci_lower": 0.0, "ci_upper": 1e-06}
+    assert study._superiority_over_v3(v7_spec, better, 4, 4, 0)["achieved"] is True
+    assert study._superiority_over_v3(v7_spec, equal, 4, 4, 0)["achieved"] is False
+    assert study._superiority_over_v3(v7_spec, better, 3, 4, 0)["achieved"] is False
+    assert study._superiority_over_v3(v7_spec, better, 4, 4, 1)["achieved"] is False
+
+    legacy_spec = {
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "admitted_proposal_count_must_exceed_v3": True,
+    }
+    assert study._superiority_over_v3(legacy_spec, better, 5, 4, 0)["achieved"] is True
+    assert study._superiority_over_v3(legacy_spec, better, 4, 4, 0)["achieved"] is False
+
+
 def _context_model() -> "V4RiskModel":
     train = _dataset("TRAIN", 10)
     validation = _dataset("VALIDATION", 10)

@@ -75,6 +75,31 @@ ISSUE56_V4_MODEL_PROTOCOL_V6_ID = "habitat_v2_forecast_issue_56_v4_model_preregi
 ISSUE56_V4_MODEL_PROTOCOL_V6_FILENAME = (
     "habitat_v2_forecast_issue_56_v4_model_preregistration_v6.json"
 )
+ISSUE56_V4_MODEL_PROTOCOL_V7_SCHEMA_VERSION = (
+    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v7"
+)
+ISSUE56_V4_MODEL_PROTOCOL_V7_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v7"
+ISSUE56_V4_MODEL_PROTOCOL_V7_FILENAME = (
+    "habitat_v2_forecast_issue_56_v4_model_preregistration_v7.json"
+)
+V4_MODEL_V7_STAGE_A_GATES = {
+    "authority_violations": 0,
+    "replay_failures": 0,
+    "provenance_violations": 0,
+    "non_finite_metrics": 0,
+    "proposal_admission_failures": 0,
+    "minimum_useful_action_count": 16,
+    "maximum_abstention_rate": 0.8,
+    "maximum_inference_latency_p99_ms": 250.0,
+    "minimum_dangerous_event_recall": 0.98,
+}
+V4_MODEL_V7_SUPERIORITY_SPEC = {
+    "admitted_proposal_count_must_be_at_least_v3": True,
+    "safety_exposure_paired_point_difference_maximum": 0.0,
+    "safety_exposure_paired_point_difference_must_be_strictly_negative": True,
+    "safety_exposure_paired_ci_upper_maximum": 0.0,
+    "maximum_hmc_mismatch_count": 0,
+}
 V4_MODEL_V6_SPLIT_PROTOCOL = "issue56_v4_model_split_v6"
 V4_MODEL_V3_SPLIT_PROTOCOL = "issue56_v4_model_split_v3"
 V4_MODEL_V6_CONDITION_GROUP_LABELS = (
@@ -581,6 +606,8 @@ def _validate_v4_study_protocol(
     context_gates: Mapping[str, Any] | None = None,
     split_mapping: Mapping[str, str] | None = None,
     corpus_split_protocol: str | None = None,
+    stage_a_gate_values: Mapping[str, Any] | None = None,
+    superiority_spec: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fail closed on an authorized V4 model-study protocol revision."""
 
@@ -938,35 +965,29 @@ def _validate_v4_study_protocol(
         "abstention_rate",
     }.issubset(stage_a_metrics):
         raise Issue56V4ModelProtocolError("V4 protocol v3 stage A metrics are incomplete")
+    expected_stage_a_gates = (
+        dict(stage_a_gate_values)
+        if stage_a_gate_values is not None
+        else {
+            "authority_violations": 0,
+            "replay_failures": 0,
+            "provenance_violations": 0,
+            "non_finite_metrics": 0,
+            "proposal_admission_failures": 0,
+            "minimum_useful_action_count": 16,
+            "minimum_distinct_selected_actions": 2,
+            "maximum_abstention_rate": 0.8,
+            "maximum_inference_latency_p99_ms": 250.0,
+            "minimum_dangerous_event_recall": 0.98,
+        }
+    )
     stage_a_gates = _exact(
         stage_a["gates"],
-        {
-            "authority_violations",
-            "replay_failures",
-            "provenance_violations",
-            "non_finite_metrics",
-            "proposal_admission_failures",
-            "minimum_useful_action_count",
-            "minimum_distinct_selected_actions",
-            "maximum_abstention_rate",
-            "maximum_inference_latency_p99_ms",
-            "minimum_dangerous_event_recall",
-        },
-        "v3 stage A gates",
+        set(expected_stage_a_gates),
+        f"{tag} stage A gates",
     )
-    if stage_a_gates != {
-        "authority_violations": 0,
-        "replay_failures": 0,
-        "provenance_violations": 0,
-        "non_finite_metrics": 0,
-        "proposal_admission_failures": 0,
-        "minimum_useful_action_count": 16,
-        "minimum_distinct_selected_actions": 2,
-        "maximum_abstention_rate": 0.8,
-        "maximum_inference_latency_p99_ms": 250.0,
-        "minimum_dangerous_event_recall": 0.98,
-    }:
-        raise Issue56V4ModelProtocolError("V4 protocol v3 stage A gates drifted")
+    if stage_a_gates != expected_stage_a_gates:
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} stage A gates drifted")
 
     stage_b = _exact(
         evaluation["stage_b_hmc_replay"],
@@ -1014,16 +1035,21 @@ def _validate_v4_study_protocol(
         "maximum_inference_latency_p99_ms": 250.0,
     }:
         raise Issue56V4ModelProtocolError("V4 protocol v3 stage B gates drifted")
+    expected_superiority = (
+        dict(superiority_spec)
+        if superiority_spec is not None
+        else {
+            "safety_exposure_paired_point_difference_maximum": 0.0,
+            "admitted_proposal_count_must_exceed_v3": True,
+        }
+    )
     superiority = _exact(
         stage_b["superiority_over_v3"],
-        {"safety_exposure_paired_point_difference_maximum", "admitted_proposal_count_must_exceed_v3"},
-        "v3 superiority",
+        set(expected_superiority),
+        f"{tag} superiority",
     )
-    if (
-        superiority["safety_exposure_paired_point_difference_maximum"] != 0.0
-        or superiority["admitted_proposal_count_must_exceed_v3"] is not True
-    ):
-        raise Issue56V4ModelProtocolError("V4 protocol v3 superiority contract drifted")
+    if superiority != expected_superiority:
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} superiority contract drifted")
 
     artifact = _exact(
         root["artifact"],
@@ -1172,6 +1198,42 @@ def load_v4_model_protocol_v6(root: str | Path) -> tuple[dict[str, Any], str]:
     return validate_v4_model_protocol_v6(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
 
 
+def validate_v4_model_protocol_v7(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the authorized V4 model-study protocol revision 7."""
+
+    return _validate_v4_study_protocol(
+        protocol,
+        tag="v7",
+        schema_version=ISSUE56_V4_MODEL_PROTOCOL_V7_SCHEMA_VERSION,
+        preregistration_id=ISSUE56_V4_MODEL_PROTOCOL_V7_ID,
+        parent_evidence_fields={
+            "v4_v6_results_sha256",
+            "revision_rationale",
+        },
+        parent_results_key="v4_v6_results_sha256",
+        candidate_ids=V4_MODEL_V4_CANDIDATE_IDS,
+        stage_b_rule=V4_MODEL_V4_STAGE_B_RULE,
+        selection_contract=V4_MODEL_V5_SELECTION_CONTRACT,
+        eligibility=V4_MODEL_V5_ELIGIBILITY,
+        context_gates=V4_MODEL_V5_CONTEXT_GATES,
+        split_mapping=v6_family_split(deterministic_family_ids(32)),
+        corpus_split_protocol=V4_MODEL_V6_SPLIT_PROTOCOL,
+        stage_a_gate_values=V4_MODEL_V7_STAGE_A_GATES,
+        superiority_spec=V4_MODEL_V7_SUPERIORITY_SPEC,
+    )
+
+
+def load_v4_model_protocol_v7(root: str | Path) -> tuple[dict[str, Any], str]:
+    """Load and hash the exact authorized V4 model protocol revision 7 bytes."""
+
+    path = Path(root).resolve() / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V7_FILENAME
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise Issue56V4ModelProtocolError("V4 protocol v7 is unreadable") from error
+    return validate_v4_model_protocol_v7(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
+
+
 __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_ID",
@@ -1189,6 +1251,9 @@ __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_V6_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_V6_ID",
     "ISSUE56_V4_MODEL_PROTOCOL_V6_SCHEMA_VERSION",
+    "ISSUE56_V4_MODEL_PROTOCOL_V7_FILENAME",
+    "ISSUE56_V4_MODEL_PROTOCOL_V7_ID",
+    "ISSUE56_V4_MODEL_PROTOCOL_V7_SCHEMA_VERSION",
     "Issue56V4ModelProtocolError",
     "V4_MODEL_CANDIDATE_IDS",
     "V4_MODEL_FEATURE_VARIANT_IDS",
@@ -1203,6 +1268,8 @@ __all__ = [
     "V4_MODEL_V3_SPLIT_PROTOCOL",
     "V4_MODEL_V6_CONDITION_GROUP_LABELS",
     "V4_MODEL_V6_SPLIT_PROTOCOL",
+    "V4_MODEL_V7_STAGE_A_GATES",
+    "V4_MODEL_V7_SUPERIORITY_SPEC",
     "condition_group_labels_for_split",
     "family_split_for_protocol",
     "load_v4_model_protocol",
@@ -1210,10 +1277,12 @@ __all__ = [
     "load_v4_model_protocol_v4",
     "load_v4_model_protocol_v5",
     "load_v4_model_protocol_v6",
+    "load_v4_model_protocol_v7",
     "v6_family_split",
     "validate_v4_model_protocol",
     "validate_v4_model_protocol_v3",
     "validate_v4_model_protocol_v4",
     "validate_v4_model_protocol_v5",
     "validate_v4_model_protocol_v6",
+    "validate_v4_model_protocol_v7",
 ]

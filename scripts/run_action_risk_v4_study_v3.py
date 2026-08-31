@@ -63,12 +63,14 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
     ISSUE56_V4_MODEL_PROTOCOL_V6_ID,
+    ISSUE56_V4_MODEL_PROTOCOL_V7_ID,
     V4_MODEL_V3_SPLIT_PROTOCOL,
     V4_MODEL_V3_STAGE_B_ARMS,
     V4_MODEL_V4_CANDIDATE_IDS,
     V4_MODEL_V4_STAGE_B_RULE,
     load_v4_model_protocol_v5,
     load_v4_model_protocol_v6,
+    load_v4_model_protocol_v7,
 )
 
 
@@ -87,10 +89,12 @@ FROZEN_V3_MODEL_FILE_SHA256 = (
 PROTOCOL_VERSION_CONTRACTS = {
     "v5": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v5.json"),
     "v6": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v6.json"),
+    "v7": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v7.json"),
 }
 PROTOCOL_VERSION_LOADERS = {
     "v5": (load_v4_model_protocol_v5, ISSUE56_V4_MODEL_PROTOCOL_V5_ID),
     "v6": (load_v4_model_protocol_v6, ISSUE56_V4_MODEL_PROTOCOL_V6_ID),
+    "v7": (load_v4_model_protocol_v7, ISSUE56_V4_MODEL_PROTOCOL_V7_ID),
 }
 STUDY_SOURCE_PATHS_BASE = (
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v3.json"),
@@ -717,7 +721,23 @@ def _stage_a_metrics(
     return metrics
 
 
-def _stage_a_gate_status(metrics: Mapping[str, Any]) -> dict[str, Any]:
+STAGE_A_GATE_METRICS = {
+    "authority_violations": ("authority_violation_count", False),
+    "replay_failures": ("replay_failure_count", False),
+    "provenance_violations": ("provenance_violation_count", False),
+    "non_finite_metrics": ("non_finite_metric_count", False),
+    "proposal_admission_failures": ("proposal_admission_failure_count", False),
+    "minimum_useful_action_count": ("useful_action_count", True),
+    "minimum_distinct_selected_actions": ("distinct_selected_action_count", True),
+    "maximum_abstention_rate": ("abstention_rate", False),
+    "maximum_inference_latency_p99_ms": ("inference_latency_p99_ms", False),
+    "minimum_dangerous_event_recall": ("dangerous_event_recall", True),
+}
+
+
+def _stage_a_gate_status(
+    metrics: Mapping[str, Any], gate_spec: Mapping[str, Any]
+) -> dict[str, Any]:
     def gate(value: object, threshold: float | int, *, minimum: bool) -> dict[str, Any]:
         if value is None:
             return {"status": "UNDEFINED", "value": None, "threshold": threshold}
@@ -725,25 +745,16 @@ def _stage_a_gate_status(metrics: Mapping[str, Any]) -> dict[str, Any]:
         passed = numeric >= threshold if minimum else numeric <= threshold
         return {"status": "PASS" if passed else "FAIL", "value": value, "threshold": threshold}
 
+    unknown = set(gate_spec) - set(STAGE_A_GATE_METRICS)
+    if unknown:
+        raise V4StudyV3Error(f"V4 study stage A gate spec has unknown gates {sorted(unknown)}")
     gates = {
-        "authority_violations": gate(metrics["authority_violation_count"], 0, minimum=False),
-        "replay_failures": gate(metrics["replay_failure_count"], 0, minimum=False),
-        "provenance_violations": gate(metrics["provenance_violation_count"], 0, minimum=False),
-        "non_finite_metrics": gate(metrics["non_finite_metric_count"], 0, minimum=False),
-        "proposal_admission_failures": gate(
-            metrics["proposal_admission_failure_count"], 0, minimum=False
-        ),
-        "minimum_useful_action_count": gate(metrics["useful_action_count"], 16, minimum=True),
-        "minimum_distinct_selected_actions": gate(
-            metrics["distinct_selected_action_count"], 2, minimum=True
-        ),
-        "maximum_abstention_rate": gate(metrics["abstention_rate"], 0.8, minimum=False),
-        "maximum_inference_latency_p99_ms": gate(
-            metrics["inference_latency_p99_ms"], 250.0, minimum=False
-        ),
-        "minimum_dangerous_event_recall": gate(
-            metrics["dangerous_event_recall"], 0.98, minimum=True
-        ),
+        gate_key: gate(
+            metrics[STAGE_A_GATE_METRICS[gate_key][0]],
+            gate_spec[gate_key],
+            minimum=STAGE_A_GATE_METRICS[gate_key][1],
+        )
+        for gate_key in sorted(gate_spec)
     }
     statuses = {item["status"] for item in gates.values()}
     if "FAIL" in statuses:
@@ -882,7 +893,9 @@ def main() -> int:
         if reloaded.to_mapping() != model.to_mapping() or reload_sha256 != model_file_sha256:
             raise V4StudyV3Error(f"V4 model artifact reload diverged: {candidate_id}")
         metrics = _stage_a_metrics(model, evaluation)
-        gate_status = _stage_a_gate_status(metrics)
+        gate_status = _stage_a_gate_status(
+            metrics, protocol["evaluation"]["stage_a_offline"]["gates"]
+        )
         gate_status_by_candidate[candidate_id] = gate_status["all_preregistered_gates_passed"]
         candidates.append(
             {
@@ -1024,6 +1037,52 @@ def main() -> int:
     print(f"results.json sha256: {results_sha256}", file=sys.stderr)
     print(f"output: {output}", file=sys.stderr)
     return 0
+
+
+def _superiority_over_v3(
+    spec: Mapping[str, Any],
+    safety: Mapping[str, Any],
+    admitted_v4: int,
+    admitted_v3: int,
+    mismatch_v4: int,
+) -> dict[str, Any]:
+    point_difference = float(safety["point_difference"])
+    ci_lower = float(safety["ci_lower"])
+    ci_upper = float(safety["ci_upper"])
+    superiority: dict[str, Any] = {
+        "safety_exposure_paired_point_difference": point_difference,
+        "safety_exposure_paired_ci": [ci_lower, ci_upper],
+        "admitted_proposal_count_v4": admitted_v4,
+        "admitted_proposal_count_v3": admitted_v3,
+        "hmc_mismatch_count_v4": mismatch_v4,
+    }
+    if "admitted_proposal_count_must_exceed_v3" in spec:
+        safety_no_worse = bool(
+            point_difference <= spec["safety_exposure_paired_point_difference_maximum"]
+        )
+        more_admitted = bool(admitted_v4 > admitted_v3)
+        superiority["safety_no_worse_than_v3"] = safety_no_worse
+        superiority["more_admitted_proposals_than_v3"] = more_admitted
+        superiority["achieved"] = bool(safety_no_worse and more_admitted)
+        return superiority
+    admissions_ok = bool(admitted_v4 >= admitted_v3)
+    within_maximum = bool(
+        point_difference <= spec["safety_exposure_paired_point_difference_maximum"]
+    )
+    strictly_negative = bool(point_difference < 0.0) if spec[
+        "safety_exposure_paired_point_difference_must_be_strictly_negative"
+    ] else True
+    ci_ok = bool(ci_upper <= spec["safety_exposure_paired_ci_upper_maximum"])
+    overrides_ok = bool(mismatch_v4 <= spec["maximum_hmc_mismatch_count"])
+    superiority["admissions_at_least_v3"] = admissions_ok
+    superiority["safety_point_within_maximum"] = within_maximum
+    superiority["safety_point_strictly_negative"] = strictly_negative
+    superiority["safety_ci_upper_within_maximum"] = ci_ok
+    superiority["zero_hmc_mismatches"] = overrides_ok
+    superiority["achieved"] = bool(
+        admissions_ok and within_maximum and strictly_negative and ci_ok and overrides_ok
+    )
+    return superiority
 
 
 def _run_stage_b(
@@ -1184,24 +1243,12 @@ def _run_stage_b(
         for key, value in gates.items()
         if key not in {"hmc_mismatch_rate", "hmc_mismatch_count"}
     )
-    superiority = {
-        "safety_exposure_paired_point_difference": paired_vs_v3["safety_exposure"][
-            "point_difference"
-        ],
-        "safety_exposure_paired_ci": [
-            paired_vs_v3["safety_exposure"]["ci_lower"],
-            paired_vs_v3["safety_exposure"]["ci_upper"],
-        ],
-        "admitted_proposal_count_v4": admitted_v4,
-        "admitted_proposal_count_v3": admitted_v3,
-        "safety_no_worse_than_v3": bool(
-            paired_vs_v3["safety_exposure"]["point_difference"]
-            <= stage_b_spec["superiority_over_v3"]["safety_exposure_paired_point_difference_maximum"]
-        ),
-        "more_admitted_proposals_than_v3": bool(admitted_v4 > admitted_v3),
-    }
-    superiority["achieved"] = bool(
-        superiority["safety_no_worse_than_v3"] and superiority["more_admitted_proposals_than_v3"]
+    superiority = _superiority_over_v3(
+        stage_b_spec["superiority_over_v3"],
+        paired_vs_v3["safety_exposure"],
+        admitted_v4,
+        admitted_v3,
+        mismatch_v4,
     )
     return {
         "ran": True,
