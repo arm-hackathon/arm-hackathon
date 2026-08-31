@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import hashlib
 import json
 from pathlib import Path
 from typing import Any
+
+from .forecast_issue55_race import deterministic_family_ids
 
 
 ISSUE56_V4_MODEL_PROTOCOL_SCHEMA_VERSION = (
@@ -66,6 +68,33 @@ V4_MODEL_V5_CONTEXT_GATES = {
     "o2_upper_bound": 0.30,
     "o2_nominal_margin": 0.015,
 }
+ISSUE56_V4_MODEL_PROTOCOL_V6_SCHEMA_VERSION = (
+    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v6"
+)
+ISSUE56_V4_MODEL_PROTOCOL_V6_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v6"
+ISSUE56_V4_MODEL_PROTOCOL_V6_FILENAME = (
+    "habitat_v2_forecast_issue_56_v4_model_preregistration_v6.json"
+)
+V4_MODEL_V6_SPLIT_PROTOCOL = "issue56_v4_model_split_v6"
+V4_MODEL_V3_SPLIT_PROTOCOL = "issue56_v4_model_split_v3"
+V4_MODEL_V6_CONDITION_GROUP_LABELS = (
+    "VALIDATION",
+    "EVALUATION",
+    "TRAIN",
+    "EVALUATION",
+    "VALIDATION",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "VALIDATION",
+    "EVALUATION",
+    "TRAIN",
+    "TRAIN",
+)
 V4_MODEL_V3_STAGE_B_ARMS = (
     "rules_only_common_window",
     "point_model_common_window",
@@ -78,6 +107,58 @@ V4_MODEL_SPLIT_COUNTS = {"TRAIN": 20, "VALIDATION": 6, "EVALUATION": 6}
 
 class Issue56V4ModelProtocolError(ValueError):
     """Raised when the authorized V4 model protocol is malformed."""
+
+
+def v6_family_split(family_ids: Sequence[str]) -> dict[str, str]:
+    """Split the canonical roster with the preregistered V6 redesign.
+
+    V6 keeps the V3 split family counts (20 TRAIN / 6 VALIDATION / 6
+    EVALUATION) but reassigns condition groups so EVALUATION contains two of
+    the four eventful groups. Only condition groups g0000..g0003
+    (nominal_occupied operating families) ever produce boundary-crossing
+    events; the V3 labels placed them VALIDATION / EVALUATION / TRAIN / TRAIN,
+    leaving EVALUATION exactly one eventful group and making superiority over
+    V3 undecidable. V6 swaps group g0003 (TRAIN) with group g0005
+    (EVALUATION), so TRAIN keeps eventful group g0002, VALIDATION keeps g0000,
+    and EVALUATION gains g0003 alongside g0001.
+    """
+
+    ids = tuple(family_ids)
+    if not ids or len(set(ids)) != len(ids):
+        raise Issue56V4ModelProtocolError("V6 family roster must be unique and non-empty")
+    if ids != deterministic_family_ids(32):
+        raise Issue56V4ModelProtocolError("V6 split requires the canonical family roster")
+    result: dict[str, str] = {}
+    for index, family_id in enumerate(ids):
+        if type(family_id) is not str or not family_id:
+            raise Issue56V4ModelProtocolError("V6 family identity is invalid")
+        result[family_id] = V4_MODEL_V6_CONDITION_GROUP_LABELS[index // 2]
+    counts = {
+        label: sum(1 for value in result.values() if value == label)
+        for label in ("TRAIN", "VALIDATION", "EVALUATION")
+    }
+    if counts != dict(V4_MODEL_SPLIT_COUNTS):
+        raise Issue56V4ModelProtocolError("V6 split counts drifted")
+    return dict(sorted(result.items()))
+
+
+def condition_group_labels_for_split(split: Mapping[str, str]) -> tuple[str, ...]:
+    """Derive the per-condition-group labels from a roster split mapping."""
+
+    roster = deterministic_family_ids(32)
+    return tuple(split[roster[index * 2]] for index in range(16))
+
+
+def family_split_for_protocol(split_protocol: str, family_ids: Sequence[str]) -> dict[str, str]:
+    """Return the deterministic roster split bound to a named split protocol."""
+
+    if split_protocol == V4_MODEL_V6_SPLIT_PROTOCOL:
+        return v6_family_split(family_ids)
+    if split_protocol == V4_MODEL_V3_SPLIT_PROTOCOL:
+        from .forecast_issue56_action_risk_v3 import v3_family_split
+
+        return v3_family_split(tuple(family_ids))
+    raise Issue56V4ModelProtocolError(f"unknown V4 family split protocol {split_protocol!r}")
 
 
 def _strict_json(raw: bytes) -> dict[str, Any]:
@@ -498,6 +579,8 @@ def _validate_v4_study_protocol(
     selection_contract: str = "composite_point_select_v1",
     eligibility: str = "risk_screen_passed_and_predicted_safety_improvement",
     context_gates: Mapping[str, Any] | None = None,
+    split_mapping: Mapping[str, str] | None = None,
+    corpus_split_protocol: str | None = None,
 ) -> dict[str, Any]:
     """Fail closed on an authorized V4 model-study protocol revision."""
 
@@ -588,20 +671,23 @@ def _validate_v4_study_protocol(
     ):
         raise Issue56V4ModelProtocolError(f"V4 protocol {tag} revision rationale is missing")
 
+    population_fields = {
+        "family_count",
+        "condition_group_count",
+        "families_per_condition_group",
+        "statistical_unit",
+        "paired_sensor_variants_stay_together",
+        "splits",
+        "decision_steps_per_family",
+        "actions_per_decision",
+        "expected_samples",
+    }
+    if split_mapping is not None:
+        population_fields |= {"split_protocol", "condition_group_labels"}
     population = _exact(
         root["population"],
-        {
-            "family_count",
-            "condition_group_count",
-            "families_per_condition_group",
-            "statistical_unit",
-            "paired_sensor_variants_stay_together",
-            "splits",
-            "decision_steps_per_family",
-            "actions_per_decision",
-            "expected_samples",
-        },
-        "v3 population",
+        population_fields,
+        f"{tag} population",
     )
     if (
         population["family_count"] != 32
@@ -621,19 +707,38 @@ def _validate_v4_study_protocol(
         != {"TRAIN": 1040, "VALIDATION": 312, "EVALUATION": 312, "TOTAL": 1664}
     ):
         raise Issue56V4ModelProtocolError("V4 protocol v3 population contract drifted")
+    if split_mapping is not None:
+        expected_labels = list(condition_group_labels_for_split(split_mapping))
+        declared_labels = _require_list(
+            population["condition_group_labels"], f"{tag} condition group labels"
+        )
+        group_label_counts = {
+            label: expected_labels.count(label)
+            for label in ("TRAIN", "VALIDATION", "EVALUATION")
+        }
+        if (
+            population["split_protocol"] != corpus_split_protocol
+            or declared_labels != expected_labels
+            or len(declared_labels) != 16
+            or group_label_counts != {"TRAIN": 10, "VALIDATION": 3, "EVALUATION": 3}
+        ):
+            raise Issue56V4ModelProtocolError(f"V4 protocol {tag} split contract drifted")
 
+    corpus_requirement_fields = {
+        "corpus_schema_version",
+        "corpus_preregistration_id",
+        "family_count",
+        "sample_counts",
+        "trace_count",
+        "counterfactual_trace_bytes_present",
+        "hold_trace_bytes_present",
+    }
+    if corpus_split_protocol is not None:
+        corpus_requirement_fields.add("split_protocol")
     corpus_requirement = _exact(
         root["corpus_requirement"],
-        {
-            "corpus_schema_version",
-            "corpus_preregistration_id",
-            "family_count",
-            "sample_counts",
-            "trace_count",
-            "counterfactual_trace_bytes_present",
-            "hold_trace_bytes_present",
-        },
-        "v3 corpus requirement",
+        corpus_requirement_fields,
+        f"{tag} corpus requirement",
     )
     if (
         corpus_requirement["corpus_schema_version"]
@@ -647,6 +752,11 @@ def _validate_v4_study_protocol(
         or corpus_requirement["hold_trace_bytes_present"] is not True
     ):
         raise Issue56V4ModelProtocolError("V4 protocol v3 corpus requirement drifted")
+    if (
+        corpus_split_protocol is not None
+        and corpus_requirement["split_protocol"] != corpus_split_protocol
+    ):
+        raise Issue56V4ModelProtocolError(f"V4 protocol {tag} corpus split protocol drifted")
 
     data_contract = _exact(
         root["data_contract"],
@@ -1028,6 +1138,40 @@ def load_v4_model_protocol_v5(root: str | Path) -> tuple[dict[str, Any], str]:
     return validate_v4_model_protocol_v5(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
 
 
+def validate_v4_model_protocol_v6(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the authorized V4 model-study protocol revision 6."""
+
+    return _validate_v4_study_protocol(
+        protocol,
+        tag="v6",
+        schema_version=ISSUE56_V4_MODEL_PROTOCOL_V6_SCHEMA_VERSION,
+        preregistration_id=ISSUE56_V4_MODEL_PROTOCOL_V6_ID,
+        parent_evidence_fields={
+            "v4_v5_corpus_manifest_sha256",
+            "revision_rationale",
+        },
+        parent_results_key="v4_v5_corpus_manifest_sha256",
+        candidate_ids=V4_MODEL_V4_CANDIDATE_IDS,
+        stage_b_rule=V4_MODEL_V4_STAGE_B_RULE,
+        selection_contract=V4_MODEL_V5_SELECTION_CONTRACT,
+        eligibility=V4_MODEL_V5_ELIGIBILITY,
+        context_gates=V4_MODEL_V5_CONTEXT_GATES,
+        split_mapping=v6_family_split(deterministic_family_ids(32)),
+        corpus_split_protocol=V4_MODEL_V6_SPLIT_PROTOCOL,
+    )
+
+
+def load_v4_model_protocol_v6(root: str | Path) -> tuple[dict[str, Any], str]:
+    """Load and hash the exact authorized V4 model protocol revision 6 bytes."""
+
+    path = Path(root).resolve() / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V6_FILENAME
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise Issue56V4ModelProtocolError("V4 protocol v6 is unreadable") from error
+    return validate_v4_model_protocol_v6(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
+
+
 __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_ID",
@@ -1042,6 +1186,9 @@ __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_V5_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_V5_ID",
     "ISSUE56_V4_MODEL_PROTOCOL_V5_SCHEMA_VERSION",
+    "ISSUE56_V4_MODEL_PROTOCOL_V6_FILENAME",
+    "ISSUE56_V4_MODEL_PROTOCOL_V6_ID",
+    "ISSUE56_V4_MODEL_PROTOCOL_V6_SCHEMA_VERSION",
     "Issue56V4ModelProtocolError",
     "V4_MODEL_CANDIDATE_IDS",
     "V4_MODEL_FEATURE_VARIANT_IDS",
@@ -1053,12 +1200,20 @@ __all__ = [
     "V4_MODEL_V5_CONTEXT_GATES",
     "V4_MODEL_V5_ELIGIBILITY",
     "V4_MODEL_V5_SELECTION_CONTRACT",
+    "V4_MODEL_V3_SPLIT_PROTOCOL",
+    "V4_MODEL_V6_CONDITION_GROUP_LABELS",
+    "V4_MODEL_V6_SPLIT_PROTOCOL",
+    "condition_group_labels_for_split",
+    "family_split_for_protocol",
     "load_v4_model_protocol",
     "load_v4_model_protocol_v3",
     "load_v4_model_protocol_v4",
     "load_v4_model_protocol_v5",
+    "load_v4_model_protocol_v6",
+    "v6_family_split",
     "validate_v4_model_protocol",
     "validate_v4_model_protocol_v3",
     "validate_v4_model_protocol_v4",
     "validate_v4_model_protocol_v5",
+    "validate_v4_model_protocol_v6",
 ]

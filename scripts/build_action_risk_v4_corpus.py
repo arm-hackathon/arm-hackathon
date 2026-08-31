@@ -31,7 +31,6 @@ from aeolus.habitat_v2.forecast_issue55_race import (
 from aeolus.habitat_v2.forecast_issue56_action_risk_v2 import v2_decision_steps
 from aeolus.habitat_v2.forecast_issue56_action_risk_v3 import (
     ISSUE56_V3_SCHEMA_VERSION,
-    v3_family_split,
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_corpus import (
     ISSUE56_V4_CORPUS_SCHEMA_VERSION,
@@ -43,6 +42,9 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_corpus import (
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_features import v4_feature_manifest
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_ID,
+    V4_MODEL_V3_SPLIT_PROTOCOL,
+    V4_MODEL_V6_SPLIT_PROTOCOL,
+    family_split_for_protocol,
     load_v4_model_protocol,
 )
 
@@ -468,9 +470,12 @@ def build_v4_corpus(
     families: int,
     allow_dirty_smoke: bool,
     resume: bool = False,
+    split_protocol: str = V4_MODEL_V3_SPLIT_PROTOCOL,
 ) -> dict[str, Any]:
     if not 6 <= families <= FAMILY_COUNT or families % 2:
         raise V4CorpusRunError(f"--families must be an even number between 6 and {FAMILY_COUNT}")
+    if split_protocol not in (V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL):
+        raise V4CorpusRunError(f"unknown --split-protocol {split_protocol!r}")
     source_identity = _source_identity()
     source_identity_sha256 = _sha(source_identity)
     if source_identity["source_worktree_dirty"] and not (
@@ -489,7 +494,7 @@ def build_v4_corpus(
     feature_manifest_sha256 = _sha(feature_manifest)
     label_manifest_sha256 = _sha(label_manifest)
     roster = deterministic_family_ids(FAMILY_COUNT)
-    split = v3_family_split(roster)
+    split = family_split_for_protocol(split_protocol, roster)
     selected_ids = _select_families(roster, split, families)
     scenarios = {
         family_id: build_family_scenario(bundle.development_scenario, roster.index(family_id))
@@ -726,12 +731,19 @@ def main() -> int:
         action="store_true",
         help="continue a partial write-once corpus directory after family verification",
     )
+    parser.add_argument(
+        "--split-protocol",
+        default=V4_MODEL_V3_SPLIT_PROTOCOL,
+        choices=(V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL),
+        help="preregistered family split used to label corpus samples",
+    )
     args = parser.parse_args()
     result = build_v4_corpus(
         args.output,
         families=args.families,
         allow_dirty_smoke=args.allow_dirty_smoke,
         resume=args.resume,
+        split_protocol=args.split_protocol,
     )
     print(json.dumps(result, sort_keys=True), file=sys.stderr)
     return 0

@@ -442,6 +442,84 @@ def test_protocol_v5_context_gated_selection() -> None:
         validate_v4_model_protocol_v5(drifted)
 
 
+def test_protocol_v6_redesigned_evaluation_split() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v3 import v3_family_split
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        ISSUE56_V4_MODEL_PROTOCOL_V6_FILENAME,
+        V4_MODEL_V6_SPLIT_PROTOCOL,
+        condition_group_labels_for_split,
+        load_v4_model_protocol_v6,
+        v6_family_split,
+        validate_v4_model_protocol_v6,
+    )
+
+    protocol, digest = load_v4_model_protocol_v6(REPO_ROOT)
+    assert (
+        protocol["preregistration_id"]
+        == "habitat_v2_forecast_issue_56_v4_model_preregistration_v6"
+    )
+    assert len(digest) == 64
+    assert (REPO_ROOT / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V6_FILENAME).is_file()
+
+    # The strict superiority gate is carried over unchanged from V5.
+    superiority = protocol["evaluation"]["stage_b_hmc_replay"]["superiority_over_v3"]
+    assert superiority == {
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "admitted_proposal_count_must_exceed_v3": True,
+    }
+
+    roster = deterministic_family_ids(32)
+    split = v6_family_split(roster)
+    assert protocol["population"]["split_protocol"] == V4_MODEL_V6_SPLIT_PROTOCOL
+    assert protocol["population"]["condition_group_labels"] == list(
+        condition_group_labels_for_split(split)
+    )
+    assert protocol["corpus_requirement"]["split_protocol"] == V4_MODEL_V6_SPLIT_PROTOCOL
+
+    # Split counts are unchanged; only condition groups g0003 and g0005 swap.
+    assert {
+        label: sum(1 for value in split.values() if value == label)
+        for label in ("TRAIN", "VALIDATION", "EVALUATION")
+    } == {"TRAIN": 20, "VALIDATION": 6, "EVALUATION": 6}
+    baseline = v3_family_split(roster)
+    changed = {fid for fid in roster if split[fid] != baseline[fid]}
+    assert len(changed) == 4
+    assert {split[fid] for fid in changed} == {"TRAIN", "EVALUATION"}
+    for index in range(0, 32, 2):
+        pair = roster[index : index + 2]
+        assert split[pair[0]] == split[pair[1]]
+
+    drifted = json.loads(json.dumps(protocol))
+    drifted["population"]["condition_group_labels"][3] = "TRAIN"
+    with pytest.raises(Issue56V4ModelProtocolError, match="split contract"):
+        validate_v4_model_protocol_v6(drifted)
+
+    drifted_gate = json.loads(json.dumps(protocol))
+    drifted_gate["evaluation"]["stage_b_hmc_replay"]["superiority_over_v3"][
+        "admitted_proposal_count_must_exceed_v3"
+    ] = False
+    with pytest.raises(Issue56V4ModelProtocolError, match="superiority"):
+        validate_v4_model_protocol_v6(drifted_gate)
+
+    with pytest.raises(Issue56V4ModelProtocolError):
+        v6_family_split(roster[:-1])
+
+
+def test_family_split_dispatcher_rejects_unknown_protocol() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        V4_MODEL_V3_SPLIT_PROTOCOL,
+        V4_MODEL_V6_SPLIT_PROTOCOL,
+        family_split_for_protocol,
+    )
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v3 import v3_family_split
+
+    roster = deterministic_family_ids(32)
+    assert family_split_for_protocol(V4_MODEL_V3_SPLIT_PROTOCOL, roster) == v3_family_split(roster)
+    assert family_split_for_protocol(V4_MODEL_V6_SPLIT_PROTOCOL, roster) != v3_family_split(roster)
+    with pytest.raises(Issue56V4ModelProtocolError, match="unknown V4 family split protocol"):
+        family_split_for_protocol("not-a-split", roster)
+
+
 def _context_model() -> "V4RiskModel":
     train = _dataset("TRAIN", 10)
     validation = _dataset("VALIDATION", 10)

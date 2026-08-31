@@ -22,7 +22,6 @@ from aeolus.habitat_v2.forecast_issue55_race import (
     family_condition_descriptor,
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v2 import v2_decision_steps
-from aeolus.habitat_v2.forecast_issue56_action_risk_v3 import v3_family_split
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_corpus import (
     ISSUE56_V4_CORPUS_SCHEMA_VERSION,
     V4_CORPUS_TRACE_DIRECTORY,
@@ -33,6 +32,9 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_corpus import (
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_features import v4_feature_manifest
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_ID,
+    V4_MODEL_V3_SPLIT_PROTOCOL,
+    V4_MODEL_V6_SPLIT_PROTOCOL,
+    family_split_for_protocol,
     load_v4_model_protocol,
 )
 
@@ -203,7 +205,11 @@ def _require_keys(mapping: Mapping[str, Any], expected: set[str], label: str) ->
         raise V4CorpusVerificationError(f"{label} fields drift")
 
 
-def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
+def verify_v4_corpus(
+    corpus_path: Path, *, split_protocol: str = V4_MODEL_V3_SPLIT_PROTOCOL
+) -> dict[str, Any]:
+    if split_protocol not in (V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL):
+        raise V4CorpusVerificationError(f"unknown --split-protocol {split_protocol!r}")
     corpus = _resolve_corpus(corpus_path)
     manifest = _strict_json(corpus / "manifest.json")
     trace_manifest = _strict_json(corpus / "trace-manifest.json")
@@ -286,7 +292,7 @@ def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
         pair = set(roster[index : index + 2])
         if len(selected & pair) not in {0, 2}:
             raise V4CorpusVerificationError("V4 corpus splits a paired sensor group")
-    expected_split = v3_family_split(roster)
+    expected_split = family_split_for_protocol(split_protocol, roster)
     if manifest["family_split"] != {
         family_id: expected_split[family_id] for family_id in family_ids
     }:
@@ -470,6 +476,7 @@ def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
 
     return {
         "corpus": str(corpus),
+        "split_protocol": split_protocol,
         "family_count": len(family_ids),
         "sample_count": verified_sample_count,
         "trace_count": len(expected_trace_manifest),
@@ -484,8 +491,14 @@ def verify_v4_corpus(corpus_path: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify the Issue #56 V4 replayable corpus")
     parser.add_argument("--corpus", type=Path, required=True)
+    parser.add_argument(
+        "--split-protocol",
+        default=V4_MODEL_V3_SPLIT_PROTOCOL,
+        choices=(V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL),
+        help="preregistered family split the corpus must match",
+    )
     args = parser.parse_args()
-    result = verify_v4_corpus(args.corpus)
+    result = verify_v4_corpus(args.corpus, split_protocol=args.split_protocol)
     print(json.dumps(result, sort_keys=True), file=sys.stderr)
     return 0
 

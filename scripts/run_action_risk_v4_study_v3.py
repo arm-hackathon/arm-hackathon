@@ -62,10 +62,13 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
 )
 from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
+    ISSUE56_V4_MODEL_PROTOCOL_V6_ID,
+    V4_MODEL_V3_SPLIT_PROTOCOL,
     V4_MODEL_V3_STAGE_B_ARMS,
     V4_MODEL_V4_CANDIDATE_IDS,
     V4_MODEL_V4_STAGE_B_RULE,
     load_v4_model_protocol_v5,
+    load_v4_model_protocol_v6,
 )
 
 
@@ -81,8 +84,15 @@ POINT_ARTIFACT_SHA256 = (
 FROZEN_V3_MODEL_FILE_SHA256 = (
     "e977ccb6b4298c5793838621bd819df50f46926ca2c2b73664ea9da232e4fdb8"
 )
-STUDY_SOURCE_PATHS = (
-    Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v5.json"),
+PROTOCOL_VERSION_CONTRACTS = {
+    "v5": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v5.json"),
+    "v6": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v6.json"),
+}
+PROTOCOL_VERSION_LOADERS = {
+    "v5": (load_v4_model_protocol_v5, ISSUE56_V4_MODEL_PROTOCOL_V5_ID),
+    "v6": (load_v4_model_protocol_v6, ISSUE56_V4_MODEL_PROTOCOL_V6_ID),
+}
+STUDY_SOURCE_PATHS_BASE = (
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v3.json"),
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json"),
     Path("src/aeolus/habitat_v2/forecast/contracts.py"),
@@ -103,6 +113,10 @@ STUDY_SOURCE_PATHS = (
     Path("pyproject.toml"),
     Path("uv.lock"),
 )
+
+
+def _study_source_paths(protocol_version: str) -> tuple[Path, ...]:
+    return (PROTOCOL_VERSION_CONTRACTS[protocol_version],) + STUDY_SOURCE_PATHS_BASE
 
 
 class V4StudyV3Error(RuntimeError):
@@ -200,9 +214,9 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> str:
     return _sha_bytes(payload)
 
 
-def _source_identity() -> dict[str, Any]:
+def _source_identity(protocol_version: str) -> dict[str, Any]:
     files: list[dict[str, Any]] = []
-    for relative in STUDY_SOURCE_PATHS:
+    for relative in _study_source_paths(protocol_version):
         path = REPO_ROOT / relative
         try:
             raw = path.read_bytes()
@@ -267,10 +281,18 @@ def _resolve_output(path: Path) -> Path:
     return resolved
 
 
-def _independent_verify(corpus: Path) -> dict[str, Any]:
+def _independent_verify(corpus: Path, split_protocol: str) -> dict[str, Any]:
     try:
         completed = subprocess.run(
-            [sys.executable, "-m", VERIFY_MODULE, "--corpus", str(corpus)],
+            [
+                sys.executable,
+                "-m",
+                VERIFY_MODULE,
+                "--corpus",
+                str(corpus),
+                "--split-protocol",
+                split_protocol,
+            ],
             cwd=REPO_ROOT,
             check=True,
             capture_output=True,
@@ -773,14 +795,24 @@ def main() -> int:
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--allow-dirty-smoke", action="store_true")
+    parser.add_argument(
+        "--protocol-version",
+        default="v5",
+        choices=tuple(PROTOCOL_VERSION_LOADERS),
+        help="authorized V4 model-study protocol revision to run",
+    )
     args = parser.parse_args()
 
-    protocol, protocol_sha256 = load_v4_model_protocol_v5(REPO_ROOT)
+    protocol_loader, preregistration_id = PROTOCOL_VERSION_LOADERS[args.protocol_version]
+    protocol, protocol_sha256 = protocol_loader(REPO_ROOT)
+    split_protocol = protocol["corpus_requirement"].get(
+        "split_protocol", V4_MODEL_V3_SPLIT_PROTOCOL
+    )
     corpus = _resolve_corpus(args.corpus)
     manifest, corpus_manifest_digest, smoke = _verify_corpus_binding(
         corpus, protocol, allow_smoke=args.allow_dirty_smoke
     )
-    source_identity = _source_identity()
+    source_identity = _source_identity(args.protocol_version)
     if source_identity["source_worktree_dirty"] and not (
         args.allow_dirty_smoke and smoke
     ):
@@ -788,9 +820,11 @@ def main() -> int:
             "comparative V4 study refuses a dirty source worktree; use a smoke corpus "
             "with --allow-dirty-smoke while developing"
         )
-    verification_receipt = _independent_verify(corpus)
+    verification_receipt = _independent_verify(corpus, split_protocol)
     if verification_receipt.get("strict_trace_replay_verified") is not True:
         raise V4StudyV3Error("independent verification did not confirm strict replay")
+    if verification_receipt.get("split_protocol") != split_protocol:
+        raise V4StudyV3Error("independent verification split protocol drifted")
 
     output = _resolve_output(args.output)
     bundle = load_forecast_contracts(REPO_ROOT)
@@ -940,8 +974,9 @@ def main() -> int:
 
     results = {
         "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v4.result",
-        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
+        "preregistration_id": preregistration_id,
         "model_protocol_sha256": protocol_sha256,
+        "split_protocol": split_protocol,
         "corpus_manifest_sha256": corpus_manifest_digest,
         "corpus_verification": verification_receipt,
         "evaluation_scope": "stage_a_offline_plus_stage_b_hmc_replay"
@@ -973,8 +1008,9 @@ def main() -> int:
     }
     manifest_payload = {
         "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v4.manifest",
-        "preregistration_id": ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
+        "preregistration_id": preregistration_id,
         "model_protocol_sha256": protocol_sha256,
+        "split_protocol": split_protocol,
         "corpus_manifest_sha256": corpus_manifest_digest,
         "candidate_ids": list(V4_MODEL_V4_CANDIDATE_IDS),
         "stage_b_candidate": stage_b_candidate,
