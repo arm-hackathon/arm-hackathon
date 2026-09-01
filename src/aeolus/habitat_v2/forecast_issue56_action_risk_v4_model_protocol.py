@@ -93,6 +93,31 @@ V4_MODEL_V7_STAGE_A_GATES = {
     "maximum_inference_latency_p99_ms": 250.0,
     "minimum_dangerous_event_recall": 0.98,
 }
+V4_MODEL_V9_CANDIDATE_IDS = (
+    "c0_v3_refit",
+    "c3_small_shared_mlp",
+    "c8_o2_excess_guard",
+)
+V4_MODEL_V9_STAGE_B_RULE = "replay_all_stage_a_passers_v1"
+V4_MODEL_V9_SUPERIORITY_SPEC = {
+    "family_losses_maximum": 0,
+    "family_wins_minimum": 4,
+    "admitted_proposal_count_must_be_at_least_v3": True,
+    "safety_exposure_paired_point_difference_maximum": 0.0,
+    "maximum_hmc_mismatch_count": 0,
+}
+V4_MODEL_V9_O2_EXCESS_GUARD = {
+    "trigger": "nominal_o2_excess",
+    "action": "normal-dormant-v1",
+    "model_confirmation": "none",
+}
+ISSUE56_V4_MODEL_PROTOCOL_V9_SCHEMA_VERSION = (
+    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v9"
+)
+ISSUE56_V4_MODEL_PROTOCOL_V9_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v9"
+ISSUE56_V4_MODEL_PROTOCOL_V9_FILENAME = (
+    "habitat_v2_forecast_issue_56_v4_model_preregistration_v9.json"
+)
 V4_MODEL_V7_SUPERIORITY_SPEC = {
     "admitted_proposal_count_must_be_at_least_v3": True,
     "safety_exposure_paired_point_difference_maximum": 0.0,
@@ -682,6 +707,7 @@ def _validate_v4_study_protocol(
     corpus_split_protocol: str | None = None,
     stage_a_gate_values: Mapping[str, Any] | None = None,
     superiority_spec: Mapping[str, Any] | None = None,
+    o2_excess_guard: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fail closed on an authorized V4 model-study protocol revision."""
 
@@ -992,6 +1018,8 @@ def _validate_v4_study_protocol(
     }
     if context_gates is not None:
         policy_fields.add("context_gates")
+    if o2_excess_guard is not None:
+        policy_fields.add("o2_excess_guard")
     policy = _exact(root["policy"], policy_fields, f"{tag} policy")
     if (
         policy["selection_contract"] != selection_contract
@@ -1007,6 +1035,10 @@ def _validate_v4_study_protocol(
         actual_context_gates = policy.get("context_gates")
         if type(actual_context_gates) is not dict or actual_context_gates != dict(context_gates):
             raise Issue56V4ModelProtocolError(f"V4 protocol {tag} context gates drifted")
+    if o2_excess_guard is not None:
+        actual_guard = policy.get("o2_excess_guard")
+        if type(actual_guard) is not dict or actual_guard != dict(o2_excess_guard):
+            raise Issue56V4ModelProtocolError(f"V4 protocol {tag} o2 excess guard drifted")
 
     evaluation = _exact(
         root["evaluation"],
@@ -1344,6 +1376,43 @@ def load_v4_model_protocol_v8(root: str | Path) -> tuple[dict[str, Any], str]:
     return validate_v4_model_protocol_v8(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
 
 
+def validate_v4_model_protocol_v9(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the authorized V4 model-study protocol revision 9."""
+
+    return _validate_v4_study_protocol(
+        protocol,
+        tag="v9",
+        schema_version=ISSUE56_V4_MODEL_PROTOCOL_V9_SCHEMA_VERSION,
+        preregistration_id=ISSUE56_V4_MODEL_PROTOCOL_V9_ID,
+        parent_evidence_fields={
+            "v4_v8_results_sha256",
+            "revision_rationale",
+        },
+        parent_results_key="v4_v8_results_sha256",
+        candidate_ids=V4_MODEL_V9_CANDIDATE_IDS,
+        stage_b_rule=V4_MODEL_V9_STAGE_B_RULE,
+        selection_contract=V4_MODEL_V5_SELECTION_CONTRACT,
+        eligibility=V4_MODEL_V5_ELIGIBILITY,
+        context_gates=V4_MODEL_V5_CONTEXT_GATES,
+        split_mapping=v8_family_split(deterministic_family_ids(32)),
+        corpus_split_protocol=V4_MODEL_V8_SPLIT_PROTOCOL,
+        stage_a_gate_values=V4_MODEL_V7_STAGE_A_GATES,
+        superiority_spec=V4_MODEL_V9_SUPERIORITY_SPEC,
+        o2_excess_guard=V4_MODEL_V9_O2_EXCESS_GUARD,
+    )
+
+
+def load_v4_model_protocol_v9(root: str | Path) -> tuple[dict[str, Any], str]:
+    """Load and hash the exact authorized V4 model protocol revision 9 bytes."""
+
+    path = Path(root).resolve() / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V9_FILENAME
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise Issue56V4ModelProtocolError("V4 protocol v9 is unreadable") from error
+    return validate_v4_model_protocol_v9(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
+
+
 __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_ID",
@@ -1367,6 +1436,9 @@ __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_V8_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_V8_ID",
     "ISSUE56_V4_MODEL_PROTOCOL_V8_SCHEMA_VERSION",
+    "ISSUE56_V4_MODEL_PROTOCOL_V9_FILENAME",
+    "ISSUE56_V4_MODEL_PROTOCOL_V9_ID",
+    "ISSUE56_V4_MODEL_PROTOCOL_V9_SCHEMA_VERSION",
     "Issue56V4ModelProtocolError",
     "V4_MODEL_CANDIDATE_IDS",
     "V4_MODEL_FEATURE_VARIANT_IDS",
@@ -1386,6 +1458,10 @@ __all__ = [
     "V4_MODEL_V8_CONDITION_GROUP_LABELS",
     "V4_MODEL_V8_SPLIT_PROTOCOL",
     "V4_MODEL_V8_SUPERIORITY_SPEC",
+    "V4_MODEL_V9_CANDIDATE_IDS",
+    "V4_MODEL_V9_O2_EXCESS_GUARD",
+    "V4_MODEL_V9_STAGE_B_RULE",
+    "V4_MODEL_V9_SUPERIORITY_SPEC",
     "condition_group_labels_for_split",
     "family_split_for_protocol",
     "load_v4_model_protocol",
@@ -1395,6 +1471,7 @@ __all__ = [
     "load_v4_model_protocol_v6",
     "load_v4_model_protocol_v7",
     "load_v4_model_protocol_v8",
+    "load_v4_model_protocol_v9",
     "v6_family_split",
     "v8_family_split",
     "validate_v4_model_protocol",
@@ -1404,4 +1481,5 @@ __all__ = [
     "validate_v4_model_protocol_v6",
     "validate_v4_model_protocol_v7",
     "validate_v4_model_protocol_v8",
+    "validate_v4_model_protocol_v9",
 ]

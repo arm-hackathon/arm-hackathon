@@ -728,3 +728,178 @@ def test_select_action_context_non_nominal_picks_mode_action() -> None:
     }
     selected_occupied = model.select_action_context(scores, occupied_context)
     assert selected_occupied is not None and selected_occupied.action_id == "normal-occupied-v1"
+
+
+def _c8_model() -> "V4RiskModel":
+    train = _dataset("TRAIN", 10)
+    validation = _dataset("VALIDATION", 10)
+    return V4RiskModel.fit(train, candidate_id="c8_o2_excess_guard").calibrate(
+        validation, threshold_grid=V4_THRESHOLD_GRID_EXTENDED
+    )
+
+
+def test_select_action_context_c8_guard_proposes_dormant_on_o2_excess() -> None:
+    model = _c8_model()
+    scores = [
+        _score(0, _prediction(relative_safety=0.5), 0.5),
+        _score(1, _prediction(relative_safety=0.6), 0.6),
+        _score(2, _prediction(relative_safety=0.7), 0.7),
+        _score(3, _prediction(relative_safety=0.8), 0.8),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": True,
+        "operating_mode": "occupied",
+        "current_action_id": "normal-occupied-v1",
+    }
+    selected = model.select_action_context(scores, context)
+    assert selected is not None and selected.action_id == "normal-dormant-v1"
+
+
+def test_select_action_context_c8_guard_suppressed_when_already_dormant() -> None:
+    model = _c8_model()
+    scores = [
+        _score(0, _prediction(relative_safety=-2.0), -2.0),
+        _score(1, _prediction(relative_safety=0.2), 0.2),
+        _score(2, _prediction(relative_safety=0.3), 0.3),
+        _score(3, _prediction(relative_safety=0.1), 0.1),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": True,
+        "operating_mode": "occupied",
+        "current_action_id": "normal-dormant-v1",
+    }
+    selected = model.select_action_context(scores, context)
+    assert selected is not None and selected.action_index == 0
+
+
+def test_select_action_context_c8_guard_inactive_without_o2_excess() -> None:
+    model = _c8_model()
+    scores = [
+        _score(0, _prediction(relative_safety=0.1), 0.1),
+        _score(1, _prediction(relative_safety=0.2), 0.2),
+        _score(2, _prediction(relative_safety=0.3), 0.3),
+        _score(3, _prediction(relative_safety=-1.0), -1.0),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": False,
+        "operating_mode": "contingency",
+        "current_action_id": None,
+    }
+    selected = model.select_action_context(scores, context)
+    assert selected is not None and selected.action_id == "normal-contingency-v1"
+
+
+def test_protocol_v9_per_family_superiority_and_guard() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        ISSUE56_V4_MODEL_PROTOCOL_V9_FILENAME,
+        V4_MODEL_V8_SPLIT_PROTOCOL,
+        load_v4_model_protocol_v9,
+        validate_v4_model_protocol_v9,
+    )
+
+    protocol, digest = load_v4_model_protocol_v9(REPO_ROOT)
+    assert (
+        protocol["preregistration_id"]
+        == "habitat_v2_forecast_issue_56_v4_model_preregistration_v9"
+    )
+    assert len(digest) == 64
+    assert (REPO_ROOT / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V9_FILENAME).is_file()
+
+    assert tuple(item["id"] for item in protocol["candidate_models"]) == (
+        "c0_v3_refit",
+        "c3_small_shared_mlp",
+        "c8_o2_excess_guard",
+    )
+    stage_b = protocol["evaluation"]["stage_b_hmc_replay"]
+    assert stage_b["stage_b_candidate_rule"] == "replay_all_stage_a_passers_v1"
+    assert stage_b["superiority_over_v3"] == {
+        "family_losses_maximum": 0,
+        "family_wins_minimum": 4,
+        "admitted_proposal_count_must_be_at_least_v3": True,
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "maximum_hmc_mismatch_count": 0,
+    }
+    assert protocol["policy"]["o2_excess_guard"] == {
+        "trigger": "nominal_o2_excess",
+        "action": "normal-dormant-v1",
+        "model_confirmation": "none",
+    }
+    assert protocol["population"]["split_protocol"] == V4_MODEL_V8_SPLIT_PROTOCOL
+    assert protocol["corpus_requirement"]["split_protocol"] == V4_MODEL_V8_SPLIT_PROTOCOL
+
+    drifted = json.loads(json.dumps(protocol))
+    drifted["evaluation"]["stage_b_hmc_replay"]["superiority_over_v3"]["family_wins_minimum"] = 3
+    with pytest.raises(Issue56V4ModelProtocolError, match="superiority"):
+        validate_v4_model_protocol_v9(drifted)
+
+    drifted_guard = json.loads(json.dumps(protocol))
+    drifted_guard["policy"]["o2_excess_guard"]["action"] = "normal-occupied-v1"
+    with pytest.raises(Issue56V4ModelProtocolError, match="o2 excess guard"):
+        validate_v4_model_protocol_v9(drifted_guard)
+
+
+def test_superiority_helper_per_family_grading() -> None:
+    import importlib.util
+    import types
+
+    spec_path = REPO_ROOT / "scripts" / "run_action_risk_v4_study_v3.py"
+    module_spec = importlib.util.spec_from_file_location("study_v9_under_test", spec_path)
+    study = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(study)
+
+    v9_spec = {
+        "family_losses_maximum": 0,
+        "family_wins_minimum": 4,
+        "admitted_proposal_count_must_be_at_least_v3": True,
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "maximum_hmc_mismatch_count": 0,
+    }
+    families = ("fam-a", "fam-b", "fam-c", "fam-d", "fam-e", "fam-f")
+    v4_exposures = (0.0001, 0.0002, 0.0003, 0.0004, 0.0006, 0.0007)
+    v3_exposures = (0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007)
+
+    def make_records(v4_list, v3_list):
+        by_pair = {}
+        for fid, e4, e3 in zip(families, v4_list, v3_list):
+            by_pair[("risk_v4_model_common_window", fid)] = types.SimpleNamespace(
+                safety_exposure=e4
+            )
+            by_pair[("risk_filtered_point_v3", fid)] = types.SimpleNamespace(
+                safety_exposure=e3
+            )
+        return by_pair
+
+    safety = {"point_difference": -0.0003, "ci_lower": -0.0005, "ci_upper": -0.0001}
+    result = study._superiority_over_v3(
+        v9_spec, safety, 4, 2, 0, by_pair=make_records(v4_exposures, v3_exposures),
+        evaluation_ids=families,
+    )
+    assert result["family_wins"] == 4
+    assert result["family_ties"] == 2
+    assert result["family_losses"] == 0
+    assert result["achieved"] is True
+
+    losing_v4 = (0.0002, 0.0004, 0.0003, 0.0004, 0.0005, 0.0006)
+    result_loss = study._superiority_over_v3(
+        v9_spec, safety, 4, 2, 0, by_pair=make_records(losing_v4, v3_exposures),
+        evaluation_ids=families,
+    )
+    assert result_loss["family_losses"] == 1
+    assert result_loss["achieved"] is False
+
+    result_few_wins = study._superiority_over_v3(
+        v9_spec, safety, 4, 2, 0,
+        by_pair=make_records((0.0001, 0.0002, 0.0004, 0.0005, 0.0006, 0.0006), v3_exposures),
+        evaluation_ids=families,
+    )
+    assert result_few_wins["family_wins"] == 3
+    assert result_few_wins["achieved"] is False
+
+    result_mismatch = study._superiority_over_v3(
+        v9_spec, safety, 4, 2, 1, by_pair=make_records(v4_exposures, v3_exposures),
+        evaluation_ids=families,
+    )
+    assert result_mismatch["achieved"] is False

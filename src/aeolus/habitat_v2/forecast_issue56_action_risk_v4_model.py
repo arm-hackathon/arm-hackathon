@@ -58,6 +58,7 @@ V4_MODEL_CANDIDATES = (
     "c5_action_conditioned_ridge",
     "c6_action_conditioned_temporal",
     "c7_action_conditioned_cumulative",
+    "c8_o2_excess_guard",
 )
 V4_ACTION_IDS = (
     "normal-occupied-v1",
@@ -75,6 +76,7 @@ V4_CANDIDATE_FEATURE_VARIANTS = {
     "c5_action_conditioned_ridge": "v3_708_past_only",
     "c6_action_conditioned_temporal": "v4_temporal_past_only",
     "c7_action_conditioned_cumulative": "v3_708_past_only",
+    "c8_o2_excess_guard": "v3_708_past_only",
 }
 V4_CANDIDATE_SEMANTICS = {
     "c0_v3_refit": ("ridge", "cumulative_logistic"),
@@ -85,6 +87,7 @@ V4_CANDIDATE_SEMANTICS = {
     "c5_action_conditioned_ridge": ("action_conditioned_ridge", "shared_hazard"),
     "c6_action_conditioned_temporal": ("action_conditioned_ridge", "shared_hazard"),
     "c7_action_conditioned_cumulative": ("action_conditioned_ridge", "cumulative_logistic"),
+    "c8_o2_excess_guard": ("ridge", "cumulative_logistic"),
 }
 V4_EVENT_LIMIT = 0.50
 V4_EXPECTED_EXPOSURE_LIMIT = 0.50
@@ -1971,6 +1974,12 @@ class V4RiskModel:
             current_command=current_command,
         )
         context = detect_v4_context(history)
+        current_action_id = None
+        for score in scores:
+            if score.intervention == 0.0:
+                current_action_id = score.action_id
+                break
+        context["current_action_id"] = current_action_id
         gated: list[V4ActionScore] = []
         for score in scores:
             hard = score.hard_ineligible
@@ -2020,6 +2029,22 @@ class V4RiskModel:
         if len(identifiers) != len(set(identifiers)):
             raise Issue56V4ModelError("V4 action selection received duplicate actions")
         if context.get("critical_health"):
+            return None
+        if (
+            self.candidate_id == "c8_o2_excess_guard"
+            and context.get("nominal_o2_excess")
+            and context.get("current_action_id") != V4_CONTEXT_DORMANT_ACTION_ID
+        ):
+            dormant = next(
+                (
+                    item
+                    for item in items
+                    if item.action_id == V4_CONTEXT_DORMANT_ACTION_ID and item.compatible
+                ),
+                None,
+            )
+            if dormant is not None:
+                return dormant
             return None
         eligible = [item for item in items if not item.hard_ineligible and item.compatible]
         if not eligible:

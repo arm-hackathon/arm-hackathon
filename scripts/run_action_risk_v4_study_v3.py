@@ -65,14 +65,16 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_V6_ID,
     ISSUE56_V4_MODEL_PROTOCOL_V7_ID,
     ISSUE56_V4_MODEL_PROTOCOL_V8_ID,
+    ISSUE56_V4_MODEL_PROTOCOL_V9_ID,
     V4_MODEL_V3_SPLIT_PROTOCOL,
     V4_MODEL_V3_STAGE_B_ARMS,
-    V4_MODEL_V4_CANDIDATE_IDS,
     V4_MODEL_V4_STAGE_B_RULE,
+    V4_MODEL_V9_STAGE_B_RULE,
     load_v4_model_protocol_v5,
     load_v4_model_protocol_v6,
     load_v4_model_protocol_v7,
     load_v4_model_protocol_v8,
+    load_v4_model_protocol_v9,
 )
 
 
@@ -93,12 +95,14 @@ PROTOCOL_VERSION_CONTRACTS = {
     "v6": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v6.json"),
     "v7": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v7.json"),
     "v8": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v8.json"),
+    "v9": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v9.json"),
 }
 PROTOCOL_VERSION_LOADERS = {
     "v5": (load_v4_model_protocol_v5, ISSUE56_V4_MODEL_PROTOCOL_V5_ID),
     "v6": (load_v4_model_protocol_v6, ISSUE56_V4_MODEL_PROTOCOL_V6_ID),
     "v7": (load_v4_model_protocol_v7, ISSUE56_V4_MODEL_PROTOCOL_V7_ID),
     "v8": (load_v4_model_protocol_v8, ISSUE56_V4_MODEL_PROTOCOL_V8_ID),
+    "v9": (load_v4_model_protocol_v9, ISSUE56_V4_MODEL_PROTOCOL_V9_ID),
 }
 STUDY_SOURCE_PATHS_BASE = (
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v3.json"),
@@ -864,10 +868,11 @@ def main() -> int:
         _sha_json(source_identity), manifest, corpus_manifest_digest, protocol_sha256
     )
 
-    print(f"Issue #56 V4 study v4 (stage A: {len(V4_MODEL_V4_CANDIDATE_IDS)} candidates)", file=sys.stderr)
+    candidate_roster = tuple(item["id"] for item in protocol["candidate_models"])
+    print(f"Issue #56 V4 study v4 (stage A: {len(candidate_roster)} candidates)", file=sys.stderr)
     candidates: list[dict[str, Any]] = []
     gate_status_by_candidate: dict[str, Any] = {}
-    for index, candidate_id in enumerate(V4_MODEL_V4_CANDIDATE_IDS):
+    for index, candidate_id in enumerate(candidate_roster):
         seed = V4_MODEL_SEEDS[index % len(V4_MODEL_SEEDS)]
         try:
             model = V4RiskModel.fit(
@@ -926,9 +931,8 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    if protocol["evaluation"]["stage_b_hmc_replay"]["stage_b_candidate_rule"] != (
-        V4_MODEL_V4_STAGE_B_RULE
-    ):
+    stage_b_rule = protocol["evaluation"]["stage_b_hmc_replay"]["stage_b_candidate_rule"]
+    if stage_b_rule not in (V4_MODEL_V4_STAGE_B_RULE, V4_MODEL_V9_STAGE_B_RULE):
         raise V4StudyV3Error("V4 study stage B candidate rule drifted from the protocol")
 
     evaluated_by_id = {
@@ -951,43 +955,75 @@ def main() -> int:
         )
 
     full_passers = [
-        cid for cid in V4_MODEL_V4_CANDIDATE_IDS if gate_status_by_candidate.get(cid)
+        cid for cid in candidate_roster if gate_status_by_candidate.get(cid)
     ]
-    if full_passers:
-        stage_b_candidate = full_passers[0]
-        stage_b_trigger = "stage_a_gate_passer"
-    else:
-        safety_passers = [cid for cid in V4_MODEL_V4_CANDIDATE_IDS if _safety_critical_pass(cid)]
-        if safety_passers:
-            stage_b_candidate = max(
-                safety_passers,
-                key=lambda cid: evaluated_by_id[cid]["evaluation"]["useful_action_count"],
+    stage_b: dict[str, Any]
+    if stage_b_rule == V4_MODEL_V9_STAGE_B_RULE:
+        stage_b = {
+            "ran": bool(full_passers),
+            "candidate_rule": stage_b_rule,
+            "candidates": {},
+            "achieved_by": [],
+        }
+        shared_baseline = None
+        if full_passers:
+            shared_baseline = _prepare_v3_baseline(
+                output, bundle, roster, family_split, smoke=smoke, artifact_suffix=""
             )
-            stage_b_trigger = "best_safety_passing_usefulness"
+        for passer in full_passers:
+            block = _run_stage_b(
+                output,
+                bundle,
+                roster,
+                family_split,
+                evaluation,
+                passer,
+                evaluated_by_id[passer],
+                protocol,
+                smoke=smoke,
+                artifact_suffix=f"--{passer}",
+                v3_baseline=shared_baseline,
+            )
+            stage_b["candidates"][passer] = block
+            if block.get("all_stage_b_gates_passed") and block["superiority_over_v3"]["achieved"]:
+                stage_b["achieved_by"].append(passer)
+    else:
+        if full_passers:
+            stage_b_candidate = full_passers[0]
+            stage_b_trigger = "stage_a_gate_passer"
         else:
-            stage_b_candidate = None
-            stage_b_trigger = "no_safety_passing_candidate"
+            safety_passers = [cid for cid in candidate_roster if _safety_critical_pass(cid)]
+            if safety_passers:
+                stage_b_candidate = max(
+                    safety_passers,
+                    key=lambda cid: evaluated_by_id[cid]["evaluation"]["useful_action_count"],
+                )
+                stage_b_trigger = "best_safety_passing_usefulness"
+            else:
+                stage_b_candidate = None
+                stage_b_trigger = "no_safety_passing_candidate"
 
-    stage_b: dict[str, Any] = {
-        "ran": False,
-        "candidate_id": stage_b_candidate,
-        "candidate_rule": V4_MODEL_V4_STAGE_B_RULE,
-        "trigger": stage_b_trigger,
-    }
-    if stage_b_candidate is not None:
-        stage_b = _run_stage_b(
-            output,
-            bundle,
-            roster,
-            family_split,
-            evaluation,
-            stage_b_candidate,
-            evaluated_by_id[stage_b_candidate],
-            protocol,
-            smoke=smoke,
-        )
-        stage_b["candidate_rule"] = V4_MODEL_V4_STAGE_B_RULE
-        stage_b["trigger"] = stage_b_trigger
+        stage_b = {
+            "ran": False,
+            "candidate_id": stage_b_candidate,
+            "candidate_rule": stage_b_rule,
+            "trigger": stage_b_trigger,
+        }
+        if stage_b_candidate is not None:
+            stage_b = _run_stage_b(
+                output,
+                bundle,
+                roster,
+                family_split,
+                evaluation,
+                stage_b_candidate,
+                evaluated_by_id[stage_b_candidate],
+                protocol,
+                smoke=smoke,
+                artifact_suffix="",
+            )
+            stage_b["candidate_rule"] = stage_b_rule
+            stage_b["trigger"] = stage_b_trigger
 
     results = {
         "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_study_v4.result",
@@ -1017,8 +1053,14 @@ def main() -> int:
         "stage_b": stage_b,
         "outperforms_v3": bool(
             stage_b.get("ran")
-            and stage_b.get("all_stage_b_gates_passed")
-            and stage_b.get("superiority_over_v3", {}).get("achieved")
+            and (
+                bool(stage_b.get("achieved_by"))
+                if stage_b_rule == V4_MODEL_V9_STAGE_B_RULE
+                else bool(
+                    stage_b.get("all_stage_b_gates_passed")
+                    and stage_b.get("superiority_over_v3", {}).get("achieved")
+                )
+            )
         ),
         "smoke_only": smoke,
         "status": "SMOKE_PATH_ONLY" if smoke else "DEVELOPMENT_EVIDENCE",
@@ -1029,8 +1071,12 @@ def main() -> int:
         "model_protocol_sha256": protocol_sha256,
         "split_protocol": split_protocol,
         "corpus_manifest_sha256": corpus_manifest_digest,
-        "candidate_ids": list(V4_MODEL_V4_CANDIDATE_IDS),
-        "stage_b_candidate": stage_b_candidate,
+        "candidate_ids": list(candidate_roster),
+        "stage_b_candidate": (
+            list(stage_b.get("achieved_by", []))
+            if stage_b_rule == V4_MODEL_V9_STAGE_B_RULE
+            else stage_b.get("candidate_id")
+        ),
         "stage_b_arms": list(V4_MODEL_V3_STAGE_B_ARMS),
         "hmc_authority_changed": False,
         "protected_final_suite_accessed": False,
@@ -1049,6 +1095,8 @@ def _superiority_over_v3(
     admitted_v4: int,
     admitted_v3: int,
     mismatch_v4: int,
+    by_pair: Mapping[tuple[str, str], Any] | None = None,
+    evaluation_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     point_difference = float(safety["point_difference"])
     ci_lower = float(safety["ci_lower"])
@@ -1060,6 +1108,41 @@ def _superiority_over_v3(
         "admitted_proposal_count_v3": admitted_v3,
         "hmc_mismatch_count_v4": mismatch_v4,
     }
+    if "family_wins_minimum" in spec:
+        if by_pair is None or evaluation_ids is None:
+            raise V4StudyV3Error("V4 per-family superiority requires episode records")
+        per_family: list[dict[str, Any]] = []
+        for family_id in evaluation_ids:
+            exposure_v4 = float(by_pair[(V4_MODEL_ARM, family_id)].safety_exposure)
+            exposure_v3 = float(
+                by_pair[("risk_filtered_point_v3", family_id)].safety_exposure
+            )
+            difference = exposure_v4 - exposure_v3
+            outcome = "win" if difference < 0.0 else ("tie" if difference == 0.0 else "loss")
+            per_family.append(
+                {
+                    "family_id": family_id,
+                    "safety_exposure_v4": exposure_v4,
+                    "safety_exposure_v3": exposure_v3,
+                    "difference": difference,
+                    "outcome": outcome,
+                }
+            )
+        wins = sum(1 for item in per_family if item["outcome"] == "win")
+        ties = sum(1 for item in per_family if item["outcome"] == "tie")
+        losses = sum(1 for item in per_family if item["outcome"] == "loss")
+        superiority["per_family"] = per_family
+        superiority["family_wins"] = wins
+        superiority["family_ties"] = ties
+        superiority["family_losses"] = losses
+        superiority["achieved"] = bool(
+            losses <= spec["family_losses_maximum"]
+            and wins >= spec["family_wins_minimum"]
+            and admitted_v4 >= admitted_v3
+            and point_difference <= spec["safety_exposure_paired_point_difference_maximum"]
+            and mismatch_v4 <= spec["maximum_hmc_mismatch_count"]
+        )
+        return superiority
     if "early_intervention_alternative" in spec:
         primary = bool(
             admitted_v4 > admitted_v3
@@ -1109,21 +1192,15 @@ def _superiority_over_v3(
     return superiority
 
 
-def _run_stage_b(
+def _prepare_v3_baseline(
     output: Path,
     bundle: Any,
     roster: tuple[str, ...],
     family_split: Mapping[str, str],
-    evaluation: Sequence[V4ModelSample],
-    candidate_id: str,
-    candidate_record: Mapping[str, Any],
-    protocol: Mapping[str, Any],
     *,
     smoke: bool,
-) -> dict[str, Any]:
-    model, _ = load_v4_model(output / "models" / f"{candidate_id}.json")
-
-    print("Issue #56 V4 study v3 (stage B: HMC replay)", file=sys.stderr)
+    artifact_suffix: str = "",
+) -> tuple[Any, Any, str]:
     if smoke:
         v3_samples_by_family: dict[str, list[Any]] = defaultdict(list)
         for family_id in roster:
@@ -1161,11 +1238,40 @@ def _run_stage_b(
     if not v3_train or not v3_validation:
         raise V4StudyV3Error("V3 baseline refit lacks TRAIN or VALIDATION support")
     v3_model = V3RiskModel.fit(v3_train).calibrate(v3_validation)
-    v3_model_file_sha256 = _write_json(output / "v3-baseline-model.json", v3_model.to_mapping())
+    v3_model_file_sha256 = _write_json(
+        output / f"v3-baseline-model{artifact_suffix}.json", v3_model.to_mapping()
+    )
     if not smoke and v3_model_file_sha256 != FROZEN_V3_MODEL_FILE_SHA256:
         raise V4StudyV3Error("V3 baseline refit diverged from the frozen V3 model artifact")
-
     point_model = load_live_mlp_model(POINT_ARTIFACT_PATH, expected_sha256=POINT_ARTIFACT_SHA256)
+    return v3_model, point_model, v3_model_file_sha256
+
+
+def _run_stage_b(
+    output: Path,
+    bundle: Any,
+    roster: tuple[str, ...],
+    family_split: Mapping[str, str],
+    evaluation: Sequence[V4ModelSample],
+    candidate_id: str,
+    candidate_record: Mapping[str, Any],
+    protocol: Mapping[str, Any],
+    *,
+    smoke: bool,
+    artifact_suffix: str = "",
+    v3_baseline: tuple[Any, Any, str] | None = None,
+) -> dict[str, Any]:
+    model, _ = load_v4_model(output / "models" / f"{candidate_id}.json")
+
+    print(
+        f"Issue #56 V4 study v3 (stage B: HMC replay {candidate_id})", file=sys.stderr
+    )
+    if v3_baseline is not None:
+        v3_model, point_model, v3_model_file_sha256 = v3_baseline
+    else:
+        v3_model, point_model, v3_model_file_sha256 = _prepare_v3_baseline(
+            output, bundle, roster, family_split, smoke=smoke, artifact_suffix=artifact_suffix
+        )
     evaluation_ids = tuple(sorted({sample.family_id for sample in evaluation}))
     records: list[V3EpisodeRecord] = []
     for family_id in evaluation_ids:
@@ -1183,15 +1289,16 @@ def _run_stage_b(
                 v4_model=model if arm == V4_MODEL_ARM else None,
             )
             records.append(record)
-            trace_path = output / "traces" / f"{arm}--{family_id}.json"
+            trace_path = output / f"traces{artifact_suffix}" / f"{arm}--{family_id}.json"
+            trace_path.parent.mkdir(parents=True, exist_ok=True)
             trace_path.write_bytes(record.trace_canonical_bytes)
         print(f"  evaluation family {family_id} complete ({len(V4_MODEL_V3_STAGE_B_ARMS)} arms)", file=sys.stderr)
 
     episodes_sha256 = _write_jsonl(
-        output / "episodes.jsonl", [record.to_mapping() for record in records]
+        output / f"episodes{artifact_suffix}.jsonl", [record.to_mapping() for record in records]
     )
     aggregate = _aggregate_episodes(records)
-    aggregate_sha256 = _write_json(output / "aggregate.json", aggregate)
+    aggregate_sha256 = _write_json(output / f"aggregate{artifact_suffix}.json", aggregate)
 
     stage_b_spec = protocol["evaluation"]["stage_b_hmc_replay"]
     seed = int(stage_b_spec["bootstrap_seed"])
@@ -1273,6 +1380,8 @@ def _run_stage_b(
         admitted_v4,
         admitted_v3,
         mismatch_v4,
+        by_pair=by_pair,
+        evaluation_ids=evaluation_ids,
     )
     return {
         "ran": True,
