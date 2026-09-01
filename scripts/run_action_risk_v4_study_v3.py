@@ -64,6 +64,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_V5_ID,
     ISSUE56_V4_MODEL_PROTOCOL_V6_ID,
     ISSUE56_V4_MODEL_PROTOCOL_V7_ID,
+    ISSUE56_V4_MODEL_PROTOCOL_V8_ID,
     V4_MODEL_V3_SPLIT_PROTOCOL,
     V4_MODEL_V3_STAGE_B_ARMS,
     V4_MODEL_V4_CANDIDATE_IDS,
@@ -71,6 +72,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     load_v4_model_protocol_v5,
     load_v4_model_protocol_v6,
     load_v4_model_protocol_v7,
+    load_v4_model_protocol_v8,
 )
 
 
@@ -84,17 +86,19 @@ POINT_ARTIFACT_SHA256 = (
     "a80628fb298ae2f68fb600ecc70922dfddb39e2560207bbd13463e2d4596ecdd"
 )
 FROZEN_V3_MODEL_FILE_SHA256 = (
-    "e977ccb6b4298c5793838621bd819df50f46926ca2c2b73664ea9da232e4fdb8"
+    "ca18fec29593200fb6daa6eecae9969354531daa402af0e4aa0e8684b9d59ac4"
 )
 PROTOCOL_VERSION_CONTRACTS = {
     "v5": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v5.json"),
     "v6": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v6.json"),
     "v7": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v7.json"),
+    "v8": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v8.json"),
 }
 PROTOCOL_VERSION_LOADERS = {
     "v5": (load_v4_model_protocol_v5, ISSUE56_V4_MODEL_PROTOCOL_V5_ID),
     "v6": (load_v4_model_protocol_v6, ISSUE56_V4_MODEL_PROTOCOL_V6_ID),
     "v7": (load_v4_model_protocol_v7, ISSUE56_V4_MODEL_PROTOCOL_V7_ID),
+    "v8": (load_v4_model_protocol_v8, ISSUE56_V4_MODEL_PROTOCOL_V8_ID),
 }
 STUDY_SOURCE_PATHS_BASE = (
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v3.json"),
@@ -1056,6 +1060,26 @@ def _superiority_over_v3(
         "admitted_proposal_count_v3": admitted_v3,
         "hmc_mismatch_count_v4": mismatch_v4,
     }
+    if "early_intervention_alternative" in spec:
+        primary = bool(
+            admitted_v4 > admitted_v3
+            and point_difference <= spec["safety_exposure_paired_point_difference_maximum"]
+        )
+        alternative = spec["early_intervention_alternative"]
+        secondary = bool(
+            admitted_v4 >= admitted_v3
+            and (
+                point_difference < 0.0
+                if alternative["safety_exposure_paired_point_difference_must_be_strictly_negative"]
+                else point_difference <= 0.0
+            )
+            and ci_upper <= alternative["safety_exposure_paired_ci_upper_maximum"]
+            and mismatch_v4 <= alternative["maximum_hmc_mismatch_count"]
+        )
+        superiority["exceed_v3_with_no_worse_safety"] = primary
+        superiority["early_intervention_alternative_met"] = secondary
+        superiority["achieved"] = bool(primary or secondary)
+        return superiority
     if "admitted_proposal_count_must_exceed_v3" in spec:
         safety_no_worse = bool(
             point_difference <= spec["safety_exposure_paired_point_difference_maximum"]

@@ -100,6 +100,42 @@ V4_MODEL_V7_SUPERIORITY_SPEC = {
     "safety_exposure_paired_ci_upper_maximum": 0.0,
     "maximum_hmc_mismatch_count": 0,
 }
+ISSUE56_V4_MODEL_PROTOCOL_V8_SCHEMA_VERSION = (
+    "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v8"
+)
+ISSUE56_V4_MODEL_PROTOCOL_V8_ID = "habitat_v2_forecast_issue_56_v4_model_preregistration_v8"
+ISSUE56_V4_MODEL_PROTOCOL_V8_FILENAME = (
+    "habitat_v2_forecast_issue_56_v4_model_preregistration_v8.json"
+)
+V4_MODEL_V8_SPLIT_PROTOCOL = "issue56_v4_model_split_v8"
+V4_MODEL_V8_CONDITION_GROUP_LABELS = (
+    "VALIDATION",
+    "EVALUATION",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "VALIDATION",
+    "EVALUATION",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "TRAIN",
+    "EVALUATION",
+    "TRAIN",
+    "VALIDATION",
+    "TRAIN",
+    "TRAIN",
+)
+V4_MODEL_V8_SUPERIORITY_SPEC = {
+    "admitted_proposal_count_must_exceed_v3": True,
+    "safety_exposure_paired_point_difference_maximum": 0.0,
+    "early_intervention_alternative": {
+        "admitted_proposal_count_must_be_at_least_v3": True,
+        "safety_exposure_paired_point_difference_must_be_strictly_negative": True,
+        "safety_exposure_paired_ci_upper_maximum": 0.0,
+        "maximum_hmc_mismatch_count": 0,
+    },
+}
 V4_MODEL_V6_SPLIT_PROTOCOL = "issue56_v4_model_split_v6"
 V4_MODEL_V3_SPLIT_PROTOCOL = "issue56_v4_model_split_v3"
 V4_MODEL_V6_CONDITION_GROUP_LABELS = (
@@ -167,6 +203,42 @@ def v6_family_split(family_ids: Sequence[str]) -> dict[str, str]:
     return dict(sorted(result.items()))
 
 
+def v8_family_split(family_ids: Sequence[str]) -> dict[str, str]:
+    """Split the canonical roster with the preregistered V8 redesign.
+
+    V8 accompanies fixture revision 2, which raises the initial oxygen mole
+    fraction of the high_load_occupied, eva_transition, and contingency
+    operating conditions to the 0.30 upper bound so that all sixteen condition
+    groups produce boundary-crossing events. With every group eventful, V8
+    reassigns groups so EVALUATION spans three distinct operating conditions
+    and three distinct plant conditions (g0001 nominal/fan, g0006
+    high_load/laboratory, g0011 eva/cooling) and VALIDATION spans three more
+    (g0000 nominal/nominal_plant, g0005 high_load/fan, g0013
+    contingency/fan). This removes the V6/V7 structural blockers: TRAIN keeps
+    ten eventful groups (no training-data asymmetry versus the V3 baseline
+    refit) and the evaluation population is diverse enough to make both
+    superiority clauses decidable.
+    """
+
+    ids = tuple(family_ids)
+    if not ids or len(set(ids)) != len(ids):
+        raise Issue56V4ModelProtocolError("V8 family roster must be unique and non-empty")
+    if ids != deterministic_family_ids(32):
+        raise Issue56V4ModelProtocolError("V8 split requires the canonical family roster")
+    result: dict[str, str] = {}
+    for index, family_id in enumerate(ids):
+        if type(family_id) is not str or not family_id:
+            raise Issue56V4ModelProtocolError("V8 family identity is invalid")
+        result[family_id] = V4_MODEL_V8_CONDITION_GROUP_LABELS[index // 2]
+    counts = {
+        label: sum(1 for value in result.values() if value == label)
+        for label in ("TRAIN", "VALIDATION", "EVALUATION")
+    }
+    if counts != dict(V4_MODEL_SPLIT_COUNTS):
+        raise Issue56V4ModelProtocolError("V8 split counts drifted")
+    return dict(sorted(result.items()))
+
+
 def condition_group_labels_for_split(split: Mapping[str, str]) -> tuple[str, ...]:
     """Derive the per-condition-group labels from a roster split mapping."""
 
@@ -177,6 +249,8 @@ def condition_group_labels_for_split(split: Mapping[str, str]) -> tuple[str, ...
 def family_split_for_protocol(split_protocol: str, family_ids: Sequence[str]) -> dict[str, str]:
     """Return the deterministic roster split bound to a named split protocol."""
 
+    if split_protocol == V4_MODEL_V8_SPLIT_PROTOCOL:
+        return v8_family_split(family_ids)
     if split_protocol == V4_MODEL_V6_SPLIT_PROTOCOL:
         return v6_family_split(family_ids)
     if split_protocol == V4_MODEL_V3_SPLIT_PROTOCOL:
@@ -1234,6 +1308,42 @@ def load_v4_model_protocol_v7(root: str | Path) -> tuple[dict[str, Any], str]:
     return validate_v4_model_protocol_v7(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
 
 
+def validate_v4_model_protocol_v8(protocol: Mapping[str, Any]) -> dict[str, Any]:
+    """Fail closed on the authorized V4 model-study protocol revision 8."""
+
+    return _validate_v4_study_protocol(
+        protocol,
+        tag="v8",
+        schema_version=ISSUE56_V4_MODEL_PROTOCOL_V8_SCHEMA_VERSION,
+        preregistration_id=ISSUE56_V4_MODEL_PROTOCOL_V8_ID,
+        parent_evidence_fields={
+            "v4_v7_results_sha256",
+            "revision_rationale",
+        },
+        parent_results_key="v4_v7_results_sha256",
+        candidate_ids=V4_MODEL_V4_CANDIDATE_IDS,
+        stage_b_rule=V4_MODEL_V4_STAGE_B_RULE,
+        selection_contract=V4_MODEL_V5_SELECTION_CONTRACT,
+        eligibility=V4_MODEL_V5_ELIGIBILITY,
+        context_gates=V4_MODEL_V5_CONTEXT_GATES,
+        split_mapping=v8_family_split(deterministic_family_ids(32)),
+        corpus_split_protocol=V4_MODEL_V8_SPLIT_PROTOCOL,
+        stage_a_gate_values=V4_MODEL_V7_STAGE_A_GATES,
+        superiority_spec=V4_MODEL_V8_SUPERIORITY_SPEC,
+    )
+
+
+def load_v4_model_protocol_v8(root: str | Path) -> tuple[dict[str, Any], str]:
+    """Load and hash the exact authorized V4 model protocol revision 8 bytes."""
+
+    path = Path(root).resolve() / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V8_FILENAME
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise Issue56V4ModelProtocolError("V4 protocol v8 is unreadable") from error
+    return validate_v4_model_protocol_v8(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
+
+
 __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_ID",
@@ -1254,6 +1364,9 @@ __all__ = [
     "ISSUE56_V4_MODEL_PROTOCOL_V7_FILENAME",
     "ISSUE56_V4_MODEL_PROTOCOL_V7_ID",
     "ISSUE56_V4_MODEL_PROTOCOL_V7_SCHEMA_VERSION",
+    "ISSUE56_V4_MODEL_PROTOCOL_V8_FILENAME",
+    "ISSUE56_V4_MODEL_PROTOCOL_V8_ID",
+    "ISSUE56_V4_MODEL_PROTOCOL_V8_SCHEMA_VERSION",
     "Issue56V4ModelProtocolError",
     "V4_MODEL_CANDIDATE_IDS",
     "V4_MODEL_FEATURE_VARIANT_IDS",
@@ -1270,6 +1383,9 @@ __all__ = [
     "V4_MODEL_V6_SPLIT_PROTOCOL",
     "V4_MODEL_V7_STAGE_A_GATES",
     "V4_MODEL_V7_SUPERIORITY_SPEC",
+    "V4_MODEL_V8_CONDITION_GROUP_LABELS",
+    "V4_MODEL_V8_SPLIT_PROTOCOL",
+    "V4_MODEL_V8_SUPERIORITY_SPEC",
     "condition_group_labels_for_split",
     "family_split_for_protocol",
     "load_v4_model_protocol",
@@ -1278,11 +1394,14 @@ __all__ = [
     "load_v4_model_protocol_v5",
     "load_v4_model_protocol_v6",
     "load_v4_model_protocol_v7",
+    "load_v4_model_protocol_v8",
     "v6_family_split",
+    "v8_family_split",
     "validate_v4_model_protocol",
     "validate_v4_model_protocol_v3",
     "validate_v4_model_protocol_v4",
     "validate_v4_model_protocol_v5",
     "validate_v4_model_protocol_v6",
     "validate_v4_model_protocol_v7",
+    "validate_v4_model_protocol_v8",
 ]

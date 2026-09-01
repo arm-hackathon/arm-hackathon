@@ -597,6 +597,82 @@ def test_superiority_helper_enforces_strictly_better_safety() -> None:
     assert study._superiority_over_v3(legacy_spec, better, 5, 4, 0)["achieved"] is True
     assert study._superiority_over_v3(legacy_spec, better, 4, 4, 0)["achieved"] is False
 
+    v8_spec = {
+        "admitted_proposal_count_must_exceed_v3": True,
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "early_intervention_alternative": {
+            "admitted_proposal_count_must_be_at_least_v3": True,
+            "safety_exposure_paired_point_difference_must_be_strictly_negative": True,
+            "safety_exposure_paired_ci_upper_maximum": 0.0,
+            "maximum_hmc_mismatch_count": 0,
+        },
+    }
+    # Primary clause: more admissions with no-worse safety.
+    assert study._superiority_over_v3(v8_spec, better, 5, 4, 0)["achieved"] is True
+    # Alternative clause: equal admissions, strictly better safety, zero mismatches.
+    assert study._superiority_over_v3(v8_spec, better, 4, 4, 0)["achieved"] is True
+    # Neither clause: equal admissions with non-negative safety.
+    assert study._superiority_over_v3(v8_spec, equal, 4, 4, 0)["achieved"] is False
+    # Neither clause: fewer admissions.
+    assert study._superiority_over_v3(v8_spec, better, 3, 4, 0)["achieved"] is False
+    # Neither clause: mismatches break the alternative.
+    assert study._superiority_over_v3(v8_spec, better, 4, 4, 1)["achieved"] is False
+
+
+def test_protocol_v8_fixture_revision_split_and_superiority() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        ISSUE56_V4_MODEL_PROTOCOL_V8_FILENAME,
+        V4_MODEL_V8_SPLIT_PROTOCOL,
+        condition_group_labels_for_split,
+        load_v4_model_protocol_v8,
+        v8_family_split,
+        validate_v4_model_protocol_v8,
+    )
+
+    protocol, digest = load_v4_model_protocol_v8(REPO_ROOT)
+    assert (
+        protocol["preregistration_id"]
+        == "habitat_v2_forecast_issue_56_v4_model_preregistration_v8"
+    )
+    assert len(digest) == 64
+    assert (REPO_ROOT / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V8_FILENAME).is_file()
+
+    roster = deterministic_family_ids(32)
+    split = v8_family_split(roster)
+    assert protocol["population"]["split_protocol"] == V4_MODEL_V8_SPLIT_PROTOCOL
+    assert protocol["population"]["condition_group_labels"] == list(
+        condition_group_labels_for_split(split)
+    )
+    assert protocol["corpus_requirement"]["split_protocol"] == V4_MODEL_V8_SPLIT_PROTOCOL
+
+    # Split counts unchanged; evaluation spans three operating and plant conditions.
+    assert {
+        label: sum(1 for value in split.values() if value == label)
+        for label in ("TRAIN", "VALIDATION", "EVALUATION")
+    } == {"TRAIN": 20, "VALIDATION": 6, "EVALUATION": 6}
+    eval_groups = [
+        index // 2 for index, fid in enumerate(roster) if split[fid] == "EVALUATION"
+    ]
+    assert sorted(set(eval_groups)) == [1, 6, 11]
+    assert {group % 4 for group in (1, 6, 11)} == {1, 2, 3}
+    assert {group // 4 for group in (1, 6, 11)} == {0, 1, 2}
+
+    superiority = protocol["evaluation"]["stage_b_hmc_replay"]["superiority_over_v3"]
+    assert superiority["admitted_proposal_count_must_exceed_v3"] is True
+    assert "early_intervention_alternative" in superiority
+
+    drifted = json.loads(json.dumps(protocol))
+    drifted["evaluation"]["stage_b_hmc_replay"]["superiority_over_v3"][
+        "early_intervention_alternative"
+    ]["maximum_hmc_mismatch_count"] = 1
+    with pytest.raises(Issue56V4ModelProtocolError, match="superiority"):
+        validate_v4_model_protocol_v8(drifted)
+
+    drifted_split = json.loads(json.dumps(protocol))
+    drifted_split["population"]["condition_group_labels"][1] = "TRAIN"
+    with pytest.raises(Issue56V4ModelProtocolError, match="split contract"):
+        validate_v4_model_protocol_v8(drifted_split)
+
 
 def _context_model() -> "V4RiskModel":
     train = _dataset("TRAIN", 10)

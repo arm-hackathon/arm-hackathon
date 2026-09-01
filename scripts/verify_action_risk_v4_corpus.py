@@ -34,6 +34,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_ID,
     V4_MODEL_V3_SPLIT_PROTOCOL,
     V4_MODEL_V6_SPLIT_PROTOCOL,
+    V4_MODEL_V8_SPLIT_PROTOCOL,
     family_split_for_protocol,
     load_v4_model_protocol,
 )
@@ -208,7 +209,11 @@ def _require_keys(mapping: Mapping[str, Any], expected: set[str], label: str) ->
 def verify_v4_corpus(
     corpus_path: Path, *, split_protocol: str = V4_MODEL_V3_SPLIT_PROTOCOL
 ) -> dict[str, Any]:
-    if split_protocol not in (V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL):
+    if split_protocol not in (
+        V4_MODEL_V3_SPLIT_PROTOCOL,
+        V4_MODEL_V6_SPLIT_PROTOCOL,
+        V4_MODEL_V8_SPLIT_PROTOCOL,
+    ):
         raise V4CorpusVerificationError(f"unknown --split-protocol {split_protocol!r}")
     corpus = _resolve_corpus(corpus_path)
     manifest = _strict_json(corpus / "manifest.json")
@@ -494,7 +499,11 @@ def main() -> int:
     parser.add_argument(
         "--split-protocol",
         default=V4_MODEL_V3_SPLIT_PROTOCOL,
-        choices=(V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL),
+        choices=(
+            V4_MODEL_V3_SPLIT_PROTOCOL,
+            V4_MODEL_V6_SPLIT_PROTOCOL,
+            V4_MODEL_V8_SPLIT_PROTOCOL,
+        ),
         help="preregistered family split the corpus must match",
     )
     args = parser.parse_args()

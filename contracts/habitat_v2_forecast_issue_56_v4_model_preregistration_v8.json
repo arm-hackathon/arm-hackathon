@@ -1,0 +1,283 @@
+{
+  "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v8",
+  "preregistration_id": "habitat_v2_forecast_issue_56_v4_model_preregistration_v8",
+  "status": "AUTHORIZED_DEVELOPMENT_MODEL_STUDY",
+  "authorization": {
+    "authorized_by_user": true,
+    "authorized_at": "2026-08-31",
+    "authorization_scope": [
+      "learned_model_implementation",
+      "training_on_development_data",
+      "development_artifact_export",
+      "development_threshold_selection",
+      "opt_in_runtime_integration"
+    ],
+    "protected_final_suite_allowed": false
+  },
+  "authority": {
+    "final_command_authority": "HMC",
+    "plant_step_authority": "HMC",
+    "replay_authority": "HMC_and_strict_replay_validator",
+    "model_actuator_authority": false,
+    "v3_immutable": true
+  },
+  "parent_evidence": {
+    "v4_v7_results_sha256": "537e60ca3c3e8c01f623cac9bdcedb5b59ac34839a021d588ca4f495f968a80e",
+    "revision_rationale": "v7_proved_the_remaining_block_is_a_training_data_asymmetry_the_frozen_v3_refits_on_two_eventful_groups_while_any_decidable_split_left_v4_at_most_one; authorize_fixture_revision_2_raising_high_load_occupied_eva_transition_and_contingency_initial_oxygen_mole_fraction_to_the_0.30_upper_bound_so_all_sixteen_condition_groups_produce_boundary_crossing_events; redesign_split_v8_so_EVALUATION_spans_three_operating_and_three_plant_conditions_and_TRAIN_keeps_ten_eventful_groups_removing_the_asymmetry; superiority_is_primary_exceed_v3_with_no_worse_safety_or_the_early_intervention_alternative_equal_admissions_strictly_better_paired_safety_zero_mismatches"
+  },
+  "population": {
+    "family_count": 32,
+    "condition_group_count": 16,
+    "families_per_condition_group": 2,
+    "statistical_unit": "condition_group",
+    "paired_sensor_variants_stay_together": true,
+    "split_protocol": "issue56_v4_model_split_v8",
+    "condition_group_labels": [
+      "VALIDATION",
+      "EVALUATION",
+      "TRAIN",
+      "TRAIN",
+      "TRAIN",
+      "VALIDATION",
+      "EVALUATION",
+      "TRAIN",
+      "TRAIN",
+      "TRAIN",
+      "TRAIN",
+      "EVALUATION",
+      "TRAIN",
+      "VALIDATION",
+      "TRAIN",
+      "TRAIN"
+    ],
+    "splits": {
+      "TRAIN": "20 families / 10 condition groups",
+      "VALIDATION": "6 families / 3 condition groups",
+      "EVALUATION": "6 families / 3 condition groups"
+    },
+    "decision_steps_per_family": 13,
+    "actions_per_decision": 4,
+    "expected_samples": {
+      "TRAIN": 1040,
+      "VALIDATION": 312,
+      "EVALUATION": 312,
+      "TOTAL": 1664
+    }
+  },
+  "corpus_requirement": {
+    "corpus_schema_version": "aeolus_habitat_v2_risk_issue_56_v4_corpus_v4",
+    "corpus_preregistration_id": "habitat_v2_forecast_issue_56_v4_model_preregistration_v2",
+    "split_protocol": "issue56_v4_model_split_v8",
+    "family_count": 32,
+    "sample_counts": {
+      "TRAIN": 1040,
+      "VALIDATION": 312,
+      "EVALUATION": 312,
+      "TOTAL": 1664
+    },
+    "trace_count": 1696,
+    "counterfactual_trace_bytes_present": true,
+    "hold_trace_bytes_present": true
+  },
+  "data_contract": {
+    "corpus_schema_version": "aeolus_habitat_v2_risk_issue_56_v4_corpus_v4",
+    "counterfactual_trace_bytes_required": true,
+    "hold_trace_bytes_required": true,
+    "relative_targets_are_action_minus_no_proposal_hold": true,
+    "temporal_feature_manifest_required": true,
+    "observable_action_mask_required": true,
+    "future_states_are_labels_only": true,
+    "runtime_projection_source": "verified_complete_history_window",
+    "prohibited_runtime_inputs": [
+      "hidden_fault_truth",
+      "future_measurements",
+      "fault_labels_or_schedules",
+      "seeds",
+      "internal_noise_or_bias_state",
+      "reserve_audit_state",
+      "hmc_arbitration_outcome",
+      "counterfactual_future_state"
+    ],
+    "required_provenance": [
+      "source_identity_sha256",
+      "corpus_manifest_sha256",
+      "hmc_binding_sha256",
+      "hmc_contract_sha256",
+      "scenario_manifest_sha256",
+      "action_catalogue_sha256",
+      "feature_manifest_sha256",
+      "label_manifest_sha256"
+    ]
+  },
+  "feature_variants": [
+    {
+      "id": "v3_708_past_only",
+      "description": "Frozen V3 708-value action-conditioned observable projection with validated catalogue actions",
+      "feature_count": 708,
+      "include": ["v3_features_f32"],
+      "exclude": ["future_measurements", "hidden_truth", "hmc_outcomes"],
+      "mask": "validated_catalogue_actions"
+    },
+    {
+      "id": "v4_temporal_past_only",
+      "description": "V3 projection plus causal trend and volatility summaries with validated catalogue actions",
+      "feature_count": 1290,
+      "include": [
+        "v3_features_f32",
+        "window_slope",
+        "recent_delta",
+        "recent_volatility"
+      ],
+      "exclude": ["future_measurements", "hidden_truth", "hmc_outcomes"],
+      "mask": "validated_catalogue_actions"
+    }
+  ],
+  "label_contract": {
+    "risk_track": "hmc_persistent_remaining",
+    "hazard_horizons": [4, 16, 32, "remaining"],
+    "required_targets": [
+      "crossing_event",
+      "safety_exposure",
+      "maximum_crossing",
+      "comfort_deviation",
+      "resource_composite"
+    ],
+    "relative_action_targets": [
+      "safety_exposure_delta_vs_hold",
+      "comfort_deviation_delta_vs_hold",
+      "resource_composite_delta_vs_hold"
+    ],
+    "trace_semantics_must_match_labels": true
+  },
+  "candidate_models": [
+    {
+      "id": "c0_v3_refit",
+      "kind": "v3_multi_horizon_ridge_logistic",
+      "feature_variant": "v3_708_past_only"
+    },
+    {
+      "id": "c5_action_conditioned_ridge",
+      "kind": "action_conditioned_multi_horizon_ridge",
+      "feature_variant": "v3_708_past_only"
+    },
+    {
+      "id": "c6_action_conditioned_temporal",
+      "kind": "action_conditioned_multi_horizon_ridge",
+      "feature_variant": "v4_temporal_past_only"
+    },
+    {
+      "id": "c7_action_conditioned_cumulative",
+      "kind": "action_conditioned_multi_horizon_ridge",
+      "feature_variant": "v3_708_past_only"
+    }
+  ],
+  "training": {
+    "normalization_fit_split": "TRAIN",
+    "model_fit_split": "TRAIN",
+    "calibration_split": "VALIDATION",
+    "evaluation_split": "EVALUATION",
+    "seeds": [560057, 560058, 560059],
+    "deterministic_serialization": true,
+    "no_evaluation_threshold_tuning": true,
+    "no_protected_data_access": true
+  },
+  "calibration": {
+    "method": "grouped_monotonic_hazard_and_upper_residual_quantiles",
+    "confidence_level": 0.9,
+    "threshold_selection_split": "VALIDATION",
+    "threshold_grid": [0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8],
+    "minimum_positive_labels_per_horizon": 2,
+    "minimum_validation_decision_coverage": 0.2
+  },
+  "policy": {
+    "selection_contract": "context_gated_select_v1",
+    "candidate_screening_scope": "all_catalogue_actions",
+    "eligibility": "risk_screen_passed_and_context_gated",
+    "ranking_order": ["composite_point_delta", "action_id"],
+    "abstention_allowed": true,
+    "hmc_compatibility_mask": "validated_catalogue_actions",
+    "model_proposal_source_type": "issue56-risk-v4-model",
+    "context_gates": {
+      "critical_health_action": "abstain",
+      "dormant_admission": "nominal_o2_excess_only",
+      "non_nominal_fallback": "current_operating_mode_action",
+      "o2_upper_bound": 0.30,
+      "o2_nominal_margin": 0.015
+    }
+  },
+  "evaluation": {
+    "stage_a_offline": {
+      "bootstrap_seed": 560057,
+      "bootstrap_resamples": 10000,
+      "bootstrap_unit": "condition_group",
+      "required_metrics": [
+        "useful_action_count",
+        "distinct_selected_action_count",
+        "dangerous_event_recall",
+        "selected_action_false_safe_rate",
+        "abstention_rate",
+        "calibration_error",
+        "inference_latency_p99_ms"
+      ],
+      "gates": {
+        "authority_violations": 0,
+        "replay_failures": 0,
+        "provenance_violations": 0,
+        "non_finite_metrics": 0,
+        "proposal_admission_failures": 0,
+        "minimum_useful_action_count": 16,
+        "maximum_abstention_rate": 0.8,
+        "maximum_inference_latency_p99_ms": 250.0,
+        "minimum_dangerous_event_recall": 0.98
+      }
+    },
+    "stage_b_hmc_replay": {
+      "arms": [
+        "rules_only_common_window",
+        "point_model_common_window",
+        "risk_filtered_point_v3",
+        "risk_v4_model_common_window"
+      ],
+      "stage_b_candidate_rule": "stage_a_passer_else_best_safety_passing_usefulness",
+      "v3_baseline_refit_required": true,
+      "bootstrap_seed": 560057,
+      "bootstrap_resamples": 10000,
+      "gates": {
+        "authority_violations": 0,
+        "replay_failures": 0,
+        "provenance_violations": 0,
+        "non_finite_metrics": 0,
+        "proposal_admission_failures": 0,
+        "safety_vs_rules_only_point_and_ci_upper_nonpositive": true,
+        "maximum_hmc_mismatch_rate": 0.1,
+        "maximum_inference_latency_p99_ms": 250.0
+      },
+      "superiority_over_v3": {
+        "admitted_proposal_count_must_exceed_v3": true,
+        "safety_exposure_paired_point_difference_maximum": 0.0,
+        "early_intervention_alternative": {
+          "admitted_proposal_count_must_be_at_least_v3": true,
+          "safety_exposure_paired_point_difference_must_be_strictly_negative": true,
+          "safety_exposure_paired_ci_upper_maximum": 0.0,
+          "maximum_hmc_mismatch_count": 0
+        }
+      }
+    },
+    "negative_results_are_published_unchanged": true,
+    "evaluation_runs": 1
+  },
+  "artifact": {
+    "release_tier": "DEVELOPMENT_EVIDENCE_ONLY",
+    "actuator_authority": false,
+    "artifact_replacement_requires_separate_review": true,
+    "v3_artifacts_unchanged": true,
+    "runtime_integration_is_opt_in": true
+  },
+  "non_goals": [
+    "no_hmc_authority_change",
+    "no_physics_or_safety_core_change",
+    "no_protected_final_suite_access",
+    "no_hardware_or_deployment_claim",
+    "no_v3_threshold_or_artifact_mutation"
+  ]
+}

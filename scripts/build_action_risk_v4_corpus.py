@@ -44,6 +44,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_ID,
     V4_MODEL_V3_SPLIT_PROTOCOL,
     V4_MODEL_V6_SPLIT_PROTOCOL,
+    V4_MODEL_V8_SPLIT_PROTOCOL,
     family_split_for_protocol,
     load_v4_model_protocol,
 )
@@ -474,7 +475,11 @@ def build_v4_corpus(
 ) -> dict[str, Any]:
     if not 6 <= families <= FAMILY_COUNT or families % 2:
         raise V4CorpusRunError(f"--families must be an even number between 6 and {FAMILY_COUNT}")
-    if split_protocol not in (V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL):
+    if split_protocol not in (
+        V4_MODEL_V3_SPLIT_PROTOCOL,
+        V4_MODEL_V6_SPLIT_PROTOCOL,
+        V4_MODEL_V8_SPLIT_PROTOCOL,
+    ):
         raise V4CorpusRunError(f"unknown --split-protocol {split_protocol!r}")
     source_identity = _source_identity()
     source_identity_sha256 = _sha(source_identity)
@@ -734,7 +739,11 @@ def main() -> int:
     parser.add_argument(
         "--split-protocol",
         default=V4_MODEL_V3_SPLIT_PROTOCOL,
-        choices=(V4_MODEL_V3_SPLIT_PROTOCOL, V4_MODEL_V6_SPLIT_PROTOCOL),
+        choices=(
+            V4_MODEL_V3_SPLIT_PROTOCOL,
+            V4_MODEL_V6_SPLIT_PROTOCOL,
+            V4_MODEL_V8_SPLIT_PROTOCOL,
+        ),
         help="preregistered family split used to label corpus samples",
     )
     args = parser.parse_args()
