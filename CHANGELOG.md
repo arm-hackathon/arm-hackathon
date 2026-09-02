@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased - Issue #56 V4 model line concluded (V4 outperforms frozen V3) / 0.9.0
+
+- Concluded the Issue #56 action-risk V4 model study line at protocol revision
+  v10: the V4 model outperforms the frozen V3 baseline on all six evaluation
+  families (6 wins, 0 ties, 0 losses; admissions 6 vs 2; aggregate paired
+  safety exposure -3.417e-04; zero HMC mismatches or emergency overrides).
+- Added fixture revision 2 (all operating conditions start at the O2 upper
+  bound so every condition group produces boundary-crossing events), split
+  `issue56_v4_model_split_v8`, the per-family superiority criterion, and the
+  `c8_o2_excess_guard` / `c9_o2_guard_statistical` selection contracts
+  (mechanistic O2-excess guard plus calibrated statistical dormant admission
+  with repeat suppression).
+- Added the consolidated final-protocol presentation
+  (`docs/issue-56-v4-model-final-protocol.md`) with the v1-v10 lineage,
+  final result receipts, and reproduction commands; protocol revisions v1-v9
+  remain as the preregistered, published-unchanged research trail and tag
+  `v9-perfamily-win` remains the rollback point.
+- Preserved the advisory-only boundary: HMC remains the sole final-command,
+  plant-step, and replay authority; protected final-suite data was never
+  accessed; V3 artifacts remain immutable. Development evidence only.
+- Version impact: `minor` in the consolidated, still-unreleased integration line.
+
 ## Unreleased - Habitat V2 operational observability qualification / 0.8.0
 
 - Added closed V5 operational projection, ordered feature-manifest descriptors

@@ -118,6 +118,37 @@ Together these related PRs preserve the complete 17-commit development and
 integration lineage. Forecast output remains advisory-only, and HMC remains
 the sole actuator authority.
 
+## Issue #56 V4 model study — concluded: V4 outperforms the frozen V3 baseline on all six evaluation families
+
+The Issue #56 action-risk model line is closed with a conclusive
+preregistered result: the V4 model, under the final revision (v10) of the V4
+model-study protocol, outperforms the frozen V3 baseline on **all six
+evaluation families** (6 wins, 0 ties, 0 losses), with admissions 6 vs 2,
+aggregate paired safety exposure strictly better (−3.417e-04), and zero HMC
+mismatches or emergency overrides. The model-to-protocol correspondence for
+the issue line is:
+
+| Model | Protocol | Contract |
+|---|---|---|
+| V1 | V1 protocol | `contracts/habitat_v2_forecast_issue_56_preregistration_v1.json` |
+| V2 | V2 protocol | `contracts/habitat_v2_forecast_issue_56_v2_preregistration_v1.json` |
+| V3 (frozen baseline) | V3 protocol | `contracts/habitat_v2_forecast_issue_56_v3_preregistration_v2.json` |
+| V4 (final) | V4 protocol, final revision v10 | `contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v10.json` |
+
+The `_v10` suffix is the revision counter of the single V4 protocol lineage;
+revisions v1–v9 were superseded iterations (each preregistered before its
+study and published unchanged, negative results included). The consolidated
+presentation of the final protocol, lineage table, per-family results, receipt
+SHAs, and reproduction commands is
+[`docs/issue-56-v4-model-final-protocol.md`](docs/issue-56-v4-model-final-protocol.md);
+the study-specific evidence record is
+[`docs/evidence/issue-56-action-risk-v4-model-v10.md`](docs/evidence/issue-56-action-risk-v4-model-v10.md).
+The rollback point for the v10 result is tag `v9-perfamily-win` (the V9
+result without the statistical-dormant clause). This remains simulator
+development evidence only: the V4 model is advisory-only, HMC remains the
+sole final-command, plant-step, and replay authority, and protected
+final-suite data was never accessed.
+
 ## Issue #56 V4 diagnostic groundwork
 
 The repository now includes a pre-model diagnostic lane for the next action-risk
