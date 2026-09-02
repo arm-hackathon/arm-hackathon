@@ -5,9 +5,9 @@ Run from a source checkout:
     uv run --locked --python 3.11 --extra dev python scripts/aeolus_tour.py
 
 Welcomes a new visitor, explains the project in plain English, and offers
-hands-on options: run the trained forecaster live, replay the recorded paired
-experiment step by step, or verify a run independently.  No network access;
-everything runs from checked-in code and artifacts.
+hands-on options: run the development forecaster live, inspect a checked-in
+paired replay artifact step by step, or verify a current demo run independently.
+No network access; everything runs from checked-in code and artifacts.
 """
 from __future__ import annotations
 
@@ -37,8 +37,9 @@ The picture in one paragraph:
   with a small neural network that forecasts the next 8 steps for each
   possible action, so problems get prevented instead of reacted to.
 
-  The model advises.  The controller decides.  Every run replays
-  bit-for-bit, so nothing here is a video of a result — it is the result.
+  The model advises.  The controller decides.  The checked-in live demo
+  validates and replays its deterministic control trace; the historical
+  campaign is a separate archive with disclosed reproduction gaps.
 """
 
 HOW_IT_WORKS = """\
@@ -46,25 +47,28 @@ How it works, in four pieces:
 
   1. THE PLANT — a deterministic habitat simulator: 8 zones, air flow,
      CO2, oxygen, temperature, humidity.  Same inputs, same outputs,
-     every time.  That is what makes every claim here checkable.
+     every time.  That makes current deterministic trace claims replayable.
 
   2. HMC (Habitat Management Computer) — the safety controller and the
      ONLY authority over actuators.  Each step it observes, verifies,
      hears proposals, decides, and issues exactly one command.
 
-  3. THE MODEL — a small network trained on 23,400 simulated examples.
-     Given the last 16 steps and one candidate action, it predicts the
-     next 8 steps of the habitat's atmosphere.  It never touches an
-     actuator, and if any sensor evidence is missing it stays silent.
+  3. THE MODEL — an artifact associated with a historical run reported as
+     using 23,400 simulated examples.  Given the last 16 steps and one
+     candidate action, it predicts the next 8 steps of the habitat's
+     atmosphere.  It never touches an actuator.  The historical harness
+     was coded to stay silent when required availability evidence was
+     missing, but the retained V3 result records zero such cases.
 
-  4. THE ADVISER LOOP — each step, the model forecasts every allowed
-     action; the safest predicted future is PROPOSED to HMC, which can
-     accept, override, or reject it.  HMC's command always wins.
+  4. THE HISTORICAL ADVISER LOOP — each step, the model forecasts every
+     allowed action; the safest predicted future is PROPOSED to HMC, which
+     can accept, override, or reject it.  HMC's command always wins.  The
+     current bounded demo instead uses an operator-selected proposal.
 
-  The evidence: 238 paired runs (identical scenarios, with and without
-  the model): 78 safer, 24 equal, 0 worse — and HMC overruled the model
-  81 times along the way.  Development evidence only: not certified,
-  not deployed, not hardware.
+  The historical summary records 119 control/advised pairs: across 102
+  fault pairs, 78 safer, 24 equal, 0 worse — and HMC modified or replaced
+  81 proposals.  Raw V2 runs and training receipts are missing.  This is
+  development evidence only: not certified, deployed, or hardware evidence.
 """
 
 ACTIONS = (
@@ -176,10 +180,10 @@ def replay_paired_experiment() -> None:
         print("The replay artifact does not match its recorded hash — refusing.")
         return
     data = json.loads(raw)
-    print("\nSame habitat, same fault (a CO2 scrubber quietly degrading), same")
-    print("noise.  Run twice: once with HMC alone, once with the model")
-    print("advising.  'exceed' measures how far past the safety line the air")
-    print("is — 0.000 means safe.\n")
+    print("\nThis checked-in replay's metadata records the same habitat, fault")
+    print("and noise in two arms: once with HMC alone, once with the model")
+    print("advising.  'exceed' measures departure past the recorded warning")
+    print("thresholds — 0.000 means no recorded threshold exceedance.\n")
     speed = input("Playback speed — seconds per step [default 0.05]: ").strip()
     try:
         delay = max(0.0, float(speed)) if speed else 0.05
@@ -206,8 +210,8 @@ def replay_paired_experiment() -> None:
     control, advised = data["control"], data["advised"]
     print("\nResult: control", f"{control['integrated_exceedance']:.2f}",
           "vs advised", f"{advised['integrated_exceedance']:.2f}",
-          "(lower is safer).  This is a replay of recorded run data;")
-    print("the live version needs the experiment branch (see README).")
+          "(lower is safer).  This replays a checked-in historical artifact;")
+    print("it does not rerun or independently authenticate the full campaign.")
 
 
 def verify_a_run() -> None:

@@ -31,7 +31,7 @@ def test_mlp_artifact_rejects_identity_drift() -> None:
 
 
 def test_mlp_forward_pass_matches_frozen_reference() -> None:
-    """Fixed-seed forward pass must reproduce the torch-verified reference."""
+    """Fixed-seed forward pass must reproduce the recorded reference digest."""
     model = load_live_mlp_model(ARTIFACT, expected_sha256=ARTIFACT_SHA256)
     predictor = model.predictor
     assert type(predictor) is NumpyMlpPredictor
@@ -45,10 +45,11 @@ def test_mlp_forward_pass_matches_frozen_reference() -> None:
     assert prediction.shape == (8, 51)
     assert prediction.dtype == np.float32
     assert np.isfinite(prediction).all()
-    # Reference values captured from the torch checkpoint forward pass on the
-    # same seeded inputs during artifact conversion (max |diff| was 2.1e-07).
-    # Inputs are out-of-distribution by design; this is a drift digest, not a
-    # plausibility check.
+    # These values were recorded as a Torch-checkpoint comparison during
+    # artifact conversion. The original conversion environment is not retained;
+    # this test pins the current NumPy output, not the historical comparison.
+    # Inputs are out-of-distribution by design, so this is a drift digest rather
+    # than a plausibility check.
     assert prediction.mean() == pytest.approx(-132516.125, rel=1e-4)
     assert prediction.std() == pytest.approx(327965.46875, rel=1e-4)
 

@@ -7,9 +7,10 @@ production control, or qualification.
 
 ## Top-level claim
 
-**Within the Habitat V2 simulation envelope, adding the learned adviser
-cannot silently degrade safety relative to canonical HMC, and every safety
-claim about it is independently re-checkable from the repository.**
+**Within the Habitat V2 simulation envelope, learned advice remains subordinate
+to deterministic HMC authority, with evidence identities and replay paths
+recorded for independent checking. This authority boundary does not guarantee
+that an HMC-admitted proposal is beneficial.**
 
 ### C1 — The model never commands
 
@@ -17,58 +18,89 @@ claim about it is independently re-checkable from the repository.**
   The adviser emits proposals; HMC validates each against fixed safety
   rules and may accept, override, or reject. No code path executes model
   output directly.
-- **Evidence:** `experiments/closed-loop-advisory-20260818/aeolus_closed_loop.py`
-  (arbitration on every advised step); 81 recorded HMC overrides of 793
-  proposals in the paired campaign; `SYSTEM.md` authority boundaries;
-  enforced `DEMO_ONLY_PERMANENTLY_EXCLUDED` release tier in artifacts.
+- **Evidence:** current authority implementation and tests in
+  `src/aeolus/habitat_v2/hmc.py`,
+  `src/aeolus/habitat_v2/forecast/live_demo.py`, and
+  `src/aeolus/habitat_v2/forecast/live_mlp_demo.py`, plus
+  `tests/habitat_v2/test_forecast_live_mlp_demo.py`; the [historical evidence
+  index](docs/evidence/closed-loop-advisory-historical-index.md) records the
+  former arbitration harness, authority document, and 81 historical overrides
+  of 793 proposals; the current loaders enforce non-authority release tiers
+  (`DEVELOPMENT_EVIDENCE_ONLY` for the MLP and
+  `DEMO_ONLY_PERMANENTLY_EXCLUDED` for the ridge demo).
 - **Residual risk:** future code could add a bypass path — mitigated by
   contract tests and code review, not by proof.
 
-### C2 — Degraded inputs hand control back to the deterministic controller
+### C2 — Each model follows its declared degraded-input contract
 
-- **Argument:** The forecaster was trained on complete telemetry only, so
-  forecasting from missing sensors would be unsupported extrapolation. The
-  harness therefore refuses to propose whenever any required telemetry is
-  unavailable; HMC continues alone.
-- **Evidence:** abstention guard in `aeolus_closed_loop.py` (merged PR #41),
-  `adviser_abstentions_unavailable` counters in step records, unit-style
-  guard verification, smoke parity on complete telemetry.
-- **Residual risk:** partial-but-present *corruption* (wrong values, not
-  missing ones) is not yet detected — see C5 and the drift-monitor roadmap.
+- **Argument:** `action_aware_mlp_v1` was trained on complete telemetry only,
+  so its harness refuses to propose whenever any required telemetry is
+  unavailable; HMC continues alone. The separate Issue #53 successor carries
+  missingness as explicit input and may forecast only within its frozen,
+  independently dropped observation contract. It remains forecast-only.
+- **Evidence:** the [archived authority and availability
+  surfaces](docs/evidence/closed-loop-advisory-historical-index.md#archived-authority-and-availability-surfaces)
+  identify the historical guard, proposal path, counter, and their limitations.
+  PR #41 records the change, but the retained V3 result contains zero
+  unavailable-input abstentions and does not itself exercise the guard.
+  `docs/evidence/issue-53-dropout-card.md` separately records the Issue #53
+  successor's preregistered forecast-lane gates.
+- **Residual risk:** Issue #53 does not qualify correlated or mixed dropout,
+  resource-gauge dropout, adversarial channel loss, other out-of-distribution
+  missingness, or partial-but-present corruption.
 
-### C3 — Advice measurably helps, under pre-registered scoring
+### C3 — Benefit and harm are reported under declared scoring
 
-- **Argument:** Benefit is claimed only on outcomes frozen before results
-  were seen, on scenarios the model never trained on, against the strongest
-  baseline (canonical HMC itself), with identical noise/seeds per pair.
-- **Evidence:** frozen preregistrations (`preregistration-v2.json`, hashes
-  recorded pre-run); 238-run results — 78 safer / 24 equal / 0 worse across
-  102 fault pairs; 72 advised runs at zero exceedance; demo scenario
-  19.94 → 0.0 with identical traces up to the intervention step.
-- **Residual risk:** simulator-only evidence; ensemble/uncertainty and
-  multi-seed sensitivity are open work.
+- **Argument:** the original archive labels its scoring plan frozen before
+  outcomes and records held-out scenarios, canonical-HMC comparison, and paired
+  seeds/noise. The plan and result first entered Git together, and the raw V2
+  runs and training archive are absent. Repository history therefore does not
+  independently establish freeze chronology, training exclusion, or every
+  paired-run detail. The recorded V3 freeze time also conflicts with its commit
+  chronology, as detailed in the evidence index. These are recorded historical
+  claims, not current-main rerun results, and are not generalized to other
+  controller fixtures or learned advisory lanes.
+- **Evidence:** the [historical evidence
+  index](docs/evidence/closed-loop-advisory-historical-index.md) records the
+  preregistration, custody limitation, and 238-run result: 78 safer / 24 equal /
+  0 worse across 102 fault pairs. The later Issue #55
+  controller race is the required counter-evidence: HMC admitted and applied
+  all eight point-model proposals, while mean normalized safety exposure was
+  `15.678536800` versus `0.000217557` for rules-only. The Issue #56 V3
+  risk-filtered lane passed its bounded six-family safety gate but made only two
+  proposals and abstained 76 times. See
+  `docs/evidence/issue-55-race-card.md` and
+  `docs/evidence/issue-56-action-risk-v3-support-revision.md`.
+- **Residual risk:** all results are fixed-roster simulator evidence. HMC
+  authority prevents a learned bypass; it does not prove non-degradation after
+  HMC admits a proposal, broad useful action selection, or generalization.
 
-### C4 — The evidence itself is intact and replayable
+### C4 — Current replay paths and historical gaps are explicit
 
-- **Argument:** Hash-chained control traces are validated by re-executing
-  the deterministic policy and plant, not by hash checks alone — an
-  internally consistent forgery is rejected. Demo artifacts are hash-pinned
-  and loaders refuse modified bytes.
+- **Argument:** Current-main hash-chained control traces are validated by
+  re-executing the deterministic policy and plant, not by hash checks alone.
+  Current demo artifacts are hash-pinned and loaders refuse modified bytes.
 - **Evidence:** replay/validation tooling in `src/aeolus/habitat_v2/`;
-  adversarial forgery tests in the suite; tour replay artifact hash check;
-  fresh-clone reproduction of headline numbers.
-- **Residual risk:** none identified within the simulation scope.
+  adversarial forgery tests in the suite; and the tour replay artifact hash
+  check.
+- **Residual risk:** the historical 2026-08-18/19 campaign is not reproducible
+  from a fresh current-main checkout. Raw V1/V2 results, training/environment
+  receipts, and old runner dependencies are missing; see the [historical
+  evidence index](docs/evidence/closed-loop-advisory-historical-index.md#known-custody-and-reproduction-gaps).
 
 ### C5 — Known limitations are part of the case, not footnotes
 
 - One healthy EVA-transition pair scored 0.038 vs control 8.35 — a 99.5%
   reduction, not literal zero; reported as such.
-- Advised runs cost more consumables (median +757 Wh, +1.97 mol O2,
-  +6.04 mol sorbent); safety is bought with resources.
-- The model has no uncertainty estimates and no learned abstention skill;
-  both are scoped future work with explicit non-claims today.
-- CI carries 7 documented pre-existing failures on the qualification
-  branch (base-branch debt, unrelated to the advisory path).
+- Across the 102 fault pairs, the advised-minus-control medians were +757 Wh,
+  +1.97 mol O2, and +6.04 mol sorbent; safety is bought with resources.
+- The original model has no calibrated uncertainty and uses a rule-based
+  missing-input guard. Issue #53 adds bounded missingness calibration and
+  abstention; Issue #56 adds development-only action-risk lanes. Neither result
+  changes the original model or authorizes deployment.
+- Issue #54 shows why forecast error is insufficient by itself: its tiny MLP
+  students passed the declared accuracy gate while losing action-ranking
+  quality.
 
 ## Verdict discipline
 
@@ -101,20 +133,24 @@ Dynamics for Model-Based Deep Reinforcement Learning with Model-Free
 Fine-Tuning," *ICRA*, 2018 (<https://arxiv.org/abs/1708.02596>); Chua,
 Calandra, McAllister & Levine, "Deep Reinforcement Learning in a Handful
 of Trials using Probabilistic Dynamics Models" (PETS), *NeurIPS*, 2018
-(<https://arxiv.org/abs/1805.12114>) — PETS's probabilistic ensembles are
-the reference design for the planned uncertainty-aware forecaster.
+(<https://arxiv.org/abs/1805.12114>) — PETS's probabilistic ensembles remain
+relevant context for the separate uncertainty and action-risk research lanes;
+no qualification follows from that similarity.
 
-**Abstention (C2).** The guard is rule-based selective classification; the
-availability-aware successor should learn the reject option and be reported
-as a risk–coverage trade-off. Geifman & El-Yaniv, "Selective Classification
+**Abstention (C2).** The original guard is rule-based selective
+classification. The Issue #53 successor represents missingness explicitly and
+reports measured abstention rate, precision and recall alongside interval
+coverage under its bounded contract.
+Geifman & El-Yaniv, "Selective Classification
 for Deep Neural Networks," *NeurIPS*, 2017
 (<https://arxiv.org/abs/1705.08500>); Geifman & El-Yaniv, "SelectiveNet:
 A Deep Neural Network with an Integrated Reject Option," *ICML*, 2019
 (<https://arxiv.org/abs/1901.09192>).
 
-**Missing-sensor forecasting (C2/C5, future work).** Availability-aware
-forecasting should treat missingness as evidence (masks, age of
-observation), never silently imputed away. Cao et al., "BRITS: Bidirectional
+**Missing-sensor forecasting (C2/C5).** The Issue #53 lane treats missingness
+as evidence through masks, observation age, and mask-aware slopes rather than
+silently imputing it away. Its independent-dropout evidence does not qualify
+the broader missingness patterns listed in C2. Cao et al., "BRITS: Bidirectional
 Recurrent Imputation for Time Series," *NeurIPS*, 2018
 (<https://arxiv.org/abs/1805.10572>); Che et al., "Recurrent Neural
 Networks for Multivariate Time Series with Missing Values" (GRU-D),
@@ -135,9 +171,10 @@ Initiative at Cortex," *Cortex* 49(3), 2013,
 <https://doi.org/10.1016/j.cortex.2012.12.016>) and the NeurIPS
 reproducibility program (Pineau et al., "Improving Reproducibility in
 Machine Learning Research," *JMLR* 22(164), 2021,
-<https://www.jmlr.org/papers/v22/20-303.html>). The one-command
-reproduction path and independently re-executed trace validation are
-aligned with ACM artifact review and badging, v1.1
+<https://www.jmlr.org/papers/v22/20-303.html>). Current-main replay paths and
+independently re-executed trace validation are aligned with ACM artifact review
+and badging, v1.1; the historical campaign's disclosed gaps prevent making the
+same claim for that archive
 (<https://www.acm.org/publications/policies/artifact-review-and-badging-current>).
 
 **Domain grounding.** Katipamula & Brambley, "Methods for Fault Detection,

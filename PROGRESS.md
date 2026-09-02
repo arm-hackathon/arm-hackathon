@@ -1,18 +1,49 @@
 # AEOLUS progression
 
-Last updated: 2026-08-12
-Current pre-model objective: complete the Habitat V2 deterministic world, data and judge-facing runtime, then stop before learned-model implementation or training.
+Last updated: 2026-08-27
+
+Audited snapshot: GitHub `main` through `056170f` (PR #67) contains the
+deterministic Habitat V2 world and replay boundary, the Issue #52/#53 forecast
+integration, the Issue #54 distillation study, the Issue #55 controller race,
+and the Issue #56 V1 and V3 action-risk evidence plus the V2/V3 development
+lineage and V4 diagnostic groundwork. Every learned lane remains simulation-only
+and advisory; HMC remains the sole final-command and plant-step authority.
 
 ## Canonical lineage
 
-- public base: `origin/main` at `5253176`
-- accepted recovery foundation: `89ff124`
-- Habitat V2 conservation kernel: `8712ea0`
-- versioned operating modes: `087b1e9`
-- rejected air-network candidate: `5df56c0`
-- independently approved air-network receipt authority: `6cbb8a4`
-- rejected fault/sensor candidate: `940608b`
-- active stack: `ben/habitat-v2-fault-sensors`
+- audited public-main baseline: `056170f` (through PR #67)
+- Issue #52/#53 semantic integration: PR #62, with the reviewed HMC V2 source
+  package and full development lineage recorded by PR #63
+- corrected Issue #54 distillation evidence: PR #64
+- Issue #55 controller-race evidence: PR #65
+- Issue #56 V1 and V3 evidence plus V2/V3 development lineage: PR #66
+- Issue #56 V4 diagnostics-only groundwork: PR #67
+- historical 2026-08-18/19 closed-loop advisory disposition: PR #68 preserves
+  the off-main PR #50/#59 identities and evidence boundary without integrating
+  their obsolete ensemble stack
+
+## Current research findings
+
+- Issue #53 qualified a separate forecast-only model for the frozen
+  independent-dropout contract. Correlated or mixed dropout, resource-gauge dropout,
+  adversarial channel loss, deployment, and actuator authority remain outside
+  that result.
+- Issue #54 found that smaller students can retain forecast accuracy, while the
+  tiny MLP can lose action-ranking quality despite passing the accuracy gate.
+- Issue #55 found that the point-model arm improved mean comfort but worsened
+  mean normalized safety exposure sharply; HMC authority prevented a command
+  bypass but did not prevent those admitted proposals from worsening safety.
+- Issue #56 V3 passed its bounded six-family risk-filtered safety gate but made
+  only two proposals and abstained 76 times. V4 is diagnostic groundwork only:
+  model training, export, quantization, integration, and threshold changes are
+  not authorized.
+- The older five-model V3 ensemble is historical development evidence from a
+  former forecast stack. Its retained file records 119 runs whose aggregate
+  threshold-exceedance and terminal-status fields match V2; resource, trace,
+  final-state, proposal, and override fields often differ. Current `main`
+  neither carries that ensemble nor supports rerunning the campaign. See the
+  [historical evidence
+  index](docs/evidence/closed-loop-advisory-historical-index.md).
 
 ## Verified foundations
 
@@ -38,16 +69,20 @@ Current pre-model objective: complete the Habitat V2 deterministic world, data a
 - `contingency`
 - `dormant`
 - mode is explicit context and does not silently alter physics
-- 571 project-environment tests passed on 2026-08-12
-- Ruff 0.14.10 and compile checks passed
+- historical verification snapshot: 571 project-environment tests passed on
+  2026-08-12; Ruff 0.14.10 and compile checks also passed
 
-## Active stacked slices
+## Historical Habitat V2 build record (2026-08-12 snapshot)
+
+The statuses and branch names below preserve the development state recorded on
+2026-08-12. They are not the current `main` status; later merged evidence is
+summarized above.
 
 ### 1. Explicit multizone air network
 
-Status: corrected and independently approved local candidate
-Branch: `ben/habitat-v2-receipt-authority-fix`
-Target version: `0.5.0`
+Status at 2026-08-12: corrected and independently approved local candidate
+Branch at 2026-08-12: `ben/habitat-v2-receipt-authority-fix`
+Target version at 2026-08-12: `0.5.0`
 
 Deliverables:
 
@@ -94,10 +129,10 @@ Verification on the corrected candidate bytes:
 
 ### 2. Fault and observation layer
 
-Status: finding-specific local correction complete; replacement freeze and
-bounded correction rereview gate publication
-Branch: `ben/habitat-v2-fault-sensors`
-Target version: `0.6.0`
+Status at 2026-08-12: finding-specific local correction complete; replacement
+freeze and bounded correction rereview gate publication
+Branch at 2026-08-12: `ben/habitat-v2-fault-sensors`
+Target version at 2026-08-12: `0.6.0`
 
 Deliverables:
 
@@ -144,7 +179,7 @@ Rejected-candidate source verification retained for historical identity:
 
 ### 3. Scenario families and corpus-v3
 
-Status: pending
+Status at 2026-08-12: pending
 
 Deliverables:
 
@@ -158,7 +193,7 @@ Deliverables:
 
 ### 4. Judge-facing viewer and packaging
 
-Status: pending
+Status at 2026-08-12: pending
 
 Deliverables:
 
@@ -172,7 +207,7 @@ Deliverables:
 
 ### 5. Native Arm64 evidence
 
-Status: pending
+Status at 2026-08-12: pending
 
 Deliverables before model training:
 
@@ -181,22 +216,30 @@ Deliverables before model training:
 - reproducible environment metadata
 - benchmark harness ready for later model candidates
 
-## Explicit stop boundary
+## Current stop boundary
 
-Do not implement a learned model, select model architecture in code, quantize a model, or begin training without Ben participating. The pre-model phase may freeze dataset, feature, target, evaluation and optimization contracts.
+The repository subsequently merged issue-specific protocols and research work;
+that history does not create blanket authorization for further experiments.
+The Issue #56 V4 draft and code provide diagnostic groundwork for the frozen
+V3 receipt, but the draft is explicitly pending authorization. It does not
+authorize learned-model training, export, quantization, integration, or
+threshold changes; any such work requires a new explicit gate.
 
 ## Verification policy
 
 - focused tests during each slice
 - one complete suite per meaningful PR boundary
 - no repeated broad test runs without new evidence
-- environment-bound commands use `python -m pytest`, not a global `pytest` executable
+- environment-bound commands use locked `uv run ... python -m pytest`, not a
+  global `pytest` executable
 - one bounded independent review per slice
-- code PR publication requires Ben's diff-grounded comprehension gate
+- PR publication and merge require explicit repository-owner authorization and
+  diff-grounded review
 
 ## Submission claims boundary
 
 AEOLUS is a deterministic, reduced-order, physics-informed research simulator and AI-control evaluation environment. It is not CFD, a certified spacecraft digital twin, flight software or real-world validation.
+
 ## Habitat V2 operational observability qualification (inserted evidence gate)
 
 The bounded V5 observability slice is implemented at package version `0.8.0`.

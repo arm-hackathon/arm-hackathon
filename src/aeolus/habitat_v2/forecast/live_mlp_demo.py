@@ -1,9 +1,9 @@
 """Live forecast demo adapter for the Historical V2 development MLP.
 
-Loads the action-aware MLP trained on the Historical V2 pilot archive
-(training run ``full-v1-20260818-a``, held-out normalized MAE 0.1146) as a
-pure-NumPy artifact and runs it through the same bounded live-demo lifecycle
-as the ridge demo: forecast every catalogue action at the anchor step, let the
+Loads the action-aware MLP artifact associated with recorded Historical V2
+training run ``full-v1-20260818-a`` (historically reported held-out normalized
+MAE 0.1146) and runs it through the same bounded live-demo lifecycle as the
+ridge demo: forecast every catalogue action at the anchor step, let the
 operator select one, and let deterministic HMC arbitrate and execute it.
 
 The MLP consumes the 16-step numeric history window (16 x 194 = 3104

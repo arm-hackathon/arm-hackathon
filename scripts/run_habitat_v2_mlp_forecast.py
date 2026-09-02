@@ -21,11 +21,12 @@ def _arguments() -> argparse.Namespace:
     repo_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
         description=(
-            "Run the trained action-aware MLP (Historical V2 development run "
-            "full-v1-20260818-a) at step 16 of the development scenario: forecast "
-            "every catalogue action, let HMC execute one operator-selected action, "
-            "and compare each forecast against realized simulator truth. "
-            "Development evidence only; HMC is the sole actuator authority."
+            "Run the action-aware MLP artifact associated with recorded Historical "
+            "V2 development run full-v1-20260818-a at step 16 of the development "
+            "scenario: forecast every catalogue action, let HMC execute one "
+            "operator-selected action, and compare each forecast against realized "
+            "simulator truth. Development evidence only; HMC is the sole actuator "
+            "authority."
         )
     )
     parser.add_argument("--repo-root", type=Path, default=repo_root)
@@ -79,6 +80,9 @@ def main() -> int:
             "artifact_sha256": result.model_artifact_sha256,
             "training_run_id": TRAINING_RUN_ID,
             "held_out_normalized_mae": 0.1146,
+            "held_out_metric_status": (
+                "HISTORICALLY_REPORTED_NOT_INDEPENDENTLY_VERIFIABLE"
+            ),
             "closed_loop_evidence": CLOSED_LOOP_EVIDENCE_PR,
         },
         "run": {
@@ -113,8 +117,8 @@ def main() -> int:
 
     width = max(len(item["action_id"]) for item in candidates)
     print("AEOLUS Habitat V2 - action-aware forecast run")
-    print(f"Model: {result.model_kind} (training run {TRAINING_RUN_ID}, "
-          "held-out error 0.1146, lower is better)")
+    print(f"Model: {result.model_kind} (recorded training run {TRAINING_RUN_ID}, "
+          "historically reported held-out error 0.1146, lower is better)")
     print()
     print("At step 16 the model forecast the next 8 habitat states for each")
     print("candidate action. Average forecast error against what the")
