@@ -1,8 +1,8 @@
 # Issue #56 V4 Model V10 Development Study
 
-Date: 2026-09-02  
-Branch: `research/action-risk-v4-corpus`  
-Source commit: `b0ffad1e21f7baa6edb021b4fc17fcf0c012fde9`  
+Date: 2026-09-02
+Branch: `research/action-risk-v4-corpus`
+Source commit: `b0ffad1e21f7baa6edb021b4fc17fcf0c012fde9`
 Status: **DEVELOPMENT EVIDENCE ONLY - POSITIVE UNDER PREREGISTERED PER-FAMILY GATES - ALL SIX FAMILIES WON - NOT QUALIFIED OR DEPLOYABLE**
 
 ## Protocol And Boundary
@@ -76,20 +76,20 @@ Study receipt: `out/issue56-v4-study-v10-full-01`.
 
 | Candidate | Wins | Ties | Losses | Admissions V4 / V3 | Aggregate paired diff | Criterion |
 |---|---:|---:|---:|---:|---:|---|
-| `c8_o2_excess_guard` | 4 | 2 | 0 | 4 / 2 | −1.589e-04 | met |
-| `c9_o2_guard_statistical` | **6** | **0** | **0** | 6 / 2 | **−3.417e-04** | **met** |
+| `c8_o2_excess_guard` | 4 | 2 | 0 | 4 / 2 | в€’1.589e-04 | met |
+| `c9_o2_guard_statistical` | **6** | **0** | **0** | 6 / 2 | **в€’3.417e-04** | **met** |
 
 Per-family detail for `c9_o2_guard_statistical` (each admitted proposal is
 `normal-dormant-v1`; steps in parentheses):
 
 | Family | Condition | V3 exposure | V4 exposure | Relative | V4 step | Outcome |
 |---|---|---:|---:|---:|---:|---|
-| g0006 sensor-b (high_load/laboratory) | V3 abstains | 5.007e-04 | 1.907e-04 | −61.9% | 16 | WIN |
-| g0006 sensor-a (high_load/laboratory) | V3 abstains | 5.007e-04 | 1.907e-04 | −61.9% | 16 | WIN |
-| g0001 sensor-b (nominal/fan) | V3 proposes step 36 | 4.292e-04 | 1.907e-04 | −55.6% | 16 | WIN |
-| g0001 sensor-a (nominal/fan) | V3 proposes step 24 | 2.861e-04 | 1.907e-04 | −33.3% | 16 | WIN |
-| g0011 sensor-b (eva/cooling) | V3 abstains | 1.144e-03 | 5.722e-04 | −50.0% | 48 | WIN |
-| g0011 sensor-a (eva/cooling) | V3 abstains | 1.144e-03 | 6.199e-04 | −45.8% | 52 | WIN |
+| g0006 sensor-b (high_load/laboratory) | V3 abstains | 5.007e-04 | 1.907e-04 | в€’61.9% | 16 | WIN |
+| g0006 sensor-a (high_load/laboratory) | V3 abstains | 5.007e-04 | 1.907e-04 | в€’61.9% | 16 | WIN |
+| g0001 sensor-b (nominal/fan) | V3 proposes step 36 | 4.292e-04 | 1.907e-04 | в€’55.6% | 16 | WIN |
+| g0001 sensor-a (nominal/fan) | V3 proposes step 24 | 2.861e-04 | 1.907e-04 | в€’33.3% | 16 | WIN |
+| g0011 sensor-b (eva/cooling) | V3 abstains | 1.144e-03 | 5.722e-04 | в€’50.0% | 48 | WIN |
+| g0011 sensor-a (eva/cooling) | V3 abstains | 1.144e-03 | 6.199e-04 | в€’45.8% | 52 | WIN |
 
 HMC mismatch count: `0`; emergency overrides: `0`; all Stage B gates passed
 for both candidates.
@@ -105,7 +105,7 @@ signal is learned rather than fitted to the evaluation families), and the
 calibrated screen plus predicted-relative-improvement clause fires at steps
 48/52, which HMC admits. On the O2-excess occupied families the mechanistic
 guard fires at step 16 exactly as in V9. The result is six wins, zero ties,
-zero losses, with strictly better aggregate paired safety (−3.417e-04) and
+zero losses, with strictly better aggregate paired safety (в€’3.417e-04) and
 zero HMC mismatches.
 
 ## Limitations And Decision

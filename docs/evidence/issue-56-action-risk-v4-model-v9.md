@@ -1,8 +1,8 @@
 # Issue #56 V4 Model V9 Development Study
 
-Date: 2026-09-01  
-Branch: `research/action-risk-v4-corpus`  
-Source commit: `a874c343afd9343584aff88928d0bc7f2adefa4b`  
+Date: 2026-09-01
+Branch: `research/action-risk-v4-corpus`
+Source commit: `a874c343afd9343584aff88928d0bc7f2adefa4b`
 Status: **DEVELOPMENT EVIDENCE ONLY - POSITIVE UNDER PREREGISTERED PER-FAMILY GATES - NOT QUALIFIED OR DEPLOYABLE**
 
 ## Protocol And Boundary
@@ -85,22 +85,22 @@ All three candidates pass every Stage A gate, so Stage B replays all three.
 |---|---:|---:|---:|---:|---:|---|
 | `c0_v3_refit` | 2 | 2 | 2 | 4 / 2 | n/a | not met |
 | `c3_small_shared_mlp` | 3 | 2 | 1 | 8 / 2 | n/a | not met |
-| `c8_o2_excess_guard` | **4** | **2** | **0** | 4 / 2 | **−1.5895e-04** | **met** |
+| `c8_o2_excess_guard` | **4** | **2** | **0** | 4 / 2 | **в€’1.5895e-04** | **met** |
 
 Per-family detail for `c8_o2_excess_guard` (each admitted proposal is
 `normal-dormant-v1` at decision step 16):
 
 | Family | Condition | V3 | V4 | Outcome |
 |---|---|---:|---:|---|
-| g0006 sensor-b (high_load/laboratory) | V3 abstains | exposure 5.007e-04 | 1.907e-04 | WIN (−3.099e-04) |
-| g0006 sensor-a (high_load/laboratory) | V3 abstains | exposure 5.007e-04 | 1.907e-04 | WIN (−3.099e-04) |
-| g0001 sensor-b (nominal/fan) | V3 proposes step 36 | exposure 4.292e-04 | 1.907e-04 | WIN (−2.384e-04) |
-| g0001 sensor-a (nominal/fan) | V3 proposes step 24 | exposure 2.861e-04 | 1.907e-04 | WIN (−9.537e-05) |
+| g0006 sensor-b (high_load/laboratory) | V3 abstains | exposure 5.007e-04 | 1.907e-04 | WIN (в€’3.099e-04) |
+| g0006 sensor-a (high_load/laboratory) | V3 abstains | exposure 5.007e-04 | 1.907e-04 | WIN (в€’3.099e-04) |
+| g0001 sensor-b (nominal/fan) | V3 proposes step 36 | exposure 4.292e-04 | 1.907e-04 | WIN (в€’2.384e-04) |
+| g0001 sensor-a (nominal/fan) | V3 proposes step 24 | exposure 2.861e-04 | 1.907e-04 | WIN (в€’9.537e-05) |
 | g0011 sensor-a (eva/cooling) | both abstain | exposure 1.144e-03 | 1.144e-03 | TIE |
 | g0011 sensor-b (eva/cooling) | both abstain | exposure 1.144e-03 | 1.144e-03 | TIE |
 
 HMC mismatch count: `0`; emergency overrides: `0`; all Stage B gates passed.
-Aggregate paired safety point difference (V4 − V3): `−1.5895e-04` (strictly
+Aggregate paired safety point difference (V4 в€’ V3): `в€’1.5895e-04` (strictly
 better). Admissions: V4 `4`, V3 `2`.
 
 ## Interpretation

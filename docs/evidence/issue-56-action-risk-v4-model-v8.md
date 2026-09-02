@@ -1,8 +1,8 @@
 # Issue #56 V4 Model V8 Development Study
 
-Date: 2026-09-01  
-Branch: `research/action-risk-v4-corpus`  
-Source commit: `ad675fea0b415e2bebbd9b9486f18530eff0dabb`  
+Date: 2026-09-01
+Branch: `research/action-risk-v4-corpus`
+Source commit: `ad675fea0b415e2bebbd9b9486f18530eff0dabb`
 Status: **DEVELOPMENT EVIDENCE ONLY - POSITIVE UNDER PREREGISTERED GATES - NOT QUALIFIED OR DEPLOYABLE**
 
 ## Protocol And Boundary
@@ -73,7 +73,7 @@ Study receipt: `out/issue56-v4-study-v8-full-01`.
 | `c6_action_conditioned_temporal` | PASS | 26 | 3 | 1.0 |
 | `c7_action_conditioned_cumulative` | PASS | 25 | 4 | 1.0 |
 
-All four registered candidates pass every Stage A gate — the first time any
+All four registered candidates pass every Stage A gate вЂ” the first time any
 candidate in the Issue #56 V4 lineage has done so. Under the registered rule
 `stage_a_passer_else_best_safety_passing_usefulness`, Stage B ran the first
 full passer, `c0_v3_refit`.
@@ -82,7 +82,7 @@ full passer, `c0_v3_refit`.
 
 - Admitted proposals: V4 `4`, V3 `2` (strictly more)
 - HMC mismatch count: `0`; emergency overrides: `0`
-- Paired safety-exposure point difference (V4 − V3): `0.0`,
+- Paired safety-exposure point difference (V4 в€’ V3): `0.0`,
   bootstrap CI `[-9.5367e-05, +1.0729e-04]` (10,000 resamples, seed 560057)
 - Primary clause (`exceed_v3_with_no_worse_safety`): `true`
 - Early-intervention alternative: `false`
@@ -112,7 +112,7 @@ clause passes at equality.
 ## Limitations And Decision
 
 - The result is simulator development evidence only; it does not establish qualification, certification, deployment readiness, hardware performance, real-world safety, or authority to control equipment.
-- The superiority margin is thin: the safety clause passes at exact equality, and V4's intervention timing in the nominal/fan group is worse than V3's. The registered disjunctive gate was met through the primary clause; a stricter criterion (e.g., strictly better paired safety) would not have been met by `c0_v3_refit`. Other Stage A passers (c5–c7) were not replayed in Stage B under the registered single-candidate rule.
+- The superiority margin is thin: the safety clause passes at exact equality, and V4's intervention timing in the nominal/fan group is worse than V3's. The registered disjunctive gate was met through the primary clause; a stricter criterion (e.g., strictly better paired safety) would not have been met by `c0_v3_refit`. Other Stage A passers (c5вЂ“c7) were not replayed in Stage B under the registered single-candidate rule.
 - The fixture revision changed scenario generation for all future issue-55/56 builds; historical receipts remain bound to their own commits and are unaffected.
 - No post-result threshold tuning, protected-data access, V3 artifact change, or HMC authority change occurred.
 

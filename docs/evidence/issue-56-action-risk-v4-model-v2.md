@@ -1,8 +1,8 @@
 # Issue #56 V4 Model V2 Development Study
 
-Date: 2026-08-29  
-Branch: `research/action-risk-v4-corpus`  
-Source commit: `f6fa742be54181afae5712829296d56ad694edcb`  
+Date: 2026-08-29
+Branch: `research/action-risk-v4-corpus`
+Source commit: `f6fa742be54181afae5712829296d56ad694edcb`
 Status: **DEVELOPMENT EVIDENCE ONLY - NEGATIVE - NOT QUALIFIED OR DEPLOYABLE**
 
 ## Protocol And Boundary

@@ -1,8 +1,8 @@
 # Issue #56 V4 Model V5 Development Study
 
-Date: 2026-08-31  
-Branch: `research/action-risk-v4-corpus`  
-Source commit: `2046b941213c04111499db92b7a493b9613924c0`  
+Date: 2026-08-31
+Branch: `research/action-risk-v4-corpus`
+Source commit: `2046b941213c04111499db92b7a493b9613924c0`
 Status: **DEVELOPMENT EVIDENCE ONLY - NEGATIVE - NOT QUALIFIED OR DEPLOYABLE**
 
 ## Protocol And Boundary
@@ -61,7 +61,7 @@ it did not achieve superiority:
 
 - Admitted proposals: V4 `2`, V3 `2` (tie, not an exceed)
 - HMC mismatch count: `0`; emergency overrides: `0`
-- Paired safety-exposure point difference (V4 − V3): `+3.9736e-05`,
+- Paired safety-exposure point difference (V4 в€’ V3): `+3.9736e-05`,
   bootstrap CI `[0.0, +8.7420e-05]` (10,000 resamples, seed 560057)
 - `safety_no_worse_than_v3`: `false` under the registered `0.0` maximum
 - Episodes SHA-256: `dcb70645ee7b7d29bced3c96f8e31d34121640b1f76490d06ca5e839cd9f2cea`
@@ -69,9 +69,9 @@ it did not achieve superiority:
 ## Structural Finding
 
 Corpus label analysis (decision-step `remaining_metric.crossing_event`) shows
-that crossing events occur only in condition groups `g0000`–`g0003`, which are
+that crossing events occur only in condition groups `g0000`вЂ“`g0003`, which are
 exactly the families under the `nominal_occupied` operating condition
-(family indices 0–7). The other twelve condition groups produce no crossing
+(family indices 0вЂ“7). The other twelve condition groups produce no crossing
 events at any of the 13 decision steps, with or without injected plant faults.
 
 Under the V3 support-stratified split, EVALUATION contains exactly one

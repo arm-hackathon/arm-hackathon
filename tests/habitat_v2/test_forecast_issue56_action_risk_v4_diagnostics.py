@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -60,10 +61,23 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
     V4RiskModel,
     _select_event_thresholds,
 )
-from scripts.run_action_risk_v4_model import (
-    _evaluation_gate_status,
-    _group_bootstrap,
-)
+
+_DIAGNOSTICS_TEST_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_script_module(script_name: str):
+    spec_path = _DIAGNOSTICS_TEST_REPO_ROOT / "scripts" / f"{script_name}.py"
+    module_spec = importlib.util.spec_from_file_location(
+        f"{script_name}_under_test", spec_path
+    )
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+    return module
+
+
+_run_action_risk_v4_model_script = _load_script_module("run_action_risk_v4_model")
+_evaluation_gate_status = _run_action_risk_v4_model_script._evaluation_gate_status
+_group_bootstrap = _run_action_risk_v4_model_script._group_bootstrap
 from aeolus.habitat_v2.forecast_issue55_race import (
     build_family_scenario,
     deterministic_family_ids,
@@ -324,7 +338,7 @@ def test_v4_threshold_selection_fails_closed_when_recall_is_unattainable() -> No
 
 
 def test_v4_smoke_family_selection_preserves_all_three_splits() -> None:
-    from scripts.build_action_risk_v4_corpus import _select_families
+    _select_families = _load_script_module("build_action_risk_v4_corpus")._select_families
 
     roster = deterministic_family_ids(32)
     split = __import__(
@@ -346,7 +360,9 @@ def test_v4_smoke_family_selection_preserves_all_three_splits() -> None:
 
 
 def test_v4_resume_keeps_only_complete_ordered_family_prefix() -> None:
-    from scripts.build_action_risk_v4_corpus import V4CorpusRunError, _resume_family_groups
+    _build_corpus = _load_script_module("build_action_risk_v4_corpus")
+    V4CorpusRunError = _build_corpus.V4CorpusRunError
+    _resume_family_groups = _build_corpus._resume_family_groups
 
     family_ids = ("family-a", "family-b", "family-c")
     rows = [

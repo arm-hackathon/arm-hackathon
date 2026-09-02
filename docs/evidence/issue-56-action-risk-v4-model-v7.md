@@ -1,8 +1,8 @@
 # Issue #56 V4 Model V7 Development Study
 
-Date: 2026-08-31  
-Branch: `research/action-risk-v4-corpus`  
-Source commit: `b7b4084a52ab91e9fa67feff506250a9d317fc7b`  
+Date: 2026-08-31
+Branch: `research/action-risk-v4-corpus`
+Source commit: `b7b4084a52ab91e9fa67feff506250a9d317fc7b`
 Status: **DEVELOPMENT EVIDENCE ONLY - NEGATIVE - NOT QUALIFIED OR DEPLOYABLE**
 
 ## Protocol And Boundary
@@ -15,7 +15,7 @@ Protocol V7 revised the superiority criterion after the V6 finding that the
 frozen V3 arm already takes every genuinely safety-improving proposal on the
 evaluation population: superiority now requires equal-or-more admitted
 proposals, strictly better paired safety exposure (point difference < 0 with
-bootstrap CI upper ≤ 0), and zero HMC mismatches. It also dropped the
+bootstrap CI upper в‰¤ 0), and zero HMC mismatches. It also dropped the
 `minimum_distinct_selected_actions` Stage A gate, which V6 proved structurally
 unreachable (the fixture's only useful intervention action is
 `normal-dormant-v1`). Split, candidate roster, and context gates are unchanged
@@ -77,7 +77,7 @@ distinct selected actions). Stage B therefore ran under the
 
 - Admitted proposals: V4 `4`, V3 `4` (equal, satisfies at-least clause)
 - HMC mismatch count: `0`; emergency overrides: `0`
-- Paired safety-exposure point difference (V4 − V3): `+3.1789e-05`,
+- Paired safety-exposure point difference (V4 в€’ V3): `+3.1789e-05`,
   bootstrap CI `[0.0, +7.9473e-05]` (10,000 resamples, seed 560057)
 - Strictly-negative point difference: `false`; CI upper within maximum: `false`
 - Superiority achieved: `false`
@@ -100,8 +100,8 @@ longer, which is exactly the `+3.18e-05` paired safety deficit.
 
 The frozen V3 baseline is refit on the V3 split's TRAIN population, which
 contains two eventful condition groups (`g0002`, `g0003`). Under any split
-that keeps superiority decidable — i.e., places at least two eventful groups
-in EVALUATION — TRAIN can hold at most one eventful group, because the fixture
+that keeps superiority decidable вЂ” i.e., places at least two eventful groups
+in EVALUATION вЂ” TRAIN can hold at most one eventful group, because the fixture
 has only four eventful groups in total and VALIDATION requires one for
 threshold calibration (2 + 2 + 1 = 5 > 4). The V4 refit therefore always
 learns event risk from strictly less eventful data than the frozen V3
@@ -113,8 +113,8 @@ useful-action gate.
 
 Combined with the V6 finding (each eventful family admits exactly one
 genuinely safety-improving proposal, and frozen V3 already takes all four),
-both available routes to superiority — more admitted proposals, or equal
-admissions with strictly better safety — are structurally unreachable on this
+both available routes to superiority вЂ” more admitted proposals, or equal
+admissions with strictly better safety вЂ” are structurally unreachable on this
 fixture for any split and any candidate in the registered roster.
 
 ## Limitations And Decision
@@ -125,7 +125,7 @@ fixture for any split and any candidate in the registered roster.
 
 Decision: retain V7 as an honest fail-closed negative development result. The
 Issue #56 V4 model line has now produced seven consecutive protocol revisions
-(v1–v7) without demonstrating superiority over the frozen V3 evidence, and the
+(v1вЂ“v7) without demonstrating superiority over the frozen V3 evidence, and the
 V6/V7 structural analyses show why the fixture cannot support such a
 demonstration. Recommend closing the line and keeping V4 as advisory-only
 development evidence unless a separately authorized fixture or baseline change

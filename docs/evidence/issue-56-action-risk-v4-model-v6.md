@@ -1,8 +1,8 @@
 # Issue #56 V4 Model V6 Development Study
 
-Date: 2026-08-31  
-Branch: `research/action-risk-v4-corpus`  
-Source commit: `8e286f41d5e2009e5f8a3001147d38a827bc88e2`  
+Date: 2026-08-31
+Branch: `research/action-risk-v4-corpus`
+Source commit: `8e286f41d5e2009e5f8a3001147d38a827bc88e2`
 Status: **DEVELOPMENT EVIDENCE ONLY - NEGATIVE - NOT QUALIFIED OR DEPLOYABLE**
 
 ## Protocol And Boundary
@@ -79,7 +79,7 @@ gates, so Stage B ran `c0_v3_refit` under the registered rule
 
 - Admitted proposals: V4 `4`, V3 `4` (tie, not an exceed)
 - HMC mismatch count: `0`; emergency overrides: `0`
-- Paired safety-exposure point difference (V4 − V3): `+3.1789e-05`,
+- Paired safety-exposure point difference (V4 в€’ V3): `+3.1789e-05`,
   bootstrap CI `[0.0, +7.9473e-05]` (10,000 resamples, seed 560057)
 - Paired comfort deviation difference: `+6.1648`; resource composite: `-9.5993e-05`
 - `safety_no_worse_than_v3`: `false`; `more_admitted_proposals_than_v3`: `false`
@@ -95,10 +95,10 @@ which accounts for the small positive paired safety difference.
 
 Counterfactual labels show that in every eventful evaluation family, all 13
 decision steps have at least one action (`normal-dormant-v1`) that improves
-remaining safety exposure relative to the no-proposal hold — 52 improving
+remaining safety exposure relative to the no-proposal hold вЂ” 52 improving
 decisions in total. Despite this, every replayed arm (rules-only, point model,
 frozen V3, V4) admits exactly one proposal per eventful family: once the
-dormant command is accepted during the step-32–80 fault window, the residual
+dormant command is accepted during the step-32вЂ“80 fault window, the residual
 risk is small and no further proposal passes the predicted-improvement screen
 within the decision horizon (decisions end at step 64, before the fault window
 closes). The admitted-proposal count on this evaluation population is
@@ -117,8 +117,8 @@ measured for every possible two-proposal schedule.
 ## Limitations And Decision
 
 - The result is simulator development evidence only; it does not establish qualification, certification, deployment readiness, hardware performance, real-world safety, or authority to control equipment.
-- The V6 split achieved its design goal (eventful evaluation capacity doubled; V3 admissions rose 2 → 4 and c0 useful actions rose to 16), but V4 matches rather than exceeds V3.
-- A model that proposes earlier than V3 (e.g., at steps 28–32 when the fault horizon first becomes visible) could achieve the same 4 admissions with strictly less safety exposure; the registered gate does not credit that because it requires strictly more admissions.
+- The V6 split achieved its design goal (eventful evaluation capacity doubled; V3 admissions rose 2 в†’ 4 and c0 useful actions rose to 16), but V4 matches rather than exceeds V3.
+- A model that proposes earlier than V3 (e.g., at steps 28вЂ“32 when the fault horizon first becomes visible) could achieve the same 4 admissions with strictly less safety exposure; the registered gate does not credit that because it requires strictly more admissions.
 - No post-result threshold tuning, protected-data access, V3 artifact change, or HMC authority change occurred.
 
 Decision: retain V6 as an honest fail-closed negative development result. Any
