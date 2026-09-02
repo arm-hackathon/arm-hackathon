@@ -1,0 +1,222 @@
+{
+  "schema_version": "aeolus_habitat_v2_risk_issue_56_v4_model_preregistration_v2",
+  "preregistration_id": "habitat_v2_forecast_issue_56_v4_model_preregistration_v2",
+  "status": "AUTHORIZED_DEVELOPMENT_MODEL_STUDY",
+  "authorization": {
+    "authorized_by_user": true,
+    "authorized_at": "2026-08-28",
+    "authorization_scope": [
+      "learned_model_implementation",
+      "training_on_development_data",
+      "development_artifact_export",
+      "development_threshold_selection",
+      "opt_in_runtime_integration"
+    ],
+    "protected_final_suite_allowed": false
+  },
+  "authority": {
+    "final_command_authority": "HMC",
+    "plant_step_authority": "HMC",
+    "replay_authority": "HMC_and_strict_replay_validator",
+    "model_actuator_authority": false,
+    "v3_immutable": true
+  },
+  "population": {
+    "family_count": 32,
+    "condition_group_count": 16,
+    "families_per_condition_group": 2,
+    "statistical_unit": "condition_group",
+    "paired_sensor_variants_stay_together": true,
+    "splits": {
+      "TRAIN": "20 families / 10 condition groups",
+      "VALIDATION": "6 families / 3 condition groups",
+      "EVALUATION": "6 families / 3 condition groups"
+    },
+    "decision_steps_per_family": 13,
+    "actions_per_decision": 4,
+    "expected_samples": {
+      "TRAIN": 1040,
+      "VALIDATION": 312,
+      "EVALUATION": 312,
+      "TOTAL": 1664
+    }
+  },
+  "data_contract": {
+    "corpus_schema_version": "aeolus_habitat_v2_risk_issue_56_v4_corpus_v4",
+    "counterfactual_trace_bytes_required": true,
+    "hold_trace_bytes_required": true,
+    "relative_targets_are_action_minus_no_proposal_hold": true,
+    "temporal_feature_manifest_required": true,
+    "observable_action_mask_required": true,
+    "future_states_are_labels_only": true,
+    "runtime_projection_source": "verified_complete_history_window",
+    "prohibited_runtime_inputs": [
+      "hidden_fault_truth",
+      "future_measurements",
+      "fault_labels_or_schedules",
+      "seeds",
+      "internal_noise_or_bias_state",
+      "reserve_audit_state",
+      "hmc_arbitration_outcome",
+      "counterfactual_future_state"
+    ],
+    "required_provenance": [
+      "source_identity_sha256",
+      "corpus_manifest_sha256",
+      "hmc_binding_sha256",
+      "hmc_contract_sha256",
+      "scenario_manifest_sha256",
+      "action_catalogue_sha256",
+      "feature_manifest_sha256",
+      "label_manifest_sha256"
+    ]
+  },
+  "feature_variants": [
+    {
+      "id": "v3_708_past_only",
+      "description": "Frozen V3 708-value action-conditioned observable projection with validated catalogue actions",
+      "feature_count": 708,
+      "include": ["v3_features_f32"],
+      "exclude": ["future_measurements", "hidden_truth", "hmc_outcomes"],
+      "mask": "validated_catalogue_actions"
+    },
+    {
+      "id": "v4_temporal_past_only",
+      "description": "V3 projection plus causal trend and volatility summaries with validated catalogue actions",
+      "feature_count": 1290,
+      "include": [
+        "v3_features_f32",
+        "window_slope",
+        "recent_delta",
+        "recent_volatility"
+      ],
+      "exclude": ["future_measurements", "hidden_truth", "hmc_outcomes"],
+      "mask": "validated_catalogue_actions"
+    }
+  ],
+  "label_contract": {
+    "risk_track": "hmc_persistent_remaining",
+    "hazard_horizons": [4, 16, 32, "remaining"],
+    "required_targets": [
+      "crossing_event",
+      "safety_exposure",
+      "maximum_crossing",
+      "comfort_deviation",
+      "resource_composite"
+    ],
+    "relative_action_targets": [
+      "safety_exposure_delta_vs_hold",
+      "comfort_deviation_delta_vs_hold",
+      "resource_composite_delta_vs_hold"
+    ],
+    "trace_semantics_must_match_labels": true
+  },
+  "candidate_models": [
+    {
+      "id": "c0_v3_refit",
+      "kind": "v3_multi_horizon_ridge_logistic",
+      "feature_variant": "v3_708_past_only"
+    },
+    {
+      "id": "c1_shared_hazard_ridge",
+      "kind": "shared_multi_horizon_discrete_hazard_ridge",
+      "feature_variant": "v3_708_past_only"
+    },
+    {
+      "id": "c2_shared_hazard_temporal",
+      "kind": "shared_multi_horizon_discrete_hazard_ridge",
+      "feature_variant": "v4_temporal_past_only"
+    },
+    {
+      "id": "c3_small_shared_mlp",
+      "kind": "small_shared_multitask_mlp",
+      "feature_variant": "v4_temporal_past_only"
+    },
+    {
+      "id": "c4_advantage_ranker",
+      "kind": "risk_utility_pairwise_advantage_ranker",
+      "feature_variant": "v4_temporal_past_only"
+    }
+  ],
+  "training": {
+    "normalization_fit_split": "TRAIN",
+    "model_fit_split": "TRAIN",
+    "calibration_split": "VALIDATION",
+    "evaluation_split": "EVALUATION",
+    "seeds": [560057, 560058, 560059],
+    "deterministic_serialization": true,
+    "no_evaluation_threshold_tuning": true,
+    "no_protected_data_access": true
+  },
+  "calibration": {
+    "method": "grouped_monotonic_hazard_and_upper_residual_quantiles",
+    "confidence_level": 0.9,
+    "threshold_selection_split": "VALIDATION",
+    "threshold_grid": [0.2, 0.35, 0.5, 0.65, 0.8],
+    "minimum_positive_labels_per_horizon": 2,
+    "minimum_validation_decision_coverage": 0.2
+  },
+  "policy": {
+    "candidate_screening_scope": "all_catalogue_actions",
+    "selection_scope": "compatible_safe_candidates",
+    "abstention_allowed": true,
+    "hmc_compatibility_mask": "validated_catalogue_actions",
+    "selection_order": [
+      "safety_gate",
+      "calibrated_expected_utility",
+      "hmc_compatibility",
+      "resource_cost",
+      "action_id"
+    ],
+    "model_proposal_source_type": "issue56-risk-v4-model"
+  },
+  "evaluation": {
+    "bootstrap_seed": 560057,
+    "bootstrap_resamples": 10000,
+    "bootstrap_unit": "condition_group",
+    "required_metrics": [
+      "dangerous_event_recall",
+      "selected_action_false_safe_rate",
+      "proposal_rate",
+      "abstention_rate",
+      "useful_action_rate",
+      "hmc_mismatch_rate",
+      "disposition_counts",
+      "safety_exposure",
+      "safety_violation_steps",
+      "comfort_deviation",
+      "resource_composite",
+      "calibration_error",
+      "inference_latency_p99_ms"
+    ],
+    "gates": {
+      "authority_violations": 0,
+      "replay_failures": 0,
+      "provenance_violations": 0,
+      "non_finite_metrics": 0,
+      "proposal_admission_failures": 0,
+      "minimum_useful_action_count": 16,
+      "minimum_distinct_selected_actions": 2,
+      "maximum_abstention_rate": 0.8,
+      "maximum_hmc_mismatch_rate": 0.1,
+      "maximum_inference_latency_p99_ms": 250.0,
+      "minimum_dangerous_event_recall": 0.98
+    },
+    "negative_results_are_published_unchanged": true,
+    "evaluation_runs": 1
+  },
+  "artifact": {
+    "release_tier": "DEVELOPMENT_EVIDENCE_ONLY",
+    "actuator_authority": false,
+    "artifact_replacement_requires_separate_review": true,
+    "v3_artifacts_unchanged": true,
+    "runtime_integration_is_opt_in": true
+  },
+  "non_goals": [
+    "no_hmc_authority_change",
+    "no_physics_or_safety_core_change",
+    "no_protected_final_suite_access",
+    "no_hardware_or_deployment_claim",
+    "no_v3_threshold_or_artifact_mutation"
+  ]
+}

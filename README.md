@@ -118,6 +118,37 @@ Together these related PRs preserve the complete 17-commit development and
 integration lineage. Forecast output remains advisory-only, and HMC remains
 the sole actuator authority.
 
+## Issue #56 V4 model study — concluded: V4 outperforms the frozen V3 baseline on all six evaluation families
+
+The Issue #56 action-risk model line is closed with a conclusive
+preregistered result: the V4 model, under the final revision (v10) of the V4
+model-study protocol, outperforms the frozen V3 baseline on **all six
+evaluation families** (6 wins, 0 ties, 0 losses), with admissions 6 vs 2,
+aggregate paired safety exposure strictly better (−3.417e-04), and zero HMC
+mismatches or emergency overrides. The model-to-protocol correspondence for
+the issue line is:
+
+| Model | Protocol | Contract |
+|---|---|---|
+| V1 | V1 protocol | `contracts/habitat_v2_forecast_issue_56_preregistration_v1.json` |
+| V2 | V2 protocol | `contracts/habitat_v2_forecast_issue_56_v2_preregistration_v1.json` |
+| V3 (frozen baseline) | V3 protocol | `contracts/habitat_v2_forecast_issue_56_v3_preregistration_v2.json` |
+| V4 (final) | V4 protocol, final revision v10 | `contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v10.json` |
+
+The `_v10` suffix is the revision counter of the single V4 protocol lineage;
+revisions v1–v9 were superseded iterations (each preregistered before its
+study and published unchanged, negative results included). The consolidated
+presentation of the final protocol, lineage table, per-family results, receipt
+SHAs, and reproduction commands is
+[`docs/issue-56-v4-model-final-protocol.md`](docs/issue-56-v4-model-final-protocol.md);
+the study-specific evidence record is
+[`docs/evidence/issue-56-action-risk-v4-model-v10.md`](docs/evidence/issue-56-action-risk-v4-model-v10.md).
+The rollback point for the v10 result is tag `v9-perfamily-win` (the V9
+result without the statistical-dormant clause). This remains simulator
+development evidence only: the V4 model is advisory-only, HMC remains the
+sole final-command, plant-step, and replay authority, and protected
+final-suite data was never accessed.
+
 ## Issue #56 V4 diagnostic groundwork
 
 The repository now includes a pre-model diagnostic lane for the next action-risk
@@ -127,12 +158,20 @@ and HMC dispositions, aggregates by paired condition groups, and binds the
 source, HMC, scenario, feature, label, risk-model, point-artifact, and
 observation identities with SHA-256. V3 behavior and evidence remain frozen.
 
-The machine-readable draft is
+The machine-readable diagnostic draft is
 [`contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json),
 with rationale in
 [`docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md`](docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md).
-The draft is explicitly pending authorization and does not authorize learned
-model training, export, quantization, integration, or threshold changes.
+That diagnostic document remains a pre-model historical boundary and does not
+authorize learned-model work by itself. A separate user-authorized development
+ study was originally bound by
+[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json),
+whose negative result remains historical and immutable. The follow-up mask
+correction is separately bound by
+[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json).
+It permits development-data model implementation and training only; protected
+final-suite access remains prohibited, V3 remains immutable, and HMC remains
+the sole final-command, plant-step, and replay authority.
 
 To audit an existing full Issue #56 V3 receipt without training or changing any
 artifact, use a new ignored output directory:
@@ -149,6 +188,68 @@ retain counterfactual trace bytes, so this diagnostic path intentionally reports
 that counterfactual label replay is incomplete. This remains simulator
 development evidence only; HMC is still the sole final-command and plant-step
 authority.
+
+To build a separate replayable V4 development corpus from the checked-in
+development roster, use a new ignored output directory:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/build_action_risk_v4_corpus.py \
+  --output out/issue56-v4-corpus-smoke-next \
+  --families 6 \
+  --allow-dirty-smoke
+```
+
+The corpus builder retains each serialized action and no-proposal hold HMC
+trace, reloads the rows, and independently strict-replays every trace after
+writing. It also binds the causal temporal feature manifest, observable action
+mask, relative action-minus-hold targets, model protocol, and source identities.
+It is a development-data command only: it does not train, export, quantize,
+tune, or integrate a learned model, and it does not change V3 or HMC authority.
+Full comparative corpus generation requires a clean source worktree.
+
+Verify a generated corpus independently with:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/verify_action_risk_v4_corpus.py \
+  --corpus out/issue56-v4-corpus-smoke-next
+```
+
+To run the separately authorized development-only model study on that corpus,
+use another new ignored output directory:
+
+```bash
+uv run --locked --python 3.11 --extra dev python scripts/run_action_risk_v4_model.py \
+  --corpus out/issue56-v4-corpus-smoke-next \
+  --output out/issue56-v4-model-smoke-next \
+  --allow-dirty-smoke
+```
+
+The model runner fits and reloads the five preregistered candidates without
+issuing proposals or plant steps. HMC-dependent metrics are reported as
+unavailable in this offline-only path, and candidates that cannot satisfy the
+registered validation calibration target are recorded as fail-closed rather
+than receiving an altered threshold.
+
+The completed V4 V1 full development run is negative evidence, not a deployment
+claim. The verified corpus contains 1,664 samples and 1,696 replayable traces.
+Of the five preregistered candidates, three failed closed during validation
+calibration. The two evaluated candidates met the dangerous-event recall and
+false-safe checks, but both selected zero useful actions and therefore failed
+the registered minimum-useful-action gate. HMC execution metrics were not
+available because this study was offline-only; no protected final-suite data
+was accessed, and V3 artifacts remain unchanged.
+
+The corrected V4 V2 model study is also complete and remains negative
+development evidence. Its receipt is documented in
+[`docs/evidence/issue-56-action-risk-v4-model-v2.md`](docs/evidence/issue-56-action-risk-v4-model-v2.md).
+The corpus independently passed strict replay with the same 1,664 samples and
+1,696 traces. `c0_v3_refit` selected 12 useful actions but only one distinct
+action, while `c1_shared_hazard_ridge` selected one useful action and one
+distinct action; both failed the registered usefulness and action-diversity
+gates. `c2_shared_hazard_temporal`, `c3_small_shared_mlp`, and
+`c4_advantage_ranker` failed closed during validation calibration. This V2 run
+was offline-only and did not replace or directly outperform the frozen,
+HMC-replayed V3 evidence.
 
 ## Try it: the verified forecast report
 

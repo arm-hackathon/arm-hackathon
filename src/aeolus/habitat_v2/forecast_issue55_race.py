@@ -71,9 +71,9 @@ GAP_DENOMINATOR_FLOOR = 1e-12
 
 OPERATING_CONDITIONS: tuple[tuple[str, str, float, float, float, float, float, float, float], ...] = (
     ("nominal_occupied", "occupied", 1.00, 5500.0, 0.0, 0.0, 0.30, 0.45, 72000.0),
-    ("high_load_occupied", "occupied", 1.30, 4500.0, 1.5, 160.0, 0.27, 0.55, 72000.0),
-    ("eva_transition", "eva_transition", 0.75, 6000.0, -0.5, -80.0, 0.25, 0.40, 68000.0),
-    ("contingency", "contingency", 1.20, 3500.0, 2.0, 260.0, 0.23, 0.60, 70000.0),
+    ("high_load_occupied", "occupied", 1.30, 4500.0, 1.5, 160.0, 0.30, 0.55, 72000.0),
+    ("eva_transition", "eva_transition", 0.75, 6000.0, -0.5, -80.0, 0.30, 0.40, 68000.0),
+    ("contingency", "contingency", 1.20, 3500.0, 2.0, 260.0, 0.30, 0.60, 70000.0),
 )
 PLANT_CONDITIONS: tuple[tuple[str, str | None, float, float], ...] = (
     ("nominal_plant", None, 1.00, 1.00),
