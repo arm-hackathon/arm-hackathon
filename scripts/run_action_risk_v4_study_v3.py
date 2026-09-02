@@ -66,6 +66,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     ISSUE56_V4_MODEL_PROTOCOL_V7_ID,
     ISSUE56_V4_MODEL_PROTOCOL_V8_ID,
     ISSUE56_V4_MODEL_PROTOCOL_V9_ID,
+    ISSUE56_V4_MODEL_PROTOCOL_V10_ID,
     V4_MODEL_V3_SPLIT_PROTOCOL,
     V4_MODEL_V3_STAGE_B_ARMS,
     V4_MODEL_V4_STAGE_B_RULE,
@@ -75,6 +76,7 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
     load_v4_model_protocol_v7,
     load_v4_model_protocol_v8,
     load_v4_model_protocol_v9,
+    load_v4_model_protocol_v10,
 )
 
 
@@ -96,6 +98,7 @@ PROTOCOL_VERSION_CONTRACTS = {
     "v7": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v7.json"),
     "v8": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v8.json"),
     "v9": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v9.json"),
+    "v10": Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v10.json"),
 }
 PROTOCOL_VERSION_LOADERS = {
     "v5": (load_v4_model_protocol_v5, ISSUE56_V4_MODEL_PROTOCOL_V5_ID),
@@ -103,6 +106,7 @@ PROTOCOL_VERSION_LOADERS = {
     "v7": (load_v4_model_protocol_v7, ISSUE56_V4_MODEL_PROTOCOL_V7_ID),
     "v8": (load_v4_model_protocol_v8, ISSUE56_V4_MODEL_PROTOCOL_V8_ID),
     "v9": (load_v4_model_protocol_v9, ISSUE56_V4_MODEL_PROTOCOL_V9_ID),
+    "v10": (load_v4_model_protocol_v10, ISSUE56_V4_MODEL_PROTOCOL_V10_ID),
 }
 STUDY_SOURCE_PATHS_BASE = (
     Path("contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v3.json"),

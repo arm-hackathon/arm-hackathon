@@ -903,3 +903,124 @@ def test_superiority_helper_per_family_grading() -> None:
         evaluation_ids=families,
     )
     assert result_mismatch["achieved"] is False
+
+
+def _c9_model() -> "V4RiskModel":
+    train = _dataset("TRAIN", 10)
+    validation = _dataset("VALIDATION", 10)
+    return V4RiskModel.fit(train, candidate_id="c9_o2_guard_statistical").calibrate(
+        validation, threshold_grid=V4_THRESHOLD_GRID_EXTENDED
+    )
+
+
+def test_select_action_context_c9_statistical_dormant_under_eva() -> None:
+    model = _c9_model()
+    scores = [
+        _score(0, _prediction(relative_safety=0.5), 0.5),
+        _score(1, _prediction(relative_safety=0.6), 0.6),
+        _score(2, _prediction(relative_safety=0.7), 0.7),
+        _score(3, _prediction(relative_safety=-1.0), -1.0),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": False,
+        "operating_mode": "eva_transition",
+        "current_action_id": "normal-eva_transition-v1",
+    }
+    selected = model.select_action_context(scores, context)
+    assert selected is not None and selected.action_id == "normal-dormant-v1"
+
+
+def test_select_action_context_c9_suppressed_when_dormant_current() -> None:
+    model = _c9_model()
+    scores = [
+        _score(0, _prediction(relative_safety=-2.0), -2.0),
+        _score(1, _prediction(relative_safety=0.2), 0.2),
+        _score(2, _prediction(relative_safety=0.3), 0.3),
+        _score(3, _prediction(relative_safety=-1.0), -1.0),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": False,
+        "operating_mode": "eva_transition",
+        "current_action_id": "normal-dormant-v1",
+    }
+    assert model.select_action_context(scores, context) is None
+
+
+def test_select_action_context_c9_guard_priority_on_o2_excess() -> None:
+    model = _c9_model()
+    scores = [
+        _score(0, _prediction(relative_safety=-2.0), -2.0),
+        _score(1, _prediction(relative_safety=0.6), 0.6),
+        _score(2, _prediction(relative_safety=0.7), 0.7),
+        _score(3, _prediction(relative_safety=0.9), 0.9),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": True,
+        "operating_mode": "occupied",
+        "current_action_id": "normal-occupied-v1",
+    }
+    selected = model.select_action_context(scores, context)
+    assert selected is not None and selected.action_id == "normal-dormant-v1"
+
+
+def test_select_action_context_c9_abstains_without_improvement() -> None:
+    model = _c9_model()
+    scores = [
+        _score(0, _prediction(relative_safety=0.5), 0.5),
+        _score(1, _prediction(relative_safety=0.6), 0.6),
+        _score(2, _prediction(relative_safety=0.7), 0.7),
+        _score(3, _prediction(relative_safety=0.8), 0.8),
+    ]
+    context = {
+        "critical_health": False,
+        "nominal_o2_excess": False,
+        "operating_mode": "eva_transition",
+        "current_action_id": "normal-eva_transition-v1",
+    }
+    assert model.select_action_context(scores, context) is None
+
+
+def test_protocol_v10_statistical_dormant_and_roster() -> None:
+    from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model_protocol import (
+        ISSUE56_V4_MODEL_PROTOCOL_V10_FILENAME,
+        load_v4_model_protocol_v10,
+        validate_v4_model_protocol_v10,
+    )
+
+    protocol, digest = load_v4_model_protocol_v10(REPO_ROOT)
+    assert (
+        protocol["preregistration_id"]
+        == "habitat_v2_forecast_issue_56_v4_model_preregistration_v10"
+    )
+    assert len(digest) == 64
+    assert (REPO_ROOT / "contracts" / ISSUE56_V4_MODEL_PROTOCOL_V10_FILENAME).is_file()
+
+    assert tuple(item["id"] for item in protocol["candidate_models"]) == (
+        "c8_o2_excess_guard",
+        "c9_o2_guard_statistical",
+    )
+    assert protocol["policy"]["selection_contract"] == (
+        "context_gated_select_v2_statistical_dormant"
+    )
+    assert protocol["policy"]["statistical_dormant"] == {
+        "candidates": ["c9_o2_guard_statistical"],
+        "admission": "calibrated_screen_and_predicted_relative_improvement",
+        "repeat_suppression": "current_command_is_dormant",
+        "outside_o2_excess_scope": "all_operating_modes",
+    }
+    assert protocol["evaluation"]["stage_b_hmc_replay"]["stage_b_candidate_rule"] == (
+        "replay_all_stage_a_passers_v1"
+    )
+
+    drifted = json.loads(json.dumps(protocol))
+    drifted["policy"]["statistical_dormant"]["candidates"] = []
+    with pytest.raises(Issue56V4ModelProtocolError, match="statistical dormant"):
+        validate_v4_model_protocol_v10(drifted)
+
+    drifted_roster = json.loads(json.dumps(protocol))
+    drifted_roster["candidate_models"] = drifted_roster["candidate_models"][:1]
+    with pytest.raises(Issue56V4ModelProtocolError, match="candidate roster"):
+        validate_v4_model_protocol_v10(drifted_roster)

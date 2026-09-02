@@ -59,6 +59,7 @@ V4_MODEL_CANDIDATES = (
     "c6_action_conditioned_temporal",
     "c7_action_conditioned_cumulative",
     "c8_o2_excess_guard",
+    "c9_o2_guard_statistical",
 )
 V4_ACTION_IDS = (
     "normal-occupied-v1",
@@ -77,6 +78,7 @@ V4_CANDIDATE_FEATURE_VARIANTS = {
     "c6_action_conditioned_temporal": "v4_temporal_past_only",
     "c7_action_conditioned_cumulative": "v3_708_past_only",
     "c8_o2_excess_guard": "v3_708_past_only",
+    "c9_o2_guard_statistical": "v4_temporal_past_only",
 }
 V4_CANDIDATE_SEMANTICS = {
     "c0_v3_refit": ("ridge", "cumulative_logistic"),
@@ -88,6 +90,7 @@ V4_CANDIDATE_SEMANTICS = {
     "c6_action_conditioned_temporal": ("action_conditioned_ridge", "shared_hazard"),
     "c7_action_conditioned_cumulative": ("action_conditioned_ridge", "cumulative_logistic"),
     "c8_o2_excess_guard": ("ridge", "cumulative_logistic"),
+    "c9_o2_guard_statistical": ("small_shared_mlp", "shared_hazard"),
 }
 V4_EVENT_LIMIT = 0.50
 V4_EXPECTED_EXPOSURE_LIMIT = 0.50
@@ -1336,7 +1339,7 @@ class V4RiskModel:
         exposure, maximum, comfort, resource, relative = _continuous_targets(items)
         model_kind, hazard_mode = V4_CANDIDATE_SEMANTICS[candidate_id]
         relative_action_heads: np.ndarray | None = None
-        if candidate_id == "c3_small_shared_mlp":
+        if model_kind == "small_shared_mlp":
             (
                 mlp_targets,
                 mlp_at_risk,
@@ -1992,9 +1995,17 @@ class V4RiskModel:
                 score.action_id == V4_CONTEXT_DORMANT_ACTION_ID
                 and not context["nominal_o2_excess"]
             ):
-                hard = True
-                if reason is None:
-                    reason = "context_dormant_not_nominal"
+                statistical_dormant = (
+                    self.candidate_id == "c9_o2_guard_statistical"
+                    and not score.hard_ineligible
+                    and score.compatible
+                    and score.prediction.relative_safety_exposure < 0.0
+                    and context.get("current_action_id") != V4_CONTEXT_DORMANT_ACTION_ID
+                )
+                if not statistical_dormant:
+                    hard = True
+                    if reason is None:
+                        reason = "context_dormant_not_nominal"
             gated.append(
                 V4ActionScore(
                     score.action_id,
@@ -2031,7 +2042,7 @@ class V4RiskModel:
         if context.get("critical_health"):
             return None
         if (
-            self.candidate_id == "c8_o2_excess_guard"
+            self.candidate_id in ("c8_o2_excess_guard", "c9_o2_guard_statistical")
             and context.get("nominal_o2_excess")
             and context.get("current_action_id") != V4_CONTEXT_DORMANT_ACTION_ID
         ):
@@ -2046,6 +2057,20 @@ class V4RiskModel:
             if dormant is not None:
                 return dormant
             return None
+        if self.candidate_id == "c9_o2_guard_statistical":
+            if context.get("current_action_id") == V4_CONTEXT_DORMANT_ACTION_ID:
+                return None
+            eligible_c9 = [
+                item for item in items if not item.hard_ineligible and item.compatible
+            ]
+            improving_c9 = [
+                item
+                for item in eligible_c9
+                if item.prediction.relative_safety_exposure < 0.0
+            ]
+            if not improving_c9:
+                return None
+            return min(improving_c9, key=lambda item: (item.utility_score, item.action_id))
         eligible = [item for item in items if not item.hard_ineligible and item.compatible]
         if not eligible:
             return None
