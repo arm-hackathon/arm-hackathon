@@ -62,6 +62,12 @@ from aeolus.habitat_v2.forecast_issue56_action_risk_v4_model import (
     _select_event_thresholds,
 )
 
+from aeolus.habitat_v2.forecast_issue55_race import (
+    build_family_scenario,
+    deterministic_family_ids,
+)
+from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
+
 _DIAGNOSTICS_TEST_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -78,11 +84,6 @@ def _load_script_module(script_name: str):
 _run_action_risk_v4_model_script = _load_script_module("run_action_risk_v4_model")
 _evaluation_gate_status = _run_action_risk_v4_model_script._evaluation_gate_status
 _group_bootstrap = _run_action_risk_v4_model_script._group_bootstrap
-from aeolus.habitat_v2.forecast_issue55_race import (
-    build_family_scenario,
-    deterministic_family_ids,
-)
-from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts
 
 
 def _digest(value: object) -> str:
