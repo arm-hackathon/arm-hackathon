@@ -38,6 +38,34 @@ separate Habitat Plant V2 grey-box research analogue with explicit SI
 accounting. Neither is a spacecraft, life-support, building-control or
 safety-critical system, and neither must control physical equipment.
 
+## Where AEOLUS is going next
+
+AEOLUS is becoming a simulation-first research platform for learning
+**uncertainty-aware environmental decision support under partial
+observability**. The next proposed model, **BDM-v1**, will use causal operational
+history plus each candidate catalogue action to predict distributions over
+future habitat conditions, safety exposure, resource consequences, and the
+change relative to holding the current command.
+
+The intended loop is:
+
+```text
+observe -> infer state -> predict consequences -> rank -> constrain -> act -> verify
+```
+
+This is proposed work, not a current capability claim. The deterministic Habitat
+Management Computer (HMC) remains the sole final-command, plant-step, and replay
+authority; a model may propose or abstain but cannot actuate the plant. Progress
+will be gated by mechanism-held-out scenarios, strong deterministic and linear
+baselines, learned-component ablations, calibrated uncertainty, HMC-filtered
+closed-loop replay, and one frozen blind confirmation study. Arm runtime and
+quantisation work are deliberately downstream of model evidence.
+
+Read the full [AEOLUS research roadmap](ROADMAP.md) for the current evidence,
+BDM-v1 design, simulator priorities, stop criteria, non-claims, and phased
+contribution plan. Bounded implementation and research work is tracked in the
+[GitHub issue list](https://github.com/arm-hackathon/arm-hackathon/issues).
+
 ## Current status: deterministic recovery passes blind final verification
 
 The repaired deterministic recovery policy was frozen at source commit
@@ -532,7 +560,8 @@ provisioning, hardware-in-the-loop testing, physical deployment, real-world
 CO₂ limits, production control, or a final result. No push, merge, deploy,
 cloud action, or final-suite operation is part of this closeout.
 
-See the [simulation rules](docs/simulation-rules.md),
+See the [research roadmap](ROADMAP.md),
+[simulation rules](docs/simulation-rules.md),
 [telemetry contract](docs/telemetry-contract.md),
 [recovery acceptance record](docs/recovery-protocol-acceptance.md), and
-[project plan](PLAN.md).
+[historical project plan](PLAN.md).
