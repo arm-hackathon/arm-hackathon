@@ -133,6 +133,46 @@ Results:
 - base scenario sha256 (canonical bytes):
   `d321f86acddbdc3fb73df47f03367fc7acab0c8cfb6dbd66096d30bef5c0e3e8`.
 
+## Development corpus (72c)
+
+`src/aeolus/habitat_v2/bdm_v1_corpus.py` plus `scripts/build_bdm_v1_corpus.py`
+and `scripts/verify_bdm_v1_corpus.py` materialize the development corpus over
+the frozen roster: one sample per (family, decision step, catalogue candidate
+action), feature keys exactly the nineteen Issue #70 declared model-facing
+fields, causal 16-step windows of issued verified snapshots, explicit
+mask/staleness missingness (carry-forward; marked-zero when never observed;
+sensor-stuck defects present as frozen AVAILABLE readings), retained HMC
+dispositions, and true-plant labels from plant-only 32-step counterfactual
+rollouts (candidate command and hold) from the checkpoint causal state, with
+trajectory rows at horizons 4/16/32 and action-minus-hold deltas. The sealed
+BLIND_FINAL partition is rejected fail-closed; achieved-feedback/gauge
+availability lives in an audit-only `missingness_metadata` block that is not
+model input.
+
+The committed protocol contract
+`contracts/habitat_v2_bdm_v1_corpus_protocol_v1.json` (sha256
+`66cd935d7c61d7cc382a5cc33cb765b424e30be0dc1d682796f1e697ead2d5fd`) binds the
+custody registry, base scenario, provenance manifest, catalogue ordering, and
+the window/rollout/label/missingness conventions. The corpus itself is a
+local write-once, resumable artifact under `out/` (Issue #56 corpus
+precedent), not a committed blob:
+
+```bash
+uv run --locked --python 3.11 --extra dev python \
+  scripts/build_bdm_v1_corpus.py --output out/bdm-v1-corpus-v1
+uv run --locked --python 3.11 --extra dev python \
+  scripts/verify_bdm_v1_corpus.py --corpus out/bdm-v1-corpus-v1 \
+  --rederive-families 3
+```
+
+Full build result: 136 families (TRAIN+DEV+CALIBRATION), 7072 samples,
+375 s serial on the development machine; corpus digest
+`ecec280680a0ba3c984c7182dc288241014b46b3c0687f8bcc91e3322510c219`.
+Verification re-parsed every shard, re-validated every sample against the
+contract, recomputed every digest, and re-derived three complete families
+through the generator and plant rollouts with byte-identical sample digests
+(`status: VERIFIED`).
+
 ## Blind-size power pilot
 
 Command:
