@@ -109,3 +109,29 @@ digital twin, CFD model, flight design, or physically validated habitat; the
 classifications in the manifest are the authoritative statement of what each
 number is. No model training, blind evaluation, or control-authority change
 occurred.
+
+## Revision note (2026-09-05, Issue #72)
+
+The manifest was revised during Scenario Family Generator v2 development:
+
+1. The four `sensor_primary_noise_*` records were reclassified to
+   `generator_variable: false` because the reviewed HMC contract's reset
+   rejects scenarios whose environmental sensor noise does not match the
+   contract, so no HMC-replayed family generator may draw them.
+2. The `sink_temperature_k` and `initial_temperature_k` valid ranges were
+   widened so their declared relative generator bands fit inside them; the
+   loader now fails closed on any relative or absolute band that exceeds its
+   record's valid range.
+
+The sensitivity receipt above (`94201faa...`) binds the manifest raw file
+bytes at run time under the then-current loader convention
+(`404fabe89c61784167ab1f865fb5130cf6eb186d4d3ec1150728f636bc753c21`) and is
+unaffected: the sensitivity sweep never perturbed noise amplitudes, and the
+two widened ranges do not change any sampled band edge used by that run.
+Raw-byte digests are platform-dependent (checkout line endings differ between
+Windows and CI), so from this revision onward
+`load_physics_provenance_manifest` binds the manifest's canonical JSON bytes
+instead; the historical receipt above remains a truthful record of its own
+run under the old convention. The post-revision canonical manifest digest is
+`5bda0a2877db890e07dd309189abce29270a1eac655b39c9972270fcc37f3c90`
+(reproducible via `load_physics_provenance_manifest` on any platform).

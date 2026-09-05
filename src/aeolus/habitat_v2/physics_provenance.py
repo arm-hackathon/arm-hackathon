@@ -22,6 +22,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .forecast.contracts import canonical_json_bytes
+
 PHYSICS_PROVENANCE_FILENAME = "habitat_v2_physics_provenance_v1.json"
 PHYSICS_PROVENANCE_MANIFEST_ID = "habitat_v2_physics_provenance_v1"
 PHYSICS_PROVENANCE_SCHEMA_VERSION = "aeolus_habitat_v2_physics_provenance_v1"
@@ -155,6 +157,17 @@ def _validate_record(record: Any, systems: frozenset[str], metrics: frozenset[st
                 raise PhysicsProvenanceError(
                     f"parameter {pid} absolute band exceeds its valid range"
                 )
+        if (
+            valid_range is not None
+            and dist["kind"] == "uniform_relative"
+            and _is_number(value)
+        ):
+            low_edge = value * (1.0 + float(dist["low"]))
+            high_edge = value * (1.0 + float(dist["high"]))
+            if low_edge < valid_range[0] - 1e-9 or high_edge > valid_range[1] + 1e-9:
+                raise PhysicsProvenanceError(
+                    f"parameter {pid} relative band exceeds its valid range"
+                )
     elif distribution is not None:
         raise PhysicsProvenanceError(
             f"parameter {pid} declares an uncertainty distribution without generator variability"
@@ -254,14 +267,20 @@ def validate_physics_provenance_manifest(manifest: Mapping[str, Any]) -> dict[st
 
 
 def load_physics_provenance_manifest(root: str | Path) -> tuple[dict[str, Any], str]:
-    """Load, validate, and hash the frozen physics provenance manifest bytes."""
+    """Load and validate the frozen manifest; digest its canonical JSON bytes.
+
+    The digest binds the canonical serialization, not the raw file bytes: raw
+    bytes vary with checkout line endings across platforms, which would make
+    committed bindings (roster registry, pilot receipts) platform-dependent.
+    """
 
     path = Path(root).resolve() / "contracts" / PHYSICS_PROVENANCE_FILENAME
     try:
         raw = path.read_bytes()
     except OSError as error:
         raise PhysicsProvenanceError("physics provenance manifest is unreadable") from error
-    return validate_physics_provenance_manifest(_strict_json(raw)), hashlib.sha256(raw).hexdigest()
+    manifest = validate_physics_provenance_manifest(_strict_json(raw))
+    return manifest, hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
 
 
 def parameter_by_id(manifest: Mapping[str, Any], parameter_id: str) -> dict[str, Any]:
