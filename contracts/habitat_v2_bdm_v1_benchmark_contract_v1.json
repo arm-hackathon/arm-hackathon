@@ -1,0 +1,615 @@
+{
+  "schema_version": "aeolus_habitat_v2_bdm_v1_benchmark_contract_v1",
+  "contract_id": "habitat_v2_bdm_v1_benchmark_contract_v1",
+  "status": "ACCEPTED_RESEARCH_CONTRACT",
+  "authorization": {
+    "authorized_by": "repository_owner",
+    "authorized_via_issue": 70,
+    "authorized_at": "2026-09-05",
+    "scope": [
+      "freeze_benchmark_and_evidence_contract",
+      "no_model_implementation",
+      "no_training",
+      "no_protected_blind_access"
+    ]
+  },
+  "design_record": "docs/research/2026-09-05-bdm-v1-benchmark-contract.md",
+  "primary_hypothesis": "A compact causal belief-dynamics model (BDM-v1) consuming only runtime-observable causal history and an explicit candidate-action encoding can improve HMC-filtered closed-loop decision outcomes over both the frozen deterministic O2-excess guard and an action-conditioned linear baseline on fresh mechanism-held-out development families, with calibrated selective abstention, measured on physical safety outcomes first at the independent causal-group level.",
+  "non_claims": [
+    "no claim that any AEOLUS simulation is a NASA, Artemis, or Gateway digital twin, a CFD model, flight-qualified, or physically validated",
+    "no claim of qualification, certification, deployment readiness, hardware performance, or real-world safety",
+    "no claim of learned-model superiority until the Gate 0 attribution, Gate 2 offline, Gate 3 abstention, and Gate 4 closed-loop criteria pass on the frozen contract",
+    "no Arm, ONNX, quantisation, packaging, or release claim before Gate 6",
+    "no access to or claim about the sealed BLIND_FINAL population before its separate one-shot authorization"
+  ],
+  "evidence_status_matrix": {
+    "implemented": [
+      {
+        "id": "habitat_v2_deterministic_world",
+        "summary": "SI conservation kernel, explicit operating modes, multizone air network, fault and sensor layers, actuator feedback, deterministic replay",
+        "evidence": "docs/simulation-rules.md; docs/telemetry-contract.md; docs/evidence/habitat-v2-actuator-feedback-result.md"
+      },
+      {
+        "id": "hmc_sole_authority",
+        "summary": "Deterministic Habitat Management Computer as sole proposal-arbitration, preflight, final-command, plant-step, and replay authority",
+        "evidence": "src/aeolus/habitat_v2/hmc.py; docs/simulation-rules.md"
+      },
+      {
+        "id": "observability_qualification",
+        "summary": "Operational observability qualification packet with harmful/healthy fixtures",
+        "evidence": "docs/evidence/habitat-v2-operational-observability-qualification.md"
+      },
+      {
+        "id": "issue_52_long_horizon_lane",
+        "summary": "Long-horizon forecast lane over the frozen history contract",
+        "evidence": "src/aeolus/habitat_v2/forecast_issue52.py; docs/plans lineage PRs #60-#62"
+      },
+      {
+        "id": "issue_53_dropout_forecast_lane",
+        "summary": "Dropout-aware mask-conditioned forecaster; QUALIFIED forecast lane (not plant control); one earlier sealed version remains immutably NOT QUALIFIED",
+        "evidence": "docs/evidence/issue-53-dropout-card.md; docs/evidence/issue-53-measurements.md"
+      },
+      {
+        "id": "issue_54_distillation",
+        "summary": "Student-model distillation study; corrected full development evidence only, not qualified",
+        "evidence": "docs/evidence/issue-54-distillation-card.md; docs/evidence/issue-54-measurements.md"
+      },
+      {
+        "id": "issue_55_race_and_issue_56_v3_baseline",
+        "summary": "Paired controller race and frozen V3 risk-filtered baseline with byte-verified refit",
+        "evidence": "docs/evidence/issue-55-race-card.md; docs/evidence/issue-56-action-risk-card.md; docs/evidence/issue-56-action-risk-v3-support-revision.md"
+      },
+      {
+        "id": "issue_56_v4_line_concluded",
+        "summary": "V4 model line concluded at protocol revision v10: per-family superiority over frozen V3 on all six evaluation families (6 wins, 0 ties, 0 losses); development evidence only, advisory-only",
+        "evidence": "docs/issue-56-v4-model-final-protocol.md; docs/evidence/issue-56-action-risk-v4-model-v10.md"
+      },
+      {
+        "id": "fp32_arm_benchmark",
+        "summary": "Controlled FP64-to-FP32 forecast-workload optimization measured on native Arm Neoverse-N2 with parity gate",
+        "evidence": "benchmark receipt under artifacts/ and docs/evidence model card records"
+      },
+      {
+        "id": "judge_forecast_demo",
+        "summary": "Bounded judge demo with independent deterministic HMC replay verification",
+        "evidence": "scripts/run_habitat_v2_forecast_report.py"
+      }
+    ],
+    "historical": [
+      {
+        "id": "closed_loop_advisory_campaign",
+        "summary": "Paired closed-loop advisory campaign (safer in 78, equal in 24, worse in none across 102 paired fault scenarios) retained as historical evidence with documented custody limits; not a current-main self-contained receipt",
+        "evidence": "docs/evidence/closed-loop-advisory-historical-index.md"
+      },
+      {
+        "id": "deterministic_recovery_line",
+        "summary": "Bounded deterministic recovery evidence including blind final verification of the recovery policy",
+        "evidence": "docs/evidence/recovery-final-verification-result.md; docs/evidence/recovery-final-verification-contract.md"
+      }
+    ],
+    "proposed": [
+      {
+        "id": "physics_provenance_and_reference_checks",
+        "summary": "Machine-readable parameter provenance manifest, independent numerical reference checks, bounded sensitivity analysis",
+        "evidence": "https://github.com/arm-hackathon/arm-hackathon/issues/71"
+      },
+      {
+        "id": "scenario_family_generator_v2",
+        "summary": "Deterministic causally grouped family generator with TRAIN/DEV/CALIBRATION manifests and sealed BLIND_FINAL custody",
+        "evidence": "https://github.com/arm-hackathon/arm-hackathon/issues/72"
+      },
+      {
+        "id": "guard_attribution_ablations",
+        "summary": "c8/c9 ablations isolating deterministic-guard credit from learned-model credit",
+        "evidence": "https://github.com/arm-hackathon/arm-hackathon/issues/73"
+      },
+      {
+        "id": "linear_baselines",
+        "summary": "Action-agnostic ridge, action-conditioned ridge, and controlled linear state-space baselines",
+        "evidence": "https://github.com/arm-hackathon/arm-hackathon/issues/74"
+      },
+      {
+        "id": "bdm_v1_prototype",
+        "summary": "Compact causal dilated TCN adviser with masks, staleness, action encoding, quantile heads, preregistered budget and seeds",
+        "evidence": "https://github.com/arm-hackathon/arm-hackathon/issues/75"
+      },
+      {
+        "id": "calibrated_abstention",
+        "summary": "Uncertainty calibration, OOD detection, and abstention policy on the dedicated calibration partition",
+        "evidence": "https://github.com/arm-hackathon/arm-hackathon/issues/76"
+      },
+      {
+        "id": "closed_loop_dev_study",
+        "summary": "HMC-filtered paired closed-loop development study across all roster arms plus frozen candidate packet and blind-confirmation draft",
+        "evidence": "https://github.com/arm-hackathon/arm-hackathon/issues/77"
+      },
+      {
+        "id": "blind_confirmation",
+        "summary": "One-shot blind confirmation, openable only after issue 77 passes, candidate freeze, and recorded repository-owner approval",
+        "evidence": "future issue; not yet opened"
+      }
+    ],
+    "not_claimed": [
+      "NASA/Artemis/Gateway digital twin or flight-design calibration",
+      "CFD or distributed-fluid modelling",
+      "complete ECLSS coverage (no water recovery, waste processing, fire chemistry, or biological loops)",
+      "qualification, certification, deployment readiness, hardware compatibility, or real-world control",
+      "physical validity beyond the declared engineering-assumption and stress-test classifications",
+      "learned-model superiority beyond the recorded development evidence",
+      "Arm or reduced-precision claims beyond the recorded FP32 benchmark receipt"
+    ]
+  },
+  "input_schema": {
+    "causal_window": {
+      "max_history_steps": 16,
+      "timing_rule": "completed_telemetry_at_or_before_decision_step",
+      "window_unit": "plant_steps",
+      "future_information": "prohibited_except_declared_known_schedules"
+    },
+    "field_classes": [
+      {
+        "class_id": "zone_environment_history",
+        "description": "Per-zone environmental telemetry over the causal window",
+        "fields": [
+          {
+            "name": "zone_temperature_k",
+            "dtype": "float32",
+            "shape": "[window_steps, 8]",
+            "unit": "K",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "trace zone records"
+          },
+          {
+            "name": "zone_pressure_pa",
+            "dtype": "float32",
+            "shape": "[window_steps, 8]",
+            "unit": "Pa",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "trace zone records"
+          },
+          {
+            "name": "zone_co2_ppm",
+            "dtype": "float32",
+            "shape": "[window_steps, 8]",
+            "unit": "ppm",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "trace zone records"
+          },
+          {
+            "name": "zone_o2_mole_fraction",
+            "dtype": "float32",
+            "shape": "[window_steps, 8]",
+            "unit": "mole_fraction",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "trace zone records"
+          },
+          {
+            "name": "zone_relative_humidity",
+            "dtype": "float32",
+            "shape": "[window_steps, 8]",
+            "unit": "percent",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "trace zone records"
+          },
+          {
+            "name": "zone_branch_airflow_m3_s",
+            "dtype": "float32",
+            "shape": "[window_steps, 8]",
+            "unit": "m^3/s",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "trace zone records"
+          }
+        ]
+      },
+      {
+        "class_id": "observation_masks_and_staleness",
+        "description": "Explicit availability metadata; unmarked zero-imputation is prohibited",
+        "fields": [
+          {
+            "name": "observed_value_mask",
+            "dtype": "bool",
+            "shape": "[window_steps, 8, 6]",
+            "unit": "dimensionless",
+            "timing": "causal_window_completed_steps",
+            "missingness": "not_applicable",
+            "observability": "derived_from_operational_telemetry",
+            "provenance": "telemetry availability only; never hidden fault state"
+          },
+          {
+            "name": "steps_since_last_valid_observation",
+            "dtype": "int32",
+            "shape": "[window_steps, 8, 6]",
+            "unit": "plant_steps",
+            "timing": "causal_window_completed_steps",
+            "missingness": "not_applicable",
+            "observability": "derived_from_operational_telemetry",
+            "provenance": "telemetry availability only; never hidden fault state"
+          }
+        ]
+      },
+      {
+        "class_id": "command_and_actuator_feedback",
+        "description": "Requested command identity and achieved actuator state over the causal window",
+        "fields": [
+          {
+            "name": "requested_command_vector",
+            "dtype": "command_vector",
+            "shape": "[window_steps, command_dim]",
+            "unit": "mixed_declared_per_component",
+            "timing": "causal_window_completed_steps",
+            "missingness": "not_applicable",
+            "observability": "operational_telemetry",
+            "provenance": "trace requested/final command records"
+          },
+          {
+            "name": "achieved_actuator_state",
+            "dtype": "command_vector",
+            "shape": "[window_steps, command_dim]",
+            "unit": "mixed_declared_per_component",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "trace achieved actuator feedback records"
+          }
+        ]
+      },
+      {
+        "class_id": "resource_gauges",
+        "description": "Declared operational resource gauges only; evaluator-only reserve or audit state is prohibited",
+        "fields": [
+          {
+            "name": "battery_state_of_charge",
+            "dtype": "float32",
+            "shape": "[window_steps]",
+            "unit": "fraction",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "declared resource gauge records"
+          },
+          {
+            "name": "oxygen_store_fraction",
+            "dtype": "float32",
+            "shape": "[window_steps]",
+            "unit": "fraction",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "declared resource gauge records"
+          },
+          {
+            "name": "sorbent_fraction",
+            "dtype": "float32",
+            "shape": "[window_steps]",
+            "unit": "fraction",
+            "timing": "causal_window_completed_steps",
+            "missingness": "mask_and_staleness_required",
+            "observability": "operational_telemetry",
+            "provenance": "declared resource gauge records"
+          }
+        ]
+      },
+      {
+        "class_id": "operating_context",
+        "description": "Explicit declared operating context; labels are context only and never silently alter physics",
+        "fields": [
+          {
+            "name": "operating_mode_one_hot",
+            "dtype": "categorical_one_hot",
+            "shape": "[window_steps, 4]",
+            "unit": "dimensionless",
+            "timing": "causal_window_completed_steps",
+            "missingness": "not_applicable",
+            "observability": "declared_static_context",
+            "provenance": "scenario operating schedule; modes occupied/eva_transition/contingency/dormant"
+          }
+        ]
+      },
+      {
+        "class_id": "hmc_dispositions_retained",
+        "description": "Only dispositions HMC would genuinely retain operationally; future arbitration results are prohibited",
+        "fields": [
+          {
+            "name": "prior_proposal_dispositions",
+            "dtype": "categorical_one_hot",
+            "shape": "[window_steps, disposition_classes]",
+            "unit": "dimensionless",
+            "timing": "causal_window_completed_steps",
+            "missingness": "not_applicable",
+            "observability": "operational_telemetry",
+            "provenance": "trace decision records for completed steps only"
+          }
+        ]
+      },
+      {
+        "class_id": "topology_and_configuration",
+        "description": "Known static plant identity available at runtime",
+        "fields": [
+          {
+            "name": "topology_configuration_descriptor",
+            "dtype": "descriptor",
+            "shape": "[descriptor_dim]",
+            "unit": "dimensionless",
+            "timing": "static",
+            "missingness": "not_applicable",
+            "observability": "declared_static_context",
+            "provenance": "scenario network topology and configuration identity"
+          }
+        ]
+      },
+      {
+        "class_id": "candidate_action_encoding",
+        "description": "The catalogue action or declared future action plan being scored; supplied per scoring call, never inferred from hidden state",
+        "fields": [
+          {
+            "name": "candidate_action_command_vector",
+            "dtype": "command_vector",
+            "shape": "[command_dim]",
+            "unit": "mixed_declared_per_component",
+            "timing": "per_scoring",
+            "missingness": "not_applicable",
+            "observability": "candidate_encoding",
+            "provenance": "frozen action catalogue"
+          },
+          {
+            "name": "candidate_action_index",
+            "dtype": "int32",
+            "shape": "[1]",
+            "unit": "dimensionless",
+            "timing": "per_scoring",
+            "missingness": "not_applicable",
+            "observability": "candidate_encoding",
+            "provenance": "frozen action catalogue"
+          }
+        ]
+      },
+      {
+        "class_id": "declared_known_schedules",
+        "description": "Only future schedules explicitly declared known at runtime; empty unless a scenario declares them; undeclared future crew or environmental loads are prohibited",
+        "fields": [
+          {
+            "name": "declared_known_future_schedule",
+            "dtype": "float32",
+            "shape": "[schedule_dim]",
+            "unit": "declared_per_component",
+            "timing": "declared_known_future",
+            "missingness": "not_applicable",
+            "observability": "declared_static_context",
+            "provenance": "explicit scenario declaration; prohibited when undeclared"
+          }
+        ]
+      }
+    ]
+  },
+  "prohibited_fields": {
+    "items": [
+      "hidden_physical_truth",
+      "fault_labels_or_future_fault_schedules",
+      "simulator_seeds",
+      "internal_noise_or_bias_state",
+      "future_measurements",
+      "counterfactual_outcomes",
+      "evaluator_only_reserve_or_audit_state",
+      "future_hmc_arbitration_results",
+      "undeclared_future_crew_or_environmental_loads"
+    ],
+    "enforcement": "contract_validator_and_tests; any study feature manifest containing a prohibited item fails closed before fitting"
+  },
+  "action_catalogue": {
+    "actions": [
+      "normal-occupied-v1",
+      "normal-eva_transition-v1",
+      "normal-contingency-v1",
+      "normal-dormant-v1"
+    ],
+    "abstention_allowed": true,
+    "catalogue_binding": "forecast_contract_action_catalogue",
+    "mutable_in_study": false
+  },
+  "horizons": {
+    "step_keys": [4, 16, 32],
+    "episode_remaining_key": 0,
+    "semantics": "direct_multi_horizon_prediction_from_decision_step; recursive rollout is not the primary form",
+    "source": "V3_HORIZONS plus episode-remaining convention"
+  },
+  "labels": {
+    "trajectory_targets": "fifty_one_target_projection",
+    "decision_targets": [
+      "crossing_event",
+      "safety_exposure",
+      "maximum_crossing",
+      "comfort_deviation",
+      "resource_composite"
+    ],
+    "action_minus_hold_targets": true,
+    "counterfactual_rollouts": "labels_only_never_runtime_inputs",
+    "counterfactual_construction": "checkpoint one causal state per decision opportunity; identical prior observations and disturbances; roll out hold and every admissible catalogue action; retain full trajectories and action-minus-hold outcomes"
+  },
+  "comparison_roster": {
+    "arms": [
+      {
+        "arm_id": "hmc_rules_only",
+        "kind": "deterministic_policy",
+        "source": "HMC canonical behaviour without advisory proposals",
+        "advisory_behind_hmc": false
+      },
+      {
+        "arm_id": "hold_current_command",
+        "kind": "deterministic_policy",
+        "source": "no proposals; current command continues under HMC safe hold",
+        "advisory_behind_hmc": false
+      },
+      {
+        "arm_id": "c8_o2_excess_guard",
+        "kind": "deterministic_guard_with_ridge_model",
+        "source": "issue_56_v4_model_preregistration_v10 candidate c8",
+        "advisory_behind_hmc": true
+      },
+      {
+        "arm_id": "c9_o2_guard_statistical",
+        "kind": "hybrid_guard_statistical",
+        "source": "issue_56_v4_model_preregistration_v10 candidate c9",
+        "advisory_behind_hmc": true
+      },
+      {
+        "arm_id": "action_agnostic_ridge",
+        "kind": "learned_linear_baseline",
+        "source": "issue_74",
+        "advisory_behind_hmc": true
+      },
+      {
+        "arm_id": "action_conditioned_linear",
+        "kind": "learned_linear_baseline",
+        "source": "issue_74; action-conditioned ridge or controlled linear state-space, choice frozen within issue 74",
+        "advisory_behind_hmc": true
+      },
+      {
+        "arm_id": "bdm_v1",
+        "kind": "learned_neural_candidate",
+        "source": "issue_75",
+        "advisory_behind_hmc": true
+      }
+    ],
+    "ablation_arms_from_issue_73": [
+      "c8_guard_only",
+      "c9_learned_screen_without_guard"
+    ]
+  },
+  "metrics": {
+    "polarity": {
+      "lower_is_better": [
+        "safety_exposure",
+        "maximum_crossing",
+        "counterfactual_safety_exposure_error",
+        "action_value_delta_error",
+        "finite_catalogue_regret",
+        "harmful_admission_rate",
+        "comfort_deviation",
+        "resource_composite",
+        "resource_depletion",
+        "intervention_count",
+        "actuator_wear",
+        "inference_latency_p99_ms"
+      ],
+      "higher_is_better": [
+        "beneficial_action_precision",
+        "beneficial_action_recall",
+        "useful_opportunity_recall",
+        "action_ranking_quality",
+        "interval_coverage_at_declared_level",
+        "selected_action_diversity_within_declared_bounds"
+      ]
+    },
+    "decision_metric_hierarchy": [
+      "hard_admissibility_violation_counts_must_be_zero",
+      "per_family_hard_safety_non_inferiority",
+      "paired_aggregate_safety_benefit_or_equal_safety_with_predeclared_resource_benefit",
+      "action_value_delta_error_and_finite_catalogue_regret",
+      "beneficial_action_precision_and_recall",
+      "resource_depletion",
+      "comfort_deviation",
+      "intervention_cost_and_actuator_wear"
+    ],
+    "aggregate_forecast_error_status": "secondary_diagnostic_only",
+    "independent_statistical_unit": "causal_group",
+    "non_independent_units": [
+      "paired_sensor_variants",
+      "counterfactual_action_branches",
+      "decision_steps_within_one_family"
+    ],
+    "pairing_rule": "identical_exogenous_traces_across_arms",
+    "bootstrap": {
+      "unit": "causal_group",
+      "seed_convention": "preregistered_per_study",
+      "resamples_default": 10000
+    }
+  },
+  "split_custody": {
+    "partitions": {
+      "TRAIN": "fitting_and_scaling_only",
+      "DEV": "architecture_and_design_decisions_only",
+      "CALIBRATION": "interval_correction_and_abstention_thresholds_only",
+      "BLIND_FINAL": "one_preregistered_run_after_candidate_freeze_only"
+    },
+    "group_disjoint": true,
+    "grouping_keys": [
+      "causal_scenario_template",
+      "physical_parameter_band",
+      "fault_mechanism_composition",
+      "operating_schedule",
+      "action_opportunity",
+      "sensor_failure_bundle"
+    ],
+    "same_group_rule": "paired sensor variants and every counterfactual action branch from one causal starting state remain in one group",
+    "sealed_manifest_rule": "BLIND_FINAL manifest hash recorded without outcomes; opening requires the separate one-shot authorization",
+    "blind_size_rule": "set by pilot power analysis and materially exceeding three independent evaluation condition groups",
+    "calibration_separation": "CALIBRATION is disjoint from model fitting, architecture selection, and blind custody"
+  },
+  "thresholds": {
+    "model_path_latency_p99_ms_maximum": 250.0,
+    "decision_thresholds": {
+      "safety_non_inferiority_margin": "TBD_FROM_PILOT",
+      "action_ranking_quality_minimum": "TBD_FROM_PILOT",
+      "finite_catalogue_regret_maximum": "TBD_FROM_PILOT",
+      "action_value_delta_error_maximum": "TBD_FROM_PILOT",
+      "beneficial_action_recall_minimum": "TBD_FROM_PILOT",
+      "harmful_admission_rate_maximum": "TBD_FROM_PILOT",
+      "interval_coverage_minimum": "TBD_FROM_PILOT",
+      "useful_opportunity_recall_minimum": "TBD_FROM_PILOT",
+      "maximum_abstention_on_useful_opportunities": "TBD_FROM_PILOT",
+      "minimum_selected_action_diversity": "TBD_FROM_PILOT"
+    },
+    "pilot_definition": {
+      "data": "DEV_partition_only",
+      "freeze_rule": "every TBD_FROM_PILOT threshold is frozen in a study preregistration before any closed-loop verdict and before any blind access",
+      "no_result_derived_value_may_be_marked_frozen": true
+    }
+  },
+  "stop_criteria": [
+    "BDM-v1 cannot beat the action-conditioned linear baseline on action ranking",
+    "improvement disappears when the deterministic guard is removed",
+    "results depend mostly on one dormant/O2-boundary pattern",
+    "uncertainty is badly miscalibrated under family shift",
+    "apparent success comes from near-total abstention",
+    "one plausible simulator assumption reverses the result",
+    "leakage or family overlap is found",
+    "any HMC authority or replay inconsistency appears",
+    "the blind confirmation fails"
+  ],
+  "stop_response": "improve the question, corpus, or simulator; never silently add parameters or tune against a failed blind population",
+  "claim_boundaries": [
+    "all results under this contract are simulator development evidence only",
+    "learned components are advisory-only; HMC remains the sole final-command, plant-step, and replay authority",
+    "negative and null results are published unchanged",
+    "uncertainty estimates are empirical calibration evidence, not formal safety guarantees",
+    "no protected blind access occurs in development issues",
+    "runtime, packaging, and Arm optimisation work requires Gate 6 conditions and separate authorization"
+  ],
+  "provenance_bindings": {
+    "physics_provenance_contract_id": "habitat_v2_physics_provenance_v1",
+    "scenario_schema_versions": [
+      "aeolus_habitat_v2_scenario_v4",
+      "aeolus_habitat_v2_scenario_v5"
+    ],
+    "trace_schema_version": "aeolus_habitat_v2_trace_v3",
+    "reviewed_hmc_package": "contracts/habitat-v2-forecast-reviewed-hmc-v2",
+    "forecast_fixture_binding": "src/aeolus/habitat_v2/forecast/contracts.py",
+    "issue_56_reference": {
+      "final_protocol": "habitat_v2_forecast_issue_56_v4_model_preregistration_v10",
+      "guard_candidate": "c8_o2_excess_guard",
+      "hybrid_candidate": "c9_o2_guard_statistical"
+    }
+  }
+}
