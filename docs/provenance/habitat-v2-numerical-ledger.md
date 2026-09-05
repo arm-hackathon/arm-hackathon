@@ -182,17 +182,3 @@ Habitat V2 must not be described as:
 The accurate description is:
 
 > a deterministic, source-grounded, notional lunar-habitat environmental analogue with explicit engineering assumptions and replayable multivariable dynamics.
-
-## Machine-readable manifest (added 2026-09-05, Issue #71)
-
-The parameters recorded in this narrative ledger are promoted to a checked,
-machine-readable form in
-[`contracts/habitat_v2_physics_provenance_v1.json`](../../contracts/habitat_v2_physics_provenance_v1.json),
-validated fail-closed by `src/aeolus/habitat_v2/physics_provenance.py`. Each
-record carries value, unit, valid range, classification, citation, source
-path, generator variability, declared uncertainty band, and affected systems
-and metrics. This document remains the narrative source; where the two
-disagree, the manifest is the checked form and the disagreement is a bug.
-Independent numerical reference checks and the bounded sensitivity run are
-recorded in
-[`docs/evidence/habitat-v2-parameter-provenance.md`](../evidence/habitat-v2-parameter-provenance.md).
