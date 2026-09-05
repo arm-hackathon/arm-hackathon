@@ -221,7 +221,7 @@ def generate_roster(
         "generator": {
             "generator_version": GENERATOR_VERSION,
             "registry_seed": config.seed,
-            "base_scenario_path": str(BASE_SCENARIO_RELATIVE_PATH),
+            "base_scenario_path": BASE_SCENARIO_RELATIVE_PATH.as_posix(),
             "base_scenario_sha256": base_sha256,
             "provenance_manifest_sha256": manifest_sha256,
             "benchmark_contract_id": BDM_V1_CONTRACT_ID,

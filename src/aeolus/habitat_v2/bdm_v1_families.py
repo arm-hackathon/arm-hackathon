@@ -254,7 +254,12 @@ def _pick(seed: str, stream: str, options: Sequence[Any], *parts: str | int) -> 
 
 
 def load_base_scenario_data(root: str | Path) -> tuple[dict[str, Any], str]:
-    """Load the frozen base fixture and return its data and digest."""
+    """Load the frozen base fixture; digest its canonical JSON bytes.
+
+    The digest binds the canonical serialization, not the raw file bytes: raw
+    bytes vary with checkout line endings across platforms, which would make
+    committed bindings (roster registry, pilot receipts) platform-dependent.
+    """
 
     path = Path(root).resolve() / BASE_SCENARIO_RELATIVE_PATH
     try:
@@ -264,7 +269,7 @@ def load_base_scenario_data(root: str | Path) -> tuple[dict[str, Any], str]:
     data = json.loads(raw)
     if type(data) is not dict:
         raise BdmV1FamilyError("base scenario fixture must be a JSON object")
-    return data, hashlib.sha256(raw).hexdigest()
+    return data, scenario_digest(data)
 
 
 def _copy_json(value: Any) -> Any:

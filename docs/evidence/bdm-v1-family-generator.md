@@ -93,18 +93,19 @@ During generator development two manifest defects were found and fixed
    `load_physics_provenance_manifest` now fails closed on any relative or
    absolute band exceeding its record's valid range.
 
-Post-revision manifest sha256:
-`dec91ce7796c8b33cfc317cb95f13f015e22683027a7347e2c2bec7256eb6668`.
+Post-revision manifest sha256 (canonical JSON bytes, platform-independent):
+`5bda0a2877db890e07dd309189abce29270a1eac655b39c9972270fcc37f3c90`.
 
 ## Generation and checks
 
-Command (write-once output; roster regenerated once to embed the frozen
-justification — both runs byte-identical apart from the registry
-`blind_seal`):
+Command (write-once output; the roster was regenerated once after the
+digest-convention fix below and once more to embed the frozen justification —
+all runs byte-identical apart from the registry `blind_seal` and generator
+bindings):
 
 ```bash
 uv run --locked --python 3.11 --extra dev python \
-  scripts/generate_bdm_v1_families.py --output out/bdm-v1-families-v2 \
+  scripts/generate_bdm_v1_families.py --output out/bdm-v1-families-v4 \
   --blind-size-justification "<justification string below>"
 ```
 
@@ -115,6 +116,10 @@ Results:
 - group disjointness validated through the Issue #70 contract API;
 - regeneration check: every family rebuilt from its recorded attempt with
   byte-identical scenario digests;
+- base scenario and provenance manifest digests bind canonical JSON bytes
+  rather than raw file bytes, so committed bindings are identical on every
+  platform regardless of checkout line endings (the raw-byte convention was
+  caught by CI, where Linux checkouts hash differently than Windows ones);
 - `families_sha256`:
   `16d0a33838a2b4b197371b5526e4cbe3503b043afbd6a0c9b8b4cf48c6b881b8`;
 - `scenarios_sha256`:
@@ -122,11 +127,11 @@ Results:
 - BLIND_FINAL definitions digest (sealed, outcomes `NOT_COMPUTED`):
   `451d97c80887617a0994efd0f7b7ac4c0514ccdf1ddffbbcef27c532ef972f29`;
 - registry sha256 before justification freeze (`TBD_FROM_PILOT`):
-  `18d39a3dfdf82d1d411c24b9c55340842ff7cc84cfb7139cc6c2a55c9ab3ebb5`;
+  `da0727662f9a867b4f3091ffbd120dbc76f28c9374513958165a88b55977d282`;
 - final registry sha256:
-  `cac69c3c4caf6b3f35172194083b5b08c5499feaba2b2108ba42af372a628074`;
-- base scenario sha256:
-  `9de0325fbbf99099e02683adb650187876ea7ff41a3dc9525b2042574dd0c588`.
+  `cbabd0895635e14aebf89646e2361e3ae83cbab80335b7c7191aacbe7bf812a2`;
+- base scenario sha256 (canonical bytes):
+  `d321f86acddbdc3fb73df47f03367fc7acab0c8cfb6dbd66096d30bef5c0e3e8`.
 
 ## Blind-size power pilot
 
@@ -134,7 +139,7 @@ Command:
 
 ```bash
 uv run --locked --python 3.11 --extra dev python \
-  scripts/run_bdm_v1_blind_power_pilot.py --output out/bdm-v1-blind-power-pilot-v1
+  scripts/run_bdm_v1_blind_power_pilot.py --output out/bdm-v1-blind-power-pilot-v2
 ```
 
 Population (declared before execution): the first 8 DEV causal groups in
@@ -169,12 +174,12 @@ safety gate plus a continuous proxy diagnostic:
   "more than three independent evaluation condition groups" requirement (4x).
 
 Pilot receipt sha256 (written once, canonical JSON):
-`87ad2d33b3b821d119b2771f300174b57392a8f555aff5701c2c2ec0392aef6d`.
+`0b654326ebca2b717c4ed155f322d77604f1e538d59812aa36bde5a49cb500bd`.
 
 Frozen justification string embedded in the registry `blind_seal`:
 
 ```text
-pilot_receipt:87ad2d33b3b821d119b2771f300174b57392a8f555aff5701c2c2ec0392aef6d:declared_blind_groups=12:harmful_rate_detectable=0.25:alpha=0.05:zero_event_upper_bound=0.2209:comfort_proxy_required_groups=9:contract_floor=3
+pilot_receipt:0b654326ebca2b717c4ed155f322d77604f1e538d59812aa36bde5a49cb500bd:declared_blind_groups=12:harmful_rate_detectable=0.25:alpha=0.05:zero_event_upper_bound=0.2209:comfort_proxy_required_groups=9:contract_floor=3
 ```
 
 The pilot script fails closed if a re-run ever observes non-zero hold

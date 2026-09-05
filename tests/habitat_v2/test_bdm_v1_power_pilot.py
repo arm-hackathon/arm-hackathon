@@ -10,7 +10,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = REPO_ROOT / "contracts" / "habitat_v2_bdm_v1_family_custody_v1.json"
 PILOT_RECEIPT_SHA256 = (
-    "87ad2d33b3b821d119b2771f300174b57392a8f555aff5701c2c2ec0392aef6d"
+    "0b654326ebca2b717c4ed155f322d77604f1e538d59812aa36bde5a49cb500bd"
 )
 
 

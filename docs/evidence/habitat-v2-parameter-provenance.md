@@ -123,11 +123,15 @@ The manifest was revised during Scenario Family Generator v2 development:
    loader now fails closed on any relative or absolute band that exceeds its
    record's valid range.
 
-The sensitivity receipt above (`94201faa...`) binds the manifest bytes at run
-time
+The sensitivity receipt above (`94201faa...`) binds the manifest raw file
+bytes at run time under the then-current loader convention
 (`404fabe89c61784167ab1f865fb5130cf6eb186d4d3ec1150728f636bc753c21`) and is
 unaffected: the sensitivity sweep never perturbed noise amplitudes, and the
-two widened ranges do not change any sampled band edge used by that run. The
-post-revision manifest digest is
-`dec91ce7796c8b33cfc317cb95f13f015e22683027a7347e2c2bec7256eb6668`
-(reproducible via `load_physics_provenance_manifest`).
+two widened ranges do not change any sampled band edge used by that run.
+Raw-byte digests are platform-dependent (checkout line endings differ between
+Windows and CI), so from this revision onward
+`load_physics_provenance_manifest` binds the manifest's canonical JSON bytes
+instead; the historical receipt above remains a truthful record of its own
+run under the old convention. The post-revision canonical manifest digest is
+`5bda0a2877db890e07dd309189abce29270a1eac655b39c9972270fcc37f3c90`
+(reproducible via `load_physics_provenance_manifest` on any platform).
