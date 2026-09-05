@@ -182,6 +182,18 @@ def test_validator_rejects_drift(manifest: dict) -> None:
         validate_physics_provenance_manifest(drifted)
 
     drifted = _mutate(manifest)
+    for record in drifted["parameters"]:
+        if (
+            record["generator_variable"]
+            and record["uncertainty_distribution"]["kind"] == "uniform_relative"
+            and record["valid_range"] is not None
+        ):
+            record["uncertainty_distribution"]["high"] = 50.0
+            break
+    with pytest.raises(PhysicsProvenanceError, match="relative band exceeds"):
+        validate_physics_provenance_manifest(drifted)
+
+    drifted = _mutate(manifest)
     drifted["parameters"][40]["affected_systems"] = ["warp_core"]
     with pytest.raises(PhysicsProvenanceError, match="undeclared entries"):
         validate_physics_provenance_manifest(drifted)

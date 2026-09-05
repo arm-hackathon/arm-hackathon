@@ -155,6 +155,17 @@ def _validate_record(record: Any, systems: frozenset[str], metrics: frozenset[st
                 raise PhysicsProvenanceError(
                     f"parameter {pid} absolute band exceeds its valid range"
                 )
+        if (
+            valid_range is not None
+            and dist["kind"] == "uniform_relative"
+            and _is_number(value)
+        ):
+            low_edge = value * (1.0 + float(dist["low"]))
+            high_edge = value * (1.0 + float(dist["high"]))
+            if low_edge < valid_range[0] - 1e-9 or high_edge > valid_range[1] + 1e-9:
+                raise PhysicsProvenanceError(
+                    f"parameter {pid} relative band exceeds its valid range"
+                )
     elif distribution is not None:
         raise PhysicsProvenanceError(
             f"parameter {pid} declares an uncertainty distribution without generator variability"
