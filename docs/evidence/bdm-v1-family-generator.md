@@ -15,7 +15,10 @@ model quality, hardware, qualification, or real-world control.
    families. Twelve causal templates span the five contract strata; draws come
    only from Issue #71 manifest bands and the explicitly declared generator
    vocabularies below. Families are pure functions of (generator version,
-   registry seed, group index, variant index, feasibility attempt).
+   registry seed, group index, variant index, feasibility attempt). A
+   matched-pair builder produces the fault and healthy twins of one causal
+   starting state whose complete top-level diff is the single declared
+   treatment field `fault_profiles`.
 2. **Roster + custody registry** (`scripts/generate_bdm_v1_families.py` →
    `contracts/habitat_v2_bdm_v1_family_custody_v1.json`): 80 causal groups /
    160 families; partition quotas TRAIN 40, DEV 16, CALIBRATION 12,
@@ -47,13 +50,16 @@ CALIBRATION 8/1/1/1/1, BLIND_FINAL 8/1/1/1/1 in the order
 useful_opportunity / no_action / sensor_failure / actuator_failure / compound.
 Every partition covers all five strata.
 
-Each group carries exactly two paired sensor variants (a: healthy sensor
-projection; b: declared sensor-defect projection). Paired variants share one
-causal group key and one true plant trajectory seed structure; they differ
-only in the declared observation-layer treatment. The pilot confirmed this:
-matched pairs produced identical true-plant comfort values (e.g.
-`bdm-v1-f0080-a` / `bdm-v1-f0081-b`, both 139.639932), because the sensor
-defect perturbs observations only, never the plant.
+Each group carries exactly two paired sensor variants (`a`, `b`): two
+sensor-noise realizations of one shared causal scenario (noise-seed offsets 0
+and 17; noise amplitudes are pinned by the reviewed HMC contract). Variants
+share one causal group key and one true plant trajectory; only the
+observation realization differs. The pilot confirmed this: the two variants of
+one group produced identical true-plant comfort deviation under the hold
+replay (`bdm-v1-f0080-a` / `bdm-v1-f0081-b`, both 139.639932). The
+healthy/fault contrast is the separate matched-pair API above, not the a/b
+pairing. Counterfactual action branches derived during a study from one causal
+starting state inherit the same group under the contract's same-group rule.
 
 ## Declared generator vocabularies
 
@@ -206,8 +212,15 @@ Focused suites: `tests/habitat_v2/test_bdm_v1_families.py` (17 tests),
   arms on the primary metric; arm discrimination comes from advisory-arm
   behavior under HMC filtering, which this pilot does not measure.
 - The comfort-proxy power figure is a diagnostic bound, not a safety claim.
-- Latency, quantization, packaging, and Arm optimization remain deferred to
-  Gate 6 per the contract; nothing here exercises them.
+- Issue #72 lists latency among the generation dimensions. The closed v5
+  scenario schema carries no physical latency mechanism, and the issue's
+  non-goals exclude new subsystems; the observation-layer staleness dimension
+  is expressed through the sensor defect profiles (stuck and bias-drift
+  windows with explicit onsets). Physical sensing/actuation latency would
+  require a separately authorized schema and plant change.
+- Inference-latency (model-path p99), quantization, packaging, and Arm
+  optimization remain deferred to Gate 6 per the contract; nothing here
+  exercises them.
 - The roster generation corpus builder (feature/label corpus over these
   families) is intentionally not part of Issue #72; it lands as the shared
   Wave 3 deliverable.
