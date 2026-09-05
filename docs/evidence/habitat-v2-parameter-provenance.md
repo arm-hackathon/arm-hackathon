@@ -17,7 +17,7 @@ Status: **DEVELOPMENT EVIDENCE — SUPPORTS SCENARIO FAMILY GENERATOR V2 (ISSUE 
    flagged    generator-variable with explicit uniform bands for the family
    generator.
    Manifest SHA-256:
-   `a73bcddcf045876067356bb6383af36aca78afcd0d7eb7148639fe6ec6acf018`,
+   `404fabe89c61784167ab1f865fb5130cf6eb186d4d3ec1150728f636bc753c21`,
    validated fail-closed by `src/aeolus/habitat_v2/physics_provenance.py`.
 2. **Independent numerical reference checks**
    `tests/habitat_v2/test_physics_reference_oracles.py`: 13 oracle tests over
@@ -39,7 +39,7 @@ Status: **DEVELOPMENT EVIDENCE — SUPPORTS SCENARIO FAMILY GENERATOR V2 (ISSUE 
    the declared evaluation bounds rather than a production scorer. Receipt:
    `out/habitat-v2-parameter-sensitivity/sensitivity-receipt.json`
    (write-once), SHA-256
-   `3634beeec39d01154b8c61d031121ff8bd9718dff9a6f71cbc40e598a8399ad3`.
+   `94201faa7184401686e910dc01d50ab46643146dc56fa84fea46a9b90b6d7861`.
 
 ## Tolerances And Rationale
 
