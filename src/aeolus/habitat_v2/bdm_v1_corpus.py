@@ -34,7 +34,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import hashlib
+import json
 import math
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -595,6 +597,38 @@ def corpus_feature_manifest(bundle: ForecastContracts) -> dict[str, Any]:
     }
 
 
+def load_partition_samples(corpus: Path, partition: str) -> tuple[dict[str, Any], ...]:
+    """Load one partition of a built corpus in deterministic sample order.
+
+    Single home for corpus shard loading: every study script imports this
+    instead of carrying its own copy. Samples are sorted by family, decision
+    step, and candidate index so fits and evaluations are reproducible.
+    """
+
+    corpus_path = Path(corpus)
+    shard_dir = corpus_path / "shards"
+    if not shard_dir.is_dir():
+        raise BdmV1CorpusError(f"corpus shards missing under {corpus_path}")
+    samples: list[dict[str, Any]] = []
+    for shard in sorted(shard_dir.glob("*.jsonl")):
+        for line in shard.read_text().splitlines():
+            if not line:
+                continue
+            sample = json.loads(line)
+            if sample["partition"] == partition:
+                samples.append(sample)
+    samples.sort(
+        key=lambda item: (
+            item["family_id"],
+            item["decision_step"],
+            item["features"]["candidate_action_index"],
+        )
+    )
+    if not samples:
+        raise BdmV1CorpusError(f"no {partition} samples in corpus {corpus_path}")
+    return tuple(samples)
+
+
 __all__ = [
     "BDM_V1_CORPUS_SCHEMA_VERSION",
     "BdmV1CorpusError",
@@ -607,6 +641,7 @@ __all__ = [
     "collect_family_samples",
     "corpus_feature_manifest",
     "corpus_manifest_digest",
+    "load_partition_samples",
     "rollout_labels",
     "validate_sample_against_contract",
 ]

@@ -261,3 +261,38 @@ def test_builder_rejects_output_outside_out(tmp_path: Path) -> None:
     spec.loader.exec_module(module)
     with pytest.raises(module.CorpusBuildError, match="ignored out/"):
         module._resolve_output(tmp_path / "corpus")
+
+
+def test_load_partition_samples_deterministic_and_complete() -> None:
+    from aeolus.habitat_v2.bdm_v1_corpus import load_partition_samples
+
+    corpus = REPO_ROOT / "out" / "bdm-v1-corpus-v1"
+    if not corpus.is_dir():
+        pytest.skip("local corpus artifact not present")
+    train = load_partition_samples(corpus, "TRAIN")
+    again = load_partition_samples(corpus, "TRAIN")
+    assert [sample["sample_sha256"] for sample in train] == [
+        sample["sample_sha256"] for sample in again
+    ]
+    assert len(train) == 4160
+    keys = [
+        (sample["family_id"], sample["decision_step"], sample["features"]["candidate_action_index"])
+        for sample in train
+    ]
+    assert keys == sorted(keys)
+    dev = load_partition_samples(corpus, "DEV")
+    cal = load_partition_samples(corpus, "CALIBRATION")
+    assert len(dev) == 1664
+    assert len(cal) == 1248
+
+
+def test_load_partition_samples_fail_closed(tmp_path: Path) -> None:
+    from aeolus.habitat_v2.bdm_v1_corpus import load_partition_samples
+
+    with pytest.raises(BdmV1CorpusError, match="shards missing"):
+        load_partition_samples(tmp_path, "TRAIN")
+    corpus = REPO_ROOT / "out" / "bdm-v1-corpus-v1"
+    if not corpus.is_dir():
+        pytest.skip("local corpus artifact not present")
+    with pytest.raises(BdmV1CorpusError, match="no BLIND_FINAL samples"):
+        load_partition_samples(corpus, "BLIND_FINAL")
