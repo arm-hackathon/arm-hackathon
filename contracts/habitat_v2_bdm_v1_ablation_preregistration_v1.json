@@ -1,0 +1,89 @@
+{
+  "schema_version": "aeolus_habitat_v2_bdm_v1_ablation_preregistration_v1",
+  "preregistration_id": "habitat_v2_bdm_v1_ablation_preregistration_v1",
+  "status": "FROZEN_BEFORE_STUDY_RUNS",
+  "authorization": {
+    "authorized_by": "repository_owner",
+    "authorized_via_issue": 73,
+    "authorized_at": "2026-09-05"
+  },
+  "arms": [
+    {
+      "arm_id": "hmc_rules_only",
+      "policy": "zero proposals; HMC canonical behaviour"
+    },
+    {
+      "arm_id": "hold_current_command",
+      "policy": "zero proposals; current command continues under HMC safe hold"
+    },
+    {
+      "arm_id": "c8_guard_only",
+      "policy": "deterministic observable O2-excess guard only; abstain otherwise and under critical health"
+    },
+    {
+      "arm_id": "c9_learned_screen_without_guard",
+      "policy": "statistical screen only; propose the most improving catalogue action when its predicted action-minus-hold safety exposure is negative; abstain under critical health or when already dormant"
+    },
+    {
+      "arm_id": "c9_full",
+      "policy": "guard override to dormant on nominal O2 excess, otherwise the statistical screen rule (Issue #56 v10 c9 semantics)"
+    }
+  ],
+  "partitions": {
+    "screen_fit": "TRAIN",
+    "study": "DEV",
+    "blind_access": "prohibited"
+  },
+  "context_rule": {
+    "nominal_o2_excess": "minimum available observed zone o2 mole fraction at the decision snapshot >= 0.285",
+    "critical_health": "minimum available observed zone o2 mole fraction below the race target lower bound for o2; no available o2 reading counts as critical",
+    "current_action_proxy": "mode-matched catalogue action of the last completed operating mode (declared proxy; HMC final commands are not catalogue identities)"
+  },
+  "screen": {
+    "label": "action_minus_hold safety_exposure from the Issue #72 corpus",
+    "feature_recipe": [
+      "last window row zone o2 mole fraction (8)",
+      "last window row zone co2 ppm (8)",
+      "last window row zone temperature K (8)",
+      "minimum zone o2 mole fraction (1)",
+      "completed operating mode one-hot (4)",
+      "candidate action index one-hot (4)"
+    ],
+    "feature_dim": 33,
+    "ridge_lambda": 0.001,
+    "mlp": {
+      "hidden_dim": 16,
+      "activation": "tanh",
+      "epochs": 60,
+      "learning_rate": 0.003,
+      "optimizer": "adam"
+    },
+    "seeds": ["issue73-screen-v1"]
+  },
+  "decision_steps": [16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+  "metrics": {
+    "primary": "safety_exposure",
+    "secondary": [
+      "safety_violation_steps",
+      "comfort_deviation",
+      "resource_composite"
+    ],
+    "reporting": "per arm and per component difference at independent causal-group level"
+  },
+  "statistics": {
+    "independent_unit": "causal_group",
+    "bootstrap_resamples": 10000,
+    "alpha": 0.05,
+    "seed": "issue73-bootstrap-v1"
+  },
+  "attribution_rule": "guard credit = c8_guard_only minus hold; learned credit = c9_learned_screen_without_guard minus hold; hybrid credit = c9_full minus hold; a component is credited only when its paired group-level bootstrap CI of the difference excludes zero in the beneficial direction; credit is assigned to the smallest supported component",
+  "interpretation_rules": [
+    "null or negative learned contribution is retained and stated plainly",
+    "deterministic-guard benefit is never relabelled as learned-model progress",
+    "historical Issue #56 V4/V10 artifacts and results remain unchanged historical evidence"
+  ],
+  "freeze": {
+    "frozen_before_study_runs": true,
+    "no_result_derived_value_may_be_marked_frozen": true
+  }
+}
