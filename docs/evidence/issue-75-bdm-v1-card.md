@@ -5,8 +5,8 @@ Issue: #75 (model, development-only)
 Preregistration: `contracts/habitat_v2_bdm_v1_tcn_preregistration_v1.json`
 (sha256 `789c41f2500e144fa18fa713e4943854caa012ecd2a30269090a73245c756b4a`,
 status `FROZEN_BEFORE_FINAL_RUNS`, committed alone before any training code)
-Receipt: `out/issue75-bdm-v1/bdm-v1-receipt.json`
-(sha256 `edc45582f25d907a3e3a97197bb6d6cc30206c24f4bd9e5046fb231d02c5df7f`)
+Receipt: `out/issue75-bdm-v2/bdm-v1-receipt.json`
+(sha256 `ba6f97ca6c1e7aec3b9543362713a1563c91d69b97ba0c4aedd1268ffea46c2a`)
 
 ## What was built and run
 
@@ -41,8 +41,11 @@ at causal-group level:
 | safety-exposure error | (see receipt) | (see receipt) | CI not beneficial |
 | useful-action coverage (recall) | 0.0 | 0.0 | CI not beneficial |
 | action-value error | 9.364213 | 5.131881 | worse |
+| trajectory MAE (secondary) | 11183.752544 | 263.267153 | far worse |
 
-Per-seed ranking correlations: 0.2465, 0.1236, -0.0039, 0.1344, 0.2715 (all
+Per-seed trajectory MAE: 11317.79, 11042.17, 11322.02, 11319.80, 11322.89 (all
+reported in the receipt). Per-seed ranking correlations: 0.2465, 0.1236,
+-0.0039, 0.1344, 0.2715 (all
 reported; none exceeds the baseline's 0.2839). No seed or the pooled model
 predicts any improving action (precision/recall 0.0), matching the baselines'
 null on coverage while being strictly worse on ranking, regret, and value
@@ -62,7 +65,7 @@ protocol (features, labels, or operating regime), not re-run this one.
 
 | Issue checklist item | Evidence |
 | --- | --- |
-| Budget, receptive field, horizons, loss, seeds, stopping frozen before final runs | preregistration committed alone at `f9d1d5a` with `frozen_before_final_runs: true`; runner fails closed otherwise; parameter count asserted equal to prereg |
+| Budget, receptive field, horizons, loss, seeds, stopping frozen before final runs | preregistration committed alone at `f9d1d5a` with `frozen_before_final_runs: true`; runner fails closed otherwise (`test_runner_refuses_unfrozen_preregistration`); parameter count asserted equal to prereg |
 | Tests prove causal windows, explicit missingness, action identity, forbidden-field exclusion | `tests/habitat_v2/test_issue75_bdm.py`: no-lookahead cache test, mask-flip sensitivity, candidate-encoding sensitivity, declared-field subset check, finite-difference backprop |
 | Every declared seed reported | receipt `seeds` lists all five with digests, epochs run, best epoch; per-seed metrics in `evaluations` |
 | Primary verdict uses ranking/regret/action-value/safety exposure/coverage; MAE secondary | receipt `evaluations` and `tables`; this card's table; MAE reported only as secondary |

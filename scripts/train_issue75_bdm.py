@@ -183,12 +183,14 @@ def run_study(corpus: Path, baselines_receipt: Path, output: Path) -> dict[str, 
     train_samples = _load_samples(corpus, prereg["training"]["fit_partition"])
     dev_samples = _load_samples(corpus, prereg["evaluation"]["partition"])
     train_tensors, train_trajectories, train_deltas = _tensors(train_samples)
-    dev_tensors, _dev_trajectories, dev_deltas = _tensors(dev_samples)
+    dev_tensors, dev_trajectories, dev_deltas = _tensors(dev_samples)
 
     training = prereg["training"]
     started = time.perf_counter()
     seeds: list[dict[str, Any]] = []
     dev_predictions: list[np.ndarray] = []
+    dev_outs: list[np.ndarray] = []
+    seed_trajectory_maes: list[float] = []
     for seed in training["seeds"]:
         model = train_model(
             train_tensors,
@@ -204,16 +206,22 @@ def run_study(corpus: Path, baselines_receipt: Path, output: Path) -> dict[str, 
             betas=tuple(training["optimizer"]["betas"]),
             eps=float(training["optimizer"]["eps"]),
         )
-        from aeolus.habitat_v2.forecast_issue75_bdm import predict_deltas
+        from aeolus.habitat_v2.forecast_issue75_bdm import forward, predict_deltas
 
         predictions = predict_deltas(model, dev_tensors)
         dev_predictions.append(predictions)
+        full_out, _ = forward(model, dev_tensors)
+        dev_outs.append(full_out)
+        seed_trajectory_maes.append(
+            float(np.mean(np.abs(full_out[:, :153] - dev_trajectories)))
+        )
         seeds.append(
             {
                 "seed": seed,
                 "digest": model.digest,
                 "epochs_run": model.epochs_run,
                 "best_epoch": model.best_epoch,
+                "trajectory_mae": seed_trajectory_maes[-1],
             }
         )
         print(
@@ -222,6 +230,8 @@ def run_study(corpus: Path, baselines_receipt: Path, output: Path) -> dict[str, 
         )
     train_seconds = time.perf_counter() - started
     pooled = np.mean(np.stack(dev_predictions), axis=0)
+    pooled_out = np.mean(np.stack(dev_outs), axis=0)
+    pooled_trajectory_mae = float(np.mean(np.abs(pooled_out[:, :153] - dev_trajectories)))
 
     baseline_models = {
         "action_agnostic_ridge": fit_ridge_baseline(
@@ -256,6 +266,21 @@ def run_study(corpus: Path, baselines_receipt: Path, output: Path) -> dict[str, 
             for sample in dev_samples
         ]
     )
+    baseline_trajectory_mae = float(
+        np.mean(
+            [
+                abs(
+                    float(predicted) - float(true)
+                )
+                for sample, true_row in zip(dev_samples, dev_trajectories, strict=True)
+                for predicted, true in zip(
+                    predict_sample(baseline_models["action_conditioned_ridge"], sample)["trajectory"],
+                    true_row,
+                    strict=True,
+                )
+            ]
+        )
+    )
 
     evaluations: dict[str, Any] = {}
     row_sets: dict[str, list[dict[str, Any]]] = {}
@@ -286,6 +311,10 @@ def run_study(corpus: Path, baselines_receipt: Path, output: Path) -> dict[str, 
         "useful_action_precision": baseline_precision,
         "useful_action_recall": baseline_recall,
     }
+    evaluations["pooled_bdm_v1"]["trajectory_mae"] = pooled_trajectory_mae
+    for entry, mae in zip(seeds, seed_trajectory_maes, strict=True):
+        evaluations[entry["seed"]]["trajectory_mae"] = mae
+    evaluations["action_conditioned_ridge"]["trajectory_mae"] = baseline_trajectory_mae
 
     statistics = prereg["evaluation"]["statistics"]
     tables = {

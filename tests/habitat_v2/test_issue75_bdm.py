@@ -237,6 +237,24 @@ def test_model_has_no_plant_or_hmc_authority() -> None:
     assert "from .physics" not in source
 
 
+def test_runner_refuses_unfrozen_preregistration(tmp_path: Path, monkeypatch) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "train_issue75_bdm", REPO_ROOT / "scripts" / "train_issue75_bdm.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    unfrozen = json.loads(PREREG_PATH.read_bytes())
+    unfrozen["freeze"]["frozen_before_final_runs"] = False
+    prereg_copy = tmp_path / "unfrozen-prereg.json"
+    prereg_copy.write_text(json.dumps(unfrozen))
+    monkeypatch.setattr(module, "PREREG_PATH", prereg_copy)
+    with pytest.raises(module.BdmV1StudyError, match="not frozen"):
+        module.run_study(tmp_path, tmp_path, tmp_path)
+
+
 def test_head_layout_is_preregistered() -> None:
     from aeolus.habitat_v2 import forecast_issue75_bdm as module
 
