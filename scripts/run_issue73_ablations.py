@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from aeolus.habitat_v2.bdm_v1_corpus import load_partition_samples
 from aeolus.habitat_v2.bdm_v1_evaluation import comparison_table, paired_group_differences
 from aeolus.habitat_v2.bdm_v1_families import (
     GeneratorConfig,
@@ -56,23 +57,6 @@ def _resolve_output(output_path: Path) -> Path:
     return output
 
 
-def _load_corpus_samples(corpus: Path, partition: str) -> tuple[dict[str, Any], ...]:
-    samples: list[dict[str, Any]] = []
-    shard_dir = corpus / "shards"
-    if not shard_dir.is_dir():
-        raise AblationStudyError(f"corpus shards missing under {corpus}")
-    for shard in sorted(shard_dir.glob("*.jsonl")):
-        for line in shard.read_text().splitlines():
-            if not line:
-                continue
-            sample = json.loads(line)
-            if sample["partition"] == partition:
-                samples.append(sample)
-    if not samples:
-        raise AblationStudyError(f"no {partition} samples in corpus {corpus}")
-    return tuple(samples)
-
-
 def run_study(corpus: Path, output: Path, max_families: int | None) -> dict[str, Any]:
     prereg_raw = PREREG_PATH.read_bytes()
     prereg = json.loads(prereg_raw)
@@ -83,7 +67,7 @@ def run_study(corpus: Path, output: Path, max_families: int | None) -> dict[str,
     manifest, _ = load_physics_provenance_manifest(REPO_ROOT)
     bundle = load_forecast_contracts(REPO_ROOT)
 
-    train_samples = _load_corpus_samples(corpus, prereg["partitions"]["screen_fit"])
+    train_samples = load_partition_samples(corpus, prereg["partitions"]["screen_fit"])
     features = np.stack(
         [screen_features_from_sample(sample) for sample in train_samples]
     )
