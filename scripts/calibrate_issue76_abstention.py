@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from aeolus.habitat_v2.bdm_v1_corpus import FEATURE_FIELD_NAMES  # noqa: F401
+from aeolus.habitat_v2.bdm_v1_corpus import load_partition_samples
 from aeolus.habitat_v2.forecast.contracts import canonical_json_bytes
 from aeolus.habitat_v2.forecast_issue74_baselines import delta_labels, trajectory_labels
 from aeolus.habitat_v2.forecast_issue75_bdm import (
@@ -65,30 +65,6 @@ def _resolve_output(output_path: Path) -> Path:
     return output
 
 
-def _load_samples(corpus: Path, partition: str) -> tuple[dict[str, Any], ...]:
-    samples: list[dict[str, Any]] = []
-    shard_dir = corpus / "shards"
-    if not shard_dir.is_dir():
-        raise CalibrationStudyError(f"corpus shards missing under {corpus}")
-    for shard in sorted(shard_dir.glob("*.jsonl")):
-        for line in shard.read_text().splitlines():
-            if not line:
-                continue
-            sample = json.loads(line)
-            if sample["partition"] == partition:
-                samples.append(sample)
-    samples.sort(
-        key=lambda item: (
-            item["family_id"],
-            item["decision_step"],
-            item["features"]["candidate_action_index"],
-        )
-    )
-    if not samples:
-        raise CalibrationStudyError(f"no {partition} samples in corpus {corpus}")
-    return tuple(samples)
-
-
 def run_calibration(corpus: Path, bdm_receipt_path: Path, output: Path) -> dict[str, Any]:
     bdm_receipt_raw = bdm_receipt_path.read_bytes()
     bdm_receipt = json.loads(bdm_receipt_raw)
@@ -96,8 +72,8 @@ def run_calibration(corpus: Path, bdm_receipt_path: Path, output: Path) -> dict[
     if not prereg["freeze"]["frozen_before_final_runs"]:
         raise CalibrationStudyError("BDM-v1 preregistration is not frozen")
 
-    train_samples = _load_samples(corpus, prereg["training"]["fit_partition"])
-    cal_samples = _load_samples(corpus, "CALIBRATION")
+    train_samples = load_partition_samples(corpus, prereg["training"]["fit_partition"])
+    cal_samples = load_partition_samples(corpus, "CALIBRATION")
     train_tensors = np.stack([input_tensor(sample) for sample in train_samples])
     train_trajectories = np.stack([trajectory_labels(sample) for sample in train_samples])
     train_deltas = np.stack([delta_labels(sample) for sample in train_samples])

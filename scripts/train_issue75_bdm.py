@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 
+from aeolus.habitat_v2.bdm_v1_corpus import load_partition_samples
 from aeolus.habitat_v2.bdm_v1_evaluation import bootstrap_ci, comparison_table
 from aeolus.habitat_v2.forecast.contracts import canonical_json_bytes
 from aeolus.habitat_v2.forecast_issue74_baselines import (
@@ -54,30 +55,6 @@ def _resolve_output(output_path: Path) -> Path:
         raise BdmV1StudyError(f"refusing to overwrite existing output directory {output}")
     output.mkdir(parents=True)
     return output
-
-
-def _load_samples(corpus: Path, partition: str) -> tuple[dict[str, Any], ...]:
-    samples: list[dict[str, Any]] = []
-    shard_dir = corpus / "shards"
-    if not shard_dir.is_dir():
-        raise BdmV1StudyError(f"corpus shards missing under {corpus}")
-    for shard in sorted(shard_dir.glob("*.jsonl")):
-        for line in shard.read_text().splitlines():
-            if not line:
-                continue
-            sample = json.loads(line)
-            if sample["partition"] == partition:
-                samples.append(sample)
-    samples.sort(
-        key=lambda item: (
-            item["family_id"],
-            item["decision_step"],
-            item["features"]["candidate_action_index"],
-        )
-    )
-    if not samples:
-        raise BdmV1StudyError(f"no {partition} samples in corpus {corpus}")
-    return tuple(samples)
 
 
 def _tensors(samples: Sequence[Mapping[str, Any]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -180,8 +157,8 @@ def run_study(corpus: Path, baselines_receipt: Path, output: Path) -> dict[str, 
         if bound_receipt["digests"][baseline_id] != digest:
             raise BdmV1StudyError(f"baselines receipt digest drifted for {baseline_id}")
 
-    train_samples = _load_samples(corpus, prereg["training"]["fit_partition"])
-    dev_samples = _load_samples(corpus, prereg["evaluation"]["partition"])
+    train_samples = load_partition_samples(corpus, prereg["training"]["fit_partition"])
+    dev_samples = load_partition_samples(corpus, prereg["evaluation"]["partition"])
     train_tensors, train_trajectories, train_deltas = _tensors(train_samples)
     dev_tensors, dev_trajectories, dev_deltas = _tensors(dev_samples)
 
