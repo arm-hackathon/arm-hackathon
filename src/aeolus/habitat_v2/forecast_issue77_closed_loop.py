@@ -48,7 +48,6 @@ from .hmc import HabitatManagementComputer
 from .physics import (
     advance_one_step_with_command,
     initial_state,
-    validate_external_command,
 )
 from .scenario import Scenario
 
