@@ -152,7 +152,7 @@ def run_calibration(corpus: Path, bdm_receipt_path: Path, output: Path) -> dict[
 
     coverage_delta = interval_coverage(layer, pooled_out, cal_deltas)
     coverage_by_horizon = {
-        horizon: trajectory_interval_coverage(layer, pooled_out, index)
+        horizon: trajectory_interval_coverage(layer, pooled_out, cal_trajectories, index)
         for index, horizon in enumerate(("4", "16", "32"))
     }
     strata = sorted({sample["stratum"] for sample in cal_samples})
@@ -175,7 +175,7 @@ def run_calibration(corpus: Path, bdm_receipt_path: Path, output: Path) -> dict[
     predicted_improving: list[bool] = []
     true_improving: list[bool] = []
     for index, sample in enumerate(cal_samples):
-        reason = abstention_reason(sample, per_seed_deltas[index], layer, pooled_out[index])
+        reason = abstention_reason(sample, per_seed_deltas[:, index], layer, pooled_out[index])
         if reason is not None:
             reasons_counter[reason] += 1
         abstained_flags.append(reason is not None)
