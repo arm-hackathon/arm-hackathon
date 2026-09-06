@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from aeolus.habitat_v2.bdm_v1_corpus import load_partition_samples
 from aeolus.habitat_v2.forecast.contracts import canonical_json_bytes, load_forecast_contracts
 from aeolus.habitat_v2.forecast_issue74_baselines import (
     delta_labels,
@@ -80,30 +81,6 @@ def _resolve_output(output_path: Path) -> Path:
     return output
 
 
-def _load_samples(corpus: Path, partition: str) -> tuple[dict[str, Any], ...]:
-    samples: list[dict[str, Any]] = []
-    shard_dir = corpus / "shards"
-    if not shard_dir.is_dir():
-        raise ClosedLoopStudyError(f"corpus shards missing under {corpus}")
-    for shard in sorted(shard_dir.glob("*.jsonl")):
-        for line in shard.read_text().splitlines():
-            if not line:
-                continue
-            sample = json.loads(line)
-            if sample["partition"] == partition:
-                samples.append(sample)
-    samples.sort(
-        key=lambda item: (
-            item["family_id"],
-            item["decision_step"],
-            item["features"]["candidate_action_index"],
-        )
-    )
-    if not samples:
-        raise ClosedLoopStudyError(f"no {partition} samples in corpus {corpus}")
-    return tuple(samples)
-
-
 def run_study(corpus: Path, output: Path) -> dict[str, Any]:
     prereg_raw = PREREG_PATH.read_bytes()
     prereg = json.loads(prereg_raw)
@@ -126,7 +103,7 @@ def run_study(corpus: Path, output: Path) -> dict[str, Any]:
         layer_map["digest"],
     )
 
-    train_samples = _load_samples(corpus, "TRAIN")
+    train_samples = load_partition_samples(corpus, "TRAIN")
     ablation_prereg = json.loads(ABLATION_PREREG_PATH.read_bytes())
     screen_config = ablation_prereg["screen"]
     screen_seed = str(screen_config["seeds"][0])
@@ -165,7 +142,7 @@ def run_study(corpus: Path, output: Path) -> dict[str, Any]:
     train_tensors = np.stack([input_tensor(sample) for sample in train_samples])
     train_trajectories = np.stack([trajectory_labels(sample) for sample in train_samples])
     train_deltas = np.stack([delta_labels(sample) for sample in train_samples])
-    dev_samples = _load_samples(corpus, "DEV")
+    dev_samples = load_partition_samples(corpus, "DEV")
     dev_tensors = np.stack([input_tensor(sample) for sample in dev_samples])
     dev_deltas = np.stack([delta_labels(sample) for sample in dev_samples])
     models = []
