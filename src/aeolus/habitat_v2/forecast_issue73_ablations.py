@@ -37,7 +37,6 @@ from .forecast_issue55_race import (
 from .hmc import HabitatManagementComputer
 from .physics import (
     advance_one_step_with_command,
-    command_from_achieved_state,
     initial_state,
     validate_external_command,
 )
