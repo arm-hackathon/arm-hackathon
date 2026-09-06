@@ -19,14 +19,17 @@ from typing import Any
 
 import numpy as np
 
-from aeolus.habitat_v2.bdm_v1_corpus import delta_labels, trajectory_labels
 from aeolus.habitat_v2.forecast.contracts import canonical_json_bytes, load_forecast_contracts
+from aeolus.habitat_v2.forecast_issue74_baselines import (
+    delta_labels,
+    fit_ridge_baseline,
+    trajectory_labels,
+)
 from aeolus.habitat_v2.forecast_issue73_ablations import (
     fit_linear_screen,
     fit_mlp_screen,
     screen_features_from_sample,
 )
-from aeolus.habitat_v2.forecast_issue74_baselines import fit_ridge_baseline
 from aeolus.habitat_v2.forecast_issue75_bdm import input_tensor, train_model
 from aeolus.habitat_v2.forecast_issue76_abstention import CalibrationLayer
 from aeolus.habitat_v2.forecast_issue77_closed_loop import (
@@ -104,7 +107,7 @@ def _load_samples(corpus: Path, partition: str) -> tuple[dict[str, Any], ...]:
 def run_study(corpus: Path, output: Path) -> dict[str, Any]:
     prereg_raw = PREREG_PATH.read_bytes()
     prereg = json.loads(prereg_raw)
-    if not prereg["freeze"]["frozen_before_final_runs"]:
+    if not prereg["freeze"]["frozen_before_study_runs"]:
         raise ClosedLoopStudyError("closed-loop preregistration is not frozen")
     abstention_raw = ABSTENTION_CONTRACT_PATH.read_bytes()
     abstention = json.loads(abstention_raw)

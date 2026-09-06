@@ -11,6 +11,11 @@ builder so live windows match corpus samples field-for-field (test-enforced).
 Gates are evaluated in preregistered order at causal-group level; on failure
 the candidate packet is withheld, the blind protocol draft stays WITHHELD and
 UNAUTHORIZED, and the blind population remains sealed.
+
+Live windows follow the corpus collection convention for the retained
+disposition channel: the corpus was collected under hold episodes, so every
+window row carries ``NO_PROPOSAL``; live episodes substitute the same value
+while the true live outcomes are recorded only in the decision lineage.
 """
 
 from __future__ import annotations
@@ -299,11 +304,12 @@ def run_closed_loop_episode(
         snapshot, verification = observed
         handle = hmc.verify_snapshot(snapshot, verification)
         snap_map = snapshot.to_mapping()
+        snap_map["proposal_disposition"] = "NO_PROPOSAL"
+        episode_snapshots.append(snap_map)
         proposal = None
         reason = None
         latency = 0.0
         if step in decisions:
-            episode_snapshots.append(snap_map)
             enriched = dict(snap_map)
             enriched["__zone_ids"] = zone_ids
             enriched["__actions"] = actions
