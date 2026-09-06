@@ -31,7 +31,6 @@ from aeolus.habitat_v2.forecast_issue74_baselines import (
     useful_action_precision_recall,
 )
 from aeolus.habitat_v2.forecast_issue75_bdm import (
-    DELTA_SLICE,
     input_tensor,
     parameter_count,
     train_model,
@@ -95,7 +94,6 @@ def _metric_rows(
     predicted_improving: list[bool] = []
     true_improving: list[bool] = []
     value_errors: list[float] = []
-    index = 0
     groups: dict[tuple[str, int], list[int]] = {}
     for position, sample in enumerate(samples):
         groups.setdefault((sample["family_id"], sample["decision_step"]), []).append(position)
@@ -247,16 +245,6 @@ def run_study(corpus: Path, baselines_receipt: Path, output: Path) -> dict[str, 
     for baseline_id, model in baseline_models.items():
         if model.digest != prereg["evaluation"]["baseline_binding"]["expected_digests"][baseline_id]:
             raise BdmV1StudyError(f"refit baseline digest drifted for {baseline_id}")
-    baseline_predictions = np.stack(
-        [
-            np.asarray(
-                predict_sample(baseline_models["action_conditioned_ridge"], sample)["delta"][
-                    "safety_exposure"
-                ]
-            )
-            for sample in dev_samples
-        ]
-    )
     baseline_full = np.stack(
         [
             np.asarray(

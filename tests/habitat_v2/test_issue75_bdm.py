@@ -9,14 +9,12 @@ import pytest
 
 from aeolus.habitat_v2.bdm_v1_corpus import FEATURE_FIELD_NAMES
 from aeolus.habitat_v2.forecast_issue75_bdm import (
-    CHANNELS,
     DELTA_SLICE,
     HEAD_DIM,
     INPUT_DIM,
     PARAMETER_BUDGET_CAP,
     SEQ_CHANNELS,
     WINDOW_STEPS,
-    BdmV1Tcn,
     Issue75BdmError,
     _assemble,
     _init_weights,
