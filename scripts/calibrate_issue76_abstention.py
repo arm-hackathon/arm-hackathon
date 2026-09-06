@@ -11,7 +11,6 @@ committed separately, after this run, before any closed-loop study.
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
 import hashlib
 import json
 import time

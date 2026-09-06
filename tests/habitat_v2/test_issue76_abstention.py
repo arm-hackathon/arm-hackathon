@@ -12,7 +12,6 @@ from aeolus.habitat_v2.forecast_issue76_abstention import (
     Issue76AbstentionError,
     abstention_guard,
     abstention_reason,
-    corrected_delta_interval,
     fit_conformal_offsets,
     interval_coverage,
     layer_digest,
