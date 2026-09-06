@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from aeolus.habitat_v2.bdm_v1_corpus import load_partition_samples
 from aeolus.habitat_v2.bdm_v1_evaluation import comparison_table
 from aeolus.habitat_v2.forecast.contracts import canonical_json_bytes
 from aeolus.habitat_v2.forecast_issue74_baselines import (
@@ -53,30 +54,6 @@ def _resolve_output(output_path: Path) -> Path:
         raise BaselineFitError(f"refusing to overwrite existing output directory {output}")
     output.mkdir(parents=True)
     return output
-
-
-def _load_samples(corpus: Path, partition: str) -> tuple[dict[str, Any], ...]:
-    samples: list[dict[str, Any]] = []
-    shard_dir = corpus / "shards"
-    if not shard_dir.is_dir():
-        raise BaselineFitError(f"corpus shards missing under {corpus}")
-    for shard in sorted(shard_dir.glob("*.jsonl")):
-        for line in shard.read_text().splitlines():
-            if not line:
-                continue
-            sample = json.loads(line)
-            if sample["partition"] == partition:
-                samples.append(sample)
-    samples.sort(
-        key=lambda sample: (
-            sample["family_id"],
-            sample["decision_step"],
-            sample["features"]["candidate_action_index"],
-        )
-    )
-    if not samples:
-        raise BaselineFitError(f"no {partition} samples in corpus {corpus}")
-    return tuple(samples)
 
 
 def _family_decision_groups(samples: tuple[dict[str, Any], ...]) -> dict[tuple[str, int], list[dict[str, Any]]]:
@@ -127,8 +104,8 @@ def _group_of(sample: Mapping[str, Any]) -> str:
 
 def run_fit(corpus: Path, output: Path) -> dict[str, Any]:
     manifest = json.loads((corpus / "corpus-manifest.json").read_bytes())
-    train = _load_samples(corpus, "TRAIN")
-    dev = _load_samples(corpus, "DEV")
+    train = load_partition_samples(corpus, "TRAIN")
+    dev = load_partition_samples(corpus, "DEV")
     started = time.perf_counter()
     baselines: dict[str, Any] = {}
     for baseline_id in ("action_agnostic_ridge", "action_conditioned_ridge"):
