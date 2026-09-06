@@ -40,12 +40,12 @@ safety-critical system, and neither must control physical equipment.
 
 ## Where AEOLUS is going next
 
-AEOLUS is becoming a simulation-first research platform for learning
+AEOLUS aims to become a habitat-focused research platform for
 **uncertainty-aware environmental decision support under partial
-observability**. The next proposed model, **BDM-v1**, will use causal operational
-history plus each candidate catalogue action to predict distributions over
-future habitat conditions, safety exposure, resource consequences, and the
-change relative to holding the current command.
+observability**: learn from causal observation histories, predict intervention
+consequences, plan under uncertainty, and demonstrate useful achieved outcomes.
+This covers the simulation world, learned models, planning, independent
+evaluation and research interface—not visualization alone.
 
 The intended loop is:
 
@@ -53,18 +53,24 @@ The intended loop is:
 observe -> infer state -> predict consequences -> rank -> constrain -> act -> verify
 ```
 
-This is proposed work, not a current capability claim. The deterministic Habitat
-Management Computer (HMC) remains the sole final-command, plant-step, and replay
-authority; a model may propose or abstain but cannot actuate the plant. Progress
-will be gated by mechanism-held-out scenarios, strong deterministic and linear
-baselines, learned-component ablations, calibrated uncertainty, HMC-filtered
-closed-loop replay, and one frozen blind confirmation study. Arm runtime and
-quantisation work are deliberately downstream of model evidence.
+This is proposed direction, not a claim that the complete system exists. The
+open BDM-v1 research stack reports a failed model-promotion gate and no admitted
+closed-loop proposals. The next step is to diagnose the model and establish a
+meaningful permissible decision problem, not simply increase model size. Those
+negative results remain intact and are not all merged into main.
 
-Read the full [AEOLUS research roadmap](ROADMAP.md) for the current evidence,
-BDM-v1 design, simulator priorities, stop criteria, non-claims, and phased
-contribution plan. Bounded implementation and research work is tracked in the
-[GitHub issue list](https://github.com/arm-hackathon/arm-hackathon/issues).
+The deterministic Habitat Management Computer (HMC) remains the sole
+final-command, plant-step and replay authority. Models may propose or abstain,
+never command the plant directly. Strong conventional baselines, held-out
+mechanisms, learned-component attribution and independent confirmation govern
+research claims; packaging and hardware measurements remain separate evidence.
+
+Start with the [research roadmap](ROADMAP.md), then read the
+[detailed development programme](docs/plans/aeolus-development-programme.md)
+for the proposed three-person split, technical architecture, evidence-gated
+phases, 24 work packages and issue-ready acceptance criteria. Existing work is
+tracked in [GitHub issues](https://github.com/arm-hackathon/arm-hackathon/issues);
+new programme issues follow team review rather than being created by this plan.
 
 ## Current status: deterministic recovery passes blind final verification
 
