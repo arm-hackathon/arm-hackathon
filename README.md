@@ -38,6 +38,40 @@ separate Habitat Plant V2 grey-box research analogue with explicit SI
 accounting. Neither is a spacecraft, life-support, building-control or
 safety-critical system, and neither must control physical equipment.
 
+## Where AEOLUS is going next
+
+AEOLUS aims to become a habitat-focused research platform for
+**uncertainty-aware environmental decision support under partial
+observability**: learn from causal observation histories, predict intervention
+consequences, plan under uncertainty, and demonstrate useful achieved outcomes.
+This covers the simulation world, learned models, planning, independent
+evaluation and research interface—not visualization alone.
+
+The intended loop is:
+
+```text
+observe -> infer state -> predict consequences -> rank -> constrain -> act -> verify
+```
+
+This is proposed direction, not a claim that the complete system exists. The
+open BDM-v1 research stack reports a failed model-promotion gate and no admitted
+closed-loop proposals. The next step is to diagnose the model and establish a
+meaningful permissible decision problem, not simply increase model size. Those
+negative results remain intact and are not all merged into main.
+
+The deterministic Habitat Management Computer (HMC) remains the sole
+final-command, plant-step and replay authority. Models may propose or abstain,
+never command the plant directly. Strong conventional baselines, held-out
+mechanisms, learned-component attribution and independent confirmation govern
+research claims; packaging and hardware measurements remain separate evidence.
+
+Start with the [research roadmap](ROADMAP.md), then read the
+[detailed development programme](docs/plans/aeolus-development-programme.md)
+for the proposed three-person split, technical architecture, evidence-gated
+phases, 24 work packages and issue-ready acceptance criteria. Existing work is
+tracked in [GitHub issues](https://github.com/arm-hackathon/arm-hackathon/issues);
+new programme issues follow team review rather than being created by this plan.
+
 ## Current status: deterministic recovery passes blind final verification
 
 The repaired deterministic recovery policy was frozen at source commit
@@ -532,7 +566,8 @@ provisioning, hardware-in-the-loop testing, physical deployment, real-world
 CO₂ limits, production control, or a final result. No push, merge, deploy,
 cloud action, or final-suite operation is part of this closeout.
 
-See the [simulation rules](docs/simulation-rules.md),
+See the [research roadmap](ROADMAP.md),
+[simulation rules](docs/simulation-rules.md),
 [telemetry contract](docs/telemetry-contract.md),
 [recovery acceptance record](docs/recovery-protocol-acceptance.md), and
-[project plan](PLAN.md).
+[historical project plan](PLAN.md).
