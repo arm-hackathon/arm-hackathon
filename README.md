@@ -1,496 +1,75 @@
-# AEOLUS
+# AEOLUS · Habitat simulation and environmental decision support
 
-**A**irflow and **E**nvironmental **O**bservation **L**aboratory for
-**U**ser-defined **S**cenarios
+Explore how a simulated habitat responds to changing conditions, equipment faults
+and proposed interventions—and test whether a model helps make better decisions.
 
-Version `0.8.0` adds a closed V5 operational-observability qualification layer on
-the actuator-feedback world: explicit fixture identities, a SHA-256-bound ordered
-feature manifest, matched treatment-pair/report identity bindings, finite
-completed-row decision windows, provenance-bound trace/pair matching, separate
-abnormality/localisation/exact-identification answers, explicit treatment IDs,
-temporally complete clearance/recovery fixtures, hard-negative checks, and
-denominator-explicit aggregate metrics. See
-[`docs/evidence/habitat-v2-operational-observability-qualification.md`](docs/evidence/habitat-v2-operational-observability-qualification.md)
-for the bounded contract, tracked packet, and qualification receipt. Rebuild and
-verify that packet from a source checkout with:
+AEOLUS stands for **Airflow and Environmental Observation Laboratory for
+User-defined Scenarios**.
 
-```bash
-uv run --locked --python 3.11 --extra dev python \
-  scripts/build_habitat_v2_observability_packet.py \
-  --source-root . \
-  --output out/habitat-v2-observability-qualification-packet.json \
-  --expected-sha256 \
-  1afed658237fd62404094eac2d50a78b8db9ad19f9b612add9ff37d1b0e3866b
-```
+## Why this exists
 
-Version `0.7.0` added the
-closed scenario-v5 actuator-feedback layer on
-the corrected scenario-v3 multizone air network. It provides fan degradation,
-branch-resistance increase, damper jam, sensor bias/drift and stuck-sensor
-profiles, plus redundant primary/secondary observations and evaluator-only
-truth receipts. A checked-in eight-zone compound-fault scenario demonstrates
-all five mechanisms. Scenario-v1 through scenario-v3 remain separate frozen
-contracts. This is not a published or hardware-qualified release. The `0.2.0`
-C4/C11 artifacts remain source-pinned historical evidence.
+A controller does not get to see the full physical state of its environment. It
+receives sensor readings that can be noisy, delayed or wrong, and must work within
+limits on equipment and resources. A forecast may look accurate without helping
+the controller choose a useful action.
 
-AEOLUS contains a legacy deterministic simulator in abstract units and a
-separate Habitat Plant V2 grey-box research analogue with explicit SI
-accounting. Neither is a spacecraft, life-support, building-control or
-safety-critical system, and neither must control physical equipment.
+AEOLUS provides a repeatable simulated environment for investigating that gap:
+what can we infer from the available observations, what would happen under a
+proposed intervention, and does the achieved action improve the outcome compared
+with a conventional controller?
 
-## Where AEOLUS is going next
+**Research simulation only.** This is not a spacecraft, life-support system,
+building controller, calibrated CFD model or flight-validated digital twin. It
+must not control physical equipment. Simulation results do not establish physical
+performance, certification or deployment readiness.
 
-AEOLUS aims to become a habitat-focused research platform for
-**uncertainty-aware environmental decision support under partial
-observability**: learn from causal observation histories, predict intervention
-consequences, plan under uncertainty, and demonstrate useful achieved outcomes.
-This covers the simulation world, learned models, planning, independent
-evaluation and research interface—not visualization alone.
+## What works, and what is still research
 
-The intended loop is:
+- **Simulation foundation:** Habitat Plant V2 models an eight-zone environment
+  with gas inventories, temperature, pressure, airflow, resource use, equipment
+  responses and physical/sensor faults. Its reduced-order equations and physical
+  parameters are explicit research assumptions, not a complete habitat model.
+- **Deterministic control and replay:** the Habitat Management Computer (HMC)
+  checks proposed actions, owns final commands and plant steps, and supports
+  replay of recorded execution. Models advise; they do not command the plant.
+- **Runnable demonstrations:** a guided terminal tour, a verified local forecast
+  report, and a trained NumPy forecaster demonstrate bounded parts of the system.
+  A separate browser fixture explorer has no command authority.
+- **Learned decision support:** several model studies and evidence records exist,
+  but they cover different contracts and experiments—not one generally validated
+  autonomous controller. The newer BDM-v1 research stack is separate from merged
+  `main`; it reports a failed model-promotion gate and no admitted closed-loop
+  proposals. See [research direction](#research-direction) and
+  [results and limitations](#results-and-limitations).
 
-```text
-observe -> infer state -> predict consequences -> rank -> constrain -> act -> verify
-```
+The repository also retains an older abstract-unit simulator and its recovery
+experiments. **Start with Habitat Plant V2 for the current research direction.**
+The legacy simulator is a separate lineage, not an alternative implementation of
+V2's physical model.
 
-This is proposed direction, not a claim that the complete system exists. The
-open BDM-v1 research stack reports a failed model-promotion gate and no admitted
-closed-loop proposals. The next step is to diagnose the model and establish a
-meaningful permissible decision problem, not simply increase model size. Those
-negative results remain intact and are not all merged into main.
+## Start here
 
-The deterministic Habitat Management Computer (HMC) remains the sole
-final-command, plant-step and replay authority. Models may propose or abstain,
-never command the plant directly. Strong conventional baselines, held-out
-mechanisms, learned-component attribution and independent confirmation govern
-research claims; packaging and hardware measurements remain separate evidence.
-
-Start with the [research roadmap](ROADMAP.md), then read the
-[detailed development programme](docs/plans/aeolus-development-programme.md)
-for the proposed three-person split, technical architecture, evidence-gated
-phases, 24 work packages and issue-ready acceptance criteria. Existing work is
-tracked in [GitHub issues](https://github.com/arm-hackathon/arm-hackathon/issues);
-new programme issues follow team review rather than being created by this plan.
-
-## Current status: deterministic recovery passes blind final verification
-
-The repaired deterministic recovery policy was frozen at source commit
-`d1d39d04d5c2bb2c8a7d7c32eb2a77faa518df26` and evaluated once against the
-untouched version-4 final suite.
-
-- **252** final scenario families produced **1,008** four-arm traces.
-- All **79/79** harmful physical airflow families entered protection.
-- Healthy activations, frozen-sensor activations, wrong-zone actions, repeated
-  protection episodes, handback recurrences, handback timeouts, and invariant
-  violations were all **zero**.
-- All **72/72** transient families handed back with acknowledged physical zero.
-- Median integrated physical CO2-excess reduction was **80.396%**; **72/79**
-  eligible families improved and seven were unchanged. None were worsened.
-- The safety and physical-benefit gates both passed.
-
-The accepted architecture retains deterministic actuator authority. A separate
-frozen `DEMO_ONLY_PERMANENTLY_EXCLUDED` FP32 advisory candidate is SHA-256-bound
-to its FP64 source and reduces raw model-array bytes exactly 50%, from
-`28,759,024` to `14,379,512`. Three native `ubuntu-24.04-arm` repetitions on a
-Neoverse-N2 runner passed the predeclared `1e-4` prediction-parity threshold and
-recorded a median-of-run speedup of about `1.73x`; see authoritative exact-head
-[run 31941351824](https://github.com/arm-hackathon/arm-hackathon/actions/runs/31941351824).
-This is bounded benchmark evidence, not an INT8, Arm-specific kernel/operator,
-NEON, deployment, physical-board, NPU, energy, thermal, qualification,
-production, learned-control, or actuator-authority claim.
-
-See
-[`docs/evidence/recovery-final-verification-result.md`](docs/evidence/recovery-final-verification-result.md)
-for the receipt, hashes, limitations, and next-step gate. The earlier negative C4
-result remains preserved as historical development evidence in
-[`docs/recovery-protocol-acceptance.md`](docs/recovery-protocol-acceptance.md).
-
-## Implemented simulation boundary
-
-The repository currently provides:
-
-- deterministic, seeded JSONL replay of a validated abstract habitat;
-- schema-v9 standard scenarios and schema-v10 recovery scenarios;
-- a topology-bound `model_input_v1 float32[24]` projection that excludes fault
-  truth, schedules, health, seeds, and simulator-only state;
-- a v10 simulated primary/reserve topology with one paired reserve path per
-  non-processing zone;
-- a deterministic authority state machine (`NOMINAL`, `DEGRADED`, `PROTECT`,
-  `HANDBACK`) that owns the reserve command channel only while active;
-- strict, write-once recovery traces that retain the legacy plant projection
-  and add separate reserve and authority telemetry; and
-- a four-arm development evidence runner:
-  `reference_reserve_off`, `reference_governed`, `fault_reserve_off`, and
-  `fault_governed`.
-
-These are software and simulation contracts. They are not evidence of physical
-recovery, a qualified model, AI advantage, hardware performance, deployment
-readiness, or Arm optimisation.
-
-## Historical model work
-
-The repository retains historical protocol-v3 model and FP32 ONNX code and its
-archived documentation. It is not the basis of the deterministic recovery
-result, and no historical model is qualified to control the reserve path. The
-final suite was used only for the frozen deterministic policy's one-time
-verification, not for model training, selection, or tuning.
-
-## Issue #52/#53 integration lineage
-
-The long-horizon forecast and missing-sensor work is intentionally represented
-across three related pull requests rather than by rewriting `main` history:
-
-- PR [#60](https://github.com/arm-hackathon/arm-hackathon/pull/60) contains the
-  five Issue #52 development commits.
-- PR [#61](https://github.com/arm-hackathon/arm-hackathon/pull/61) contains the
-  ten Issue #53 development commits.
-- PR [#62](https://github.com/arm-hackathon/arm-hackathon/pull/62) contains the
-  two semantic integration commits that port the final result onto current
-  `main` and bind the reviewed HMC v2 source package.
-
-Together these related PRs preserve the complete 17-commit development and
-integration lineage. Forecast output remains advisory-only, and HMC remains
-the sole actuator authority.
-
-## Issue #56 V4 model study — concluded: V4 outperforms the frozen V3 baseline on all six evaluation families
-
-The Issue #56 action-risk model line is closed with a conclusive
-preregistered result: the V4 model, under the final revision (v10) of the V4
-model-study protocol, outperforms the frozen V3 baseline on **all six
-evaluation families** (6 wins, 0 ties, 0 losses), with admissions 6 vs 2,
-aggregate paired safety exposure strictly better (−3.417e-04), and zero HMC
-mismatches or emergency overrides. The model-to-protocol correspondence for
-the issue line is:
-
-| Model | Protocol | Contract |
-|---|---|---|
-| V1 | V1 protocol | `contracts/habitat_v2_forecast_issue_56_preregistration_v1.json` |
-| V2 | V2 protocol | `contracts/habitat_v2_forecast_issue_56_v2_preregistration_v1.json` |
-| V3 (frozen baseline) | V3 protocol | `contracts/habitat_v2_forecast_issue_56_v3_preregistration_v2.json` |
-| V4 (final) | V4 protocol, final revision v10 | `contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v10.json` |
-
-The `_v10` suffix is the revision counter of the single V4 protocol lineage;
-revisions v1–v9 were superseded iterations (each preregistered before its
-study and published unchanged, negative results included). The consolidated
-presentation of the final protocol, lineage table, per-family results, receipt
-SHAs, and reproduction commands is
-[`docs/issue-56-v4-model-final-protocol.md`](docs/issue-56-v4-model-final-protocol.md);
-the study-specific evidence record is
-[`docs/evidence/issue-56-action-risk-v4-model-v10.md`](docs/evidence/issue-56-action-risk-v4-model-v10.md).
-The rollback point for the v10 result is tag `v9-perfamily-win` (the V9
-result without the statistical-dormant clause). This remains simulator
-development evidence only: the V4 model is advisory-only, HMC remains the
-sole final-command, plant-step, and replay authority, and protected
-final-suite data was never accessed.
-
-## Issue #56 V4 diagnostic groundwork
-
-The repository now includes a pre-model diagnostic lane for the next action-risk
-study. It separates candidate screening metrics from selected-action and
-executed-command metrics, records requested/final/executed command identities
-and HMC dispositions, aggregates by paired condition groups, and binds the
-source, HMC, scenario, feature, label, risk-model, point-artifact, and
-observation identities with SHA-256. V3 behavior and evidence remain frozen.
-
-The machine-readable diagnostic draft is
-[`contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_diagnostics_preregistration_v1.json),
-with rationale in
-[`docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md`](docs/plans/2026-08-25-issue-56-v4-diagnostics-plan.md).
-That diagnostic document remains a pre-model historical boundary and does not
-authorize learned-model work by itself. A separate user-authorized development
- study was originally bound by
-[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v1.json),
-whose negative result remains historical and immutable. The follow-up mask
-correction is separately bound by
-[`contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json`](contracts/habitat_v2_forecast_issue_56_v4_model_preregistration_v2.json).
-It permits development-data model implementation and training only; protected
-final-suite access remains prohibited, V3 remains immutable, and HMC remains
-the sole final-command, plant-step, and replay authority.
-
-To audit an existing full Issue #56 V3 receipt without training or changing any
-artifact, use a new ignored output directory:
+Use a source checkout of `main`, [uv](https://docs.astral.sh/uv/) and Python 3.11
+for the locked development workflow. Package metadata permits Python 3.10 or
+newer; the documented workflow uses 3.11.
 
 ```bash
-uv run --locked --python 3.11 --extra dev python scripts/diagnose_action_risk_v4.py \
-  --v3-run out/issue56-v3-evaluation-20260825-clean-a \
-  --output out/issue56-v4-diagnostics-run-a
+git clone https://github.com/arm-hackathon/arm-hackathon.git
+cd arm-hackathon
+uv sync --locked --python 3.11 --extra dev
 ```
 
-The adapter strictly replays serialized V3 episode traces and reports whether
-the receipt is ready for a future V4 model study. Historical V3 samples do not
-retain counterfactual trace bytes, so this diagnostic path intentionally reports
-that counterfactual label replay is incomplete. This remains simulator
-development evidence only; HMC is still the sole final-command and plant-step
-authority.
-
-To build a separate replayable V4 development corpus from the checked-in
-development roster, use a new ignored output directory:
-
-```bash
-uv run --locked --python 3.11 --extra dev python scripts/build_action_risk_v4_corpus.py \
-  --output out/issue56-v4-corpus-smoke-next \
-  --families 6 \
-  --allow-dirty-smoke
-```
-
-The corpus builder retains each serialized action and no-proposal hold HMC
-trace, reloads the rows, and independently strict-replays every trace after
-writing. It also binds the causal temporal feature manifest, observable action
-mask, relative action-minus-hold targets, model protocol, and source identities.
-It is a development-data command only: it does not train, export, quantize,
-tune, or integrate a learned model, and it does not change V3 or HMC authority.
-Full comparative corpus generation requires a clean source worktree.
-
-Verify a generated corpus independently with:
-
-```bash
-uv run --locked --python 3.11 --extra dev python scripts/verify_action_risk_v4_corpus.py \
-  --corpus out/issue56-v4-corpus-smoke-next
-```
-
-To run the separately authorized development-only model study on that corpus,
-use another new ignored output directory:
-
-```bash
-uv run --locked --python 3.11 --extra dev python scripts/run_action_risk_v4_model.py \
-  --corpus out/issue56-v4-corpus-smoke-next \
-  --output out/issue56-v4-model-smoke-next \
-  --allow-dirty-smoke
-```
-
-The model runner fits and reloads the five preregistered candidates without
-issuing proposals or plant steps. HMC-dependent metrics are reported as
-unavailable in this offline-only path, and candidates that cannot satisfy the
-registered validation calibration target are recorded as fail-closed rather
-than receiving an altered threshold.
-
-The completed V4 V1 full development run is negative evidence, not a deployment
-claim. The verified corpus contains 1,664 samples and 1,696 replayable traces.
-Of the five preregistered candidates, three failed closed during validation
-calibration. The two evaluated candidates met the dangerous-event recall and
-false-safe checks, but both selected zero useful actions and therefore failed
-the registered minimum-useful-action gate. HMC execution metrics were not
-available because this study was offline-only; no protected final-suite data
-was accessed, and V3 artifacts remain unchanged.
-
-The corrected V4 V2 model study is also complete and remains negative
-development evidence. Its receipt is documented in
-[`docs/evidence/issue-56-action-risk-v4-model-v2.md`](docs/evidence/issue-56-action-risk-v4-model-v2.md).
-The corpus independently passed strict replay with the same 1,664 samples and
-1,696 traces. `c0_v3_refit` selected 12 useful actions but only one distinct
-action, while `c1_shared_hazard_ridge` selected one useful action and one
-distinct action; both failed the registered usefulness and action-diversity
-gates. `c2_shared_hazard_temporal`, `c3_small_shared_mlp`, and
-`c4_advantage_ranker` failed closed during validation calibration. This V2 run
-was offline-only and did not replace or directly outperform the frozen,
-HMC-replayed V3 evidence.
-
-## Try it: the verified forecast report
-
-**New here? Take the guided tour instead** — an interactive walkthrough that
-explains the project in plain language and lets you run the pieces yourself:
+### 1. Take the guided tour
 
 ```bash
 uv run --locked --python 3.11 --extra dev python scripts/aeolus_tour.py
 ```
 
-The tour offers: a live run of the trained forecaster (you pick the action),
-a step-by-step replay of the recorded paired experiment, independent receipt
-verification, and a plain-English explanation of the architecture.
+The interactive tour explains the architecture and offers a trained-forecaster
+run, a recorded paired-experiment replay and independent receipt verification.
+Recorded experiments are historical evidence, not new training runs.
 
-From a clean source checkout with [uv](https://docs.astral.sh/uv/) available:
-
-```bash
-uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_forecast_report.py
-```
-
-The command creates a new ignored receipt directory, runs the local simulated
-forecast, and independently verifies a fresh deterministic HMC replay before it
-prints the `file:` URL for the self-contained report. It never overwrites an
-older receipt. The report is advisory-only: it does not execute model inference
-in the browser, does not control hardware, and does not qualify or validate a
-model. The deterministic HMC remains the sole command authority.
-
-For a separate browser-local fixture explorer, open
-[`demo/browser-simulator/index.html`](demo/browser-simulator/index.html) locally.
-It operates offline, exposes four fixed scenarios, makes no hardware/controller
-claim, and every row has `actionAuthority: "none"`.
-
-## Try it: the trained forecaster (development evidence)
-
-The repository also carries the action-aware MLP artifact associated with the
-recorded Historical V2 training run `full-v1-20260818-a` (reported as 23,400
-simulator examples and held-out normalized MAE 0.1146 on 17 unseen scenario
-clusters). The historical evidence needed to independently retrace that
-training result is incomplete. From a source checkout:
-
-```bash
-uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_mlp_forecast.py
-```
-
-The command forecasts all four catalogue actions at step 16 with the trained
-model, lets HMC execute one operator-selected action, and prints each
-candidate's forecast error against the realized simulator truth alongside the
-trace and replay identities. The model is pure NumPy at inference (no torch
-install needed) and advisory-only; deterministic HMC remains the sole command
-authority. The historical V2 archive records 238 total runs: 119
-control/advised pairs, including 102 fault pairs and 17 healthy pairs. Across
-the fault pairs it reports 78 better, 24 equal, and 0 worse on the declared
-threshold-exceedance metrics. The archived plan labels itself frozen before
-outcomes, but the plan and result first entered Git together, so repository
-history does not independently establish that chronology. The campaign is
-documented in merged PR
-[#40](https://github.com/arm-hackathon/arm-hackathon/pull/40). This is
-development evidence only — not qualification, not deployment. The [historical
-evidence index](docs/evidence/closed-loop-advisory-historical-index.md) records
-the exact archived files and the limits on reproducing that campaign from
-current `main`.
-
-**Native Arm64 evidence.** The same trained-MLP forecast runs natively on
-Arm server silicon (GitHub-hosted `ubuntu-24.04-arm` runner: Arm Neoverse-N2,
-4 vCPUs, `aarch64` verified via `uname`/`lscpu` — no emulation). A 1000-rep
-pure-NumPy inference benchmark there measured a median of **192.7 µs** per full
-8-step forecast (min 188.5 µs; model SHA-256 pinned in the hashed evidence
-manifest). See the
-[Arm64 evidence workflow](.github/workflows/habitat-v2-live-forecast-arm64.yml)
-and merged PR [#56](https://github.com/arm-hackathon/arm-hackathon/pull/56).
-Development evidence only — not a qualification benchmark.
-
-## What the experiment found
-
-Model documentation and assurance:
-
-- [`MODEL_CARD.md`](MODEL_CARD.md) — identity, training, held-out metrics,
-  limitations, and failure modes for `action_aware_mlp_v1`.
-- [`CORPUS_DATASHEET.md`](CORPUS_DATASHEET.md) — composition, collection,
-  split discipline, and known biases of the training archive.
-- [`SAFETY_CASE.md`](SAFETY_CASE.md) — the claims–argument–evidence case
-  for the learned advisory path, including its residual risks.
-- [`DESIGN_TRADEOFFS.md`](DESIGN_TRADEOFFS.md) — the nine engineering
-  tradeoffs we made (authority, resources, portability, model size,
-  determinism, quantization, abstention, scoping), what each cost, and why
-  we chose safety and verifiability at every fork.
-- [`docs/evidence/closed-loop-advisory-historical-index.md`](docs/evidence/closed-loop-advisory-historical-index.md)
-  — immutable source identities, file hashes, static consistency checks, and
-  disclosed custody/reproduction gaps for the historical campaign.
-- `scripts/check_habitat_v2_mlp_drift.py` — scores live telemetry against
-  the training distribution and flags drift (diagnostic only).
-
-Headline results from the paired closed-loop campaign. The archived plan
-describes each scenario as run twice with identical scenario, noise, and reset
-— once with canonical HMC alone, once with the model advising. The compact V2
-rows preserve scenario identities but omit the noise/reset details:
-
-- **The recorded historical V1 demo pair:** canonical HMC accumulated
-  integrated threshold exceedance 19.94 across 29 steps; the model-advised arm
-  recorded 0.0. The later checked-in replay artifact records the adviser acting
-  at step 37 of 72 — before its first recorded exceedance at step 43.
-- **Across 102 fault pairs:** 78 safer, 24 equal, and 0 worse. **96/102**
-  advised fault runs finished with zero threshold exceedance; 72 of the 78
-  improved pairs were driven to zero.
-- **The authority boundary is exercised, not just asserted:** HMC modified or
-  replaced 81 of 793 model proposals — the model advises, it never commands.
-- **Broken sensors:** the historical `action_aware_mlp_v1` harness implements
-  abstention when any required telemetry availability bit is missing, after
-  which HMC continues alone. See the [archived authority and availability
-  surfaces](docs/evidence/closed-loop-advisory-historical-index.md#archived-authority-and-availability-surfaces)
-  and merged PR [#41](https://github.com/arm-hackathon/arm-hackathon/pull/41).
-  The retained V3 campaign records zero unavailable-input abstentions and does
-  not independently exercise that path.
-  A separate Issue #53 dropout-aware lane is now qualified for its frozen,
-  independent-dropout forecast-only contract; correlated or mixed dropout,
-  resource-gauge dropout, adversarial channel loss, deployment, and actuator
-  authority remain outside that evidence. See the
-  [Issue #53 capability card](docs/evidence/issue-53-dropout-card.md).
-- **The honest cost:** across the 102 fault pairs, median
-  advised-minus-control deltas were +757 Wh battery, +1.97 mol oxygen, and
-  +6.04 mol sorbent — the safety margin is bought with consumables. The
-  historical report states that all runs stayed above resource floors; the raw
-  V2 step records needed to check that path directly are absent.
-- **Historical reproducibility boundary:** current `main` reproduces the
-  supported NumPy demo, not the full 2026-08-18/19 campaign. The compact V1/V2
-  summary and full V3 result are hash-identified, and selected top-level fields
-  reconcile, but record discrepancies, raw V1/V2 results, old runner
-  dependencies, and the execution-environment receipt remain. See the detailed
-  limitations in the [historical evidence
-  index](docs/evidence/closed-loop-advisory-historical-index.md).
-
-## Source-checkout verification
-
-```bash
-uv sync --locked --python 3.11 --extra dev
-uv run --locked --python 3.11 --extra dev python -m pytest -q
-uv run --locked --python 3.11 --extra dev ruff check .
-uv run --locked --python 3.11 --extra dev python -m compileall -q src tests scripts
-uv lock --check
-git diff --check
-```
-
-Run the checked-in Habitat Plant V2 reference scenario from a source checkout:
-
-```bash
-uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
-  scenarios/habitat_v2_reference.json out/habitat-v2-reference.jsonl
-```
-
-Run the checked-in scenario-v2 operating-mode example:
-
-```bash
-uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
-  scenarios/habitat_v2_operating_modes.json out/habitat-v2-modes.jsonl
-```
-
-Scenario-v2 requires every timeline segment to declare exactly one of
-`occupied`, `eva_transition`, `contingency`, or `dormant`. Trace-v2 records the
-mode applied to each completed interval. The initial row records `null` because
-no interval has produced it yet. Modes are context only: they do not select
-loads, commands, capacities, thresholds, or physics. The checked-in example
-intentionally holds physical inputs constant across all four labels so this
-boundary remains visible.
-
-Run the checked-in scenario-v3 multizone air-network example:
-
-```bash
-uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
-  scenarios/habitat_v2_air_network.json out/habitat-v2-air-network.jsonl
-```
-
-Scenario-v3 replaces direct per-zone airflow commands with a fan-speed command
-and one damper command per declared zone. The deterministic solver derives a
-single fan/system operating point, per-zone volumetric flow in `m³/s`, fixed-
-reference-density mass flow in `kg/s`, pressure losses in Pa, and fan power in
-W. Trace-v3 records commanded and achieved actuator positions plus an explicit
-network receipt. The validator recomputes the canonical transition from the
-parsed scenario and exact pre-step plant state, cross-checks fan electrical
-power against the electrical bus receipt, and then replays the full scenario
-byte-for-byte.
-
-The checked-in eight-zone habitat and its dimensions, resistances, schedules,
-and loads are declared research assumptions for deterministic software testing.
-They are not a NASA floor plan, calibrated CFD, a certified digital twin, or
-evidence about flight hardware.
-
-Run the checked-in scenario-v4 compound-fault example:
-
-```bash
-uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
-  scenarios/habitat_v2_compound_faults.json \
-  out/habitat-v2-compound-faults.jsonl
-```
-
-Scenario-v4 keeps physical truth separate from operational observations.
-`telemetry` is the primary observed feed. `sensor_disagreement` contains the
-secondary feed and signed primary-minus-secondary residuals. The evaluator-only
-`fault_receipt` contains physical truth, sensor residuals and deterministically
-ordered active-fault effects. These truth fields are not a future model-input
-contract. Sensor faults never alter plant state, and no learned component owns
-actuator or recovery authority.
-
-The V2 command validates the strict scenario schema, executes the deterministic
-plant, validates every trace row against the parsed scenario and refuses to
-overwrite an existing output file.
-
-Run the checked-in scenario-v5 actuator-feedback example:
+### 2. Run the simulation directly
 
 ```bash
 uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
@@ -498,76 +77,185 @@ uv run --locked --python 3.11 --extra dev python -m aeolus.habitat_v2 \
   out/habitat-v2-actuator-feedback.jsonl
 ```
 
-Scenario-v5 is a new closed lineage. It retains V4's eight-zone topology,
-physical fault receipts and independent primary/secondary telemetry, then adds
-rate-limited achieved cooling and oxygen state, effectiveness faults, and
-stateless deterministic operational feedback. Its trace lineage carries the
-separate `aeolus_habitat_v2_actuator_feedback_v1` identity. V5 commands and
-traces are causally replayed; V1–V4 contracts are preserved unchanged.
+This checked-in scenario includes equipment feedback and faults. The command
+validates the scenario, runs the deterministic plant and writes a validated JSONL
+trace: one JSON object per line. Generated traces belong under ignored `out/`
+paths. The runner refuses to overwrite an existing output; choose a new filename
+for a subsequent run.
 
-Generate a standard deterministic legacy-plant replay from a source checkout:
+For a smaller starting example, use
+[`scenarios/habitat_v2_reference.json`](scenarios/habitat_v2_reference.json).
+Other checked-in examples cover
+[operating modes](scenarios/habitat_v2_operating_modes.json),
+the [air network](scenarios/habitat_v2_air_network.json) and
+[compound faults](scenarios/habitat_v2_compound_faults.json).
+Scenario versions are separate contracts; newer fields do not silently change
+older scenarios.
 
-```bash
-uv run --locked --python 3.11 python -m aeolus \
-  scenarios/standard_habitat.json out/standard.jsonl
-```
-
-The command writes a new file only; generated traces belong under ignored
-`out/` paths.
-
-## Installed-package use
-
-The installed module accepts a scenario path and an output path; it does not
-require `PYTHONPATH=src`:
+### 3. Inspect a verified forecast report
 
 ```bash
-python -I -m aeolus /absolute/path/to/scenario.json /absolute/path/to/trace.jsonl
-python -I -m aeolus.habitat_v2 \
-  /absolute/path/to/habitat-v2-scenario.json \
-  /absolute/path/to/habitat-v2-trace.jsonl
+uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_forecast_report.py
 ```
 
-Both commands require an explicit scenario file and refuse to overwrite an
-existing trace. The checked-in reference scenarios are source examples, not
-hidden package fixtures.
-For the deterministic recovery API, use the schema-v10
-`scenarios/recovery_habitat.json` input as shown in the recovery acceptance
-record.
+The command generates a fresh local forecast receipt, independently verifies a
+deterministic HMC replay, then prints the local `file:` URL for an HTML report.
+The report embeds generated data; it does not perform model inference in the
+browser. Replay verification checks the recorded software execution—it does not
+qualify a learned model or validate the physics against hardware.
 
-## Frozen recovery evidence command
-
-The following is the C4 development command. It must run from a clean detached
-worktree at the exact C4 source commit and write to a new output directory. It
-is a reproduction command, not permission to reopen C5 or tune the failed
-gates.
+To run the historical trained MLP forecaster instead:
 
 ```bash
-git worktree add --detach /absolute/c4-source \
-  74154956d64309f067ada7593e2ef8786d140b4e
-cd /absolute/c4-source
-test "$(git rev-parse HEAD)" = \
-  74154956d64309f067ada7593e2ef8786d140b4e
-test -z "$(git status --porcelain)"
-uv run --locked --python 3.11 --extra dev python -m aeolus.recovery_evidence \
-  scenarios/sweep-recovery-development.json /absolute/new-output-directory
+uv run --locked --python 3.11 --extra dev python scripts/run_habitat_v2_mlp_forecast.py
 ```
 
-It produces a large, ignored development corpus. Do not replace historical
-outputs, use final-suite inputs, or interpret a deterministic rerun as a passed
-safety or benefit gate. Later runner versions bind `uv.lock`, runtime package
-versions, and pre/post source provenance, and compare the complete relocated
-output trees. Those later checks improve future reproduction tooling; they do
-not rewrite the frozen C4 receipt.
+It forecasts catalogue actions and compares predictions with simulated outcomes
+for an operator-selected action under HMC authority. See its
+[model card](MODEL_CARD.md) before interpreting the results.
 
-## Project boundaries
+For a separate offline fixture explorer, open
+[`demo/browser-simulator/index.html`](demo/browser-simulator/index.html) locally.
+It makes no network requests and retains `actionAuthority: "none"`; it is not a
+browser implementation of the Python model or controller.
 
-No C4/C6 claim is made about INT8 quantisation, Arm64 benchmarks, cloud
-provisioning, hardware-in-the-loop testing, physical deployment, real-world
-CO₂ limits, production control, or a final result. No push, merge, deploy,
-cloud action, or final-suite operation is part of this closeout.
+## How the system fits together
 
-See the [research roadmap](ROADMAP.md),
-[simulation rules](docs/simulation-rules.md),
-[telemetry contract](docs/telemetry-contract.md),
-[recovery acceptance record](docs/recovery-protocol-acceptance.md), and
-[historical project plan](PLAN.md).
+There are two different meanings of **model** here:
+
+- The **physical simulation model** defines how the habitat changes: gas,
+  energy, airflow, equipment and resource accounting.
+- A **forecasting model** uses permitted observations and a candidate action to
+  predict what may happen. It does not get hidden fault labels or future truth.
+
+The core relationship is:
+
+```text
+Scenario: layout, initial conditions, loads and fault schedules
+                            |
+                            v
+                    Simulated plant
+                            |
+                      Sensor readings
+                            |
+                 Optional forecast/adviser
+                            |
+                     Proposed action
+                            |
+                   Deterministic HMC
+                            |
+                 Allowed final command
+                            |
+                    Next plant state
+                            |
+                Recorded trace and replay
+```
+
+The HMC can operate without a learned adviser. In the advisory path, requested,
+accepted and achieved actions are distinct: a proposal can be rejected or
+modified, and equipment may not achieve the requested setting. Evaluation must
+check the resulting trajectory, not count a prediction or proposal as a useful
+intervention. Evaluator-only simulator truth remains separate from model inputs.
+
+### Read the code in this order
+
+| Question | Starting point |
+| --- | --- |
+| What world are we simulating? | [`scenarios/`](scenarios/) and [`scenario.py`](src/aeolus/habitat_v2/scenario.py) |
+| How does its state change? | [`state.py`](src/aeolus/habitat_v2/state.py), [`physics.py`](src/aeolus/habitat_v2/physics.py), [`air_network.py`](src/aeolus/habitat_v2/air_network.py) |
+| What can the controller observe? | [`telemetry.py`](src/aeolus/habitat_v2/telemetry.py) and [`instrumentation.py`](src/aeolus/habitat_v2/instrumentation.py) |
+| Who decides what is allowed? | [`hmc.py`](src/aeolus/habitat_v2/hmc.py), [`proposal.py`](src/aeolus/habitat_v2/proposal.py) and [`safety.py`](src/aeolus/habitat_v2/safety.py) |
+| Where do forecasts fit? | [`forecast/`](src/aeolus/habitat_v2/forecast/) and [model documentation](MODEL_CARD.md) |
+| How is a run executed and checked? | [`runner.py`](src/aeolus/habitat_v2/runner.py), [`trace.py`](src/aeolus/habitat_v2/trace.py) and [`tests/habitat_v2/`](tests/habitat_v2/) |
+
+The wider repository separates [active contracts](contracts/),
+[research and evidence documentation](docs/), [reproduction scripts](scripts/),
+[historical artifacts](artifacts/) and ignored generated output (`out/`).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions and
+[AGENTS.md](AGENTS.md) for source, snapshot and protected-data boundaries.
+
+## Results and limitations
+
+Results belong to their named experiment and source version. They are not
+interchangeable claims about the current system.
+
+- **Legacy deterministic recovery:** a frozen policy passed its one-time blind
+  simulation safety and physical-benefit gates. This was deterministic recovery,
+  not evidence of learned-control advantage. The
+  [final verification record](docs/evidence/recovery-final-verification-result.md)
+  preserves the measured results, source identity and limitations; the
+  [recovery acceptance record](docs/recovery-protocol-acceptance.md) retains
+  earlier negative development evidence.
+- **Historical action-aware MLP:** the supported NumPy demo is runnable, but the
+  full historical training and paired closed-loop campaign cannot be completely
+  reconstructed from current `main`. Consult the
+  [model card](MODEL_CARD.md), [corpus datasheet](CORPUS_DATASHEET.md) and
+  [historical evidence index](docs/evidence/closed-loop-advisory-historical-index.md)
+  for the reported findings and missing provenance.
+- **Forecast and action-risk studies:** the
+  [dropout capability card](docs/evidence/issue-53-dropout-card.md) covers a bounded
+  forecast-only contract. The [Issue #56 final protocol](docs/issue-56-v4-model-final-protocol.md)
+  records a favourable V4-versus-V3 development comparison, but does not by itself
+  isolate the learned component's contribution. Neither result gives a model
+  actuator authority.
+- **Operational observability:** the
+  [qualification record](docs/evidence/habitat-v2-operational-observability-qualification.md)
+  documents a bounded software contract and its reproducible packet—not hardware
+  qualification.
+- **Newer BDM-v1 work:** the [roadmap](ROADMAP.md#the-latest-negative-results-change-the-next-step)
+  links the reported negative development results and unmerged research stack.
+  These are not new measurements from this README or evidence of a successful
+  integrated learned controller.
+
+For the safety argument and engineering decisions, see
+[SAFETY_CASE.md](SAFETY_CASE.md) and [DESIGN_TRADEOFFS.md](DESIGN_TRADEOFFS.md).
+Historical Arm benchmark measurements concern specific artifacts and runners;
+they do not establish physical-board deployment, energy performance or model
+qualification. Version history lives in [CHANGELOG.md](CHANGELOG.md), not in the
+getting-started path.
+
+## Research direction
+
+The goal is environmental decision support under incomplete observations:
+
+```text
+observe -> infer state -> predict consequences -> rank -> constrain -> act -> verify
+```
+
+This is the intended research loop, not a claim that every stage is complete.
+The immediate proposed milestone is a small, meaningful decision problem:
+different permissible achieved actions must produce different outcomes, the
+available observations must support a useful choice, and a competent conventional
+method must provide a baseline. Some cases should correctly require no action or
+abstention. A larger neural network is not a substitute for that evidence.
+
+The [research roadmap](ROADMAP.md) is the short planning entry point. The
+[detailed development programme](docs/plans/aeolus-development-programme.md)
+contains the proposed architecture, team split, dependencies and acceptance
+criteria, subject to team review. Follow
+[GitHub issues](https://github.com/arm-hackathon/arm-hackathon/issues) and
+[open pull requests](https://github.com/arm-hackathon/arm-hackathon/pulls) for work
+in progress; an open research branch is not a capability merged into `main`.
+[PLAN.md](PLAN.md) is historical context, not the current roadmap.
+
+## Development checks
+
+For changes to Python behaviour, use the locked source-checkout checks:
+
+```bash
+uv run --locked --python 3.11 --extra dev python -m pytest -q
+uv run --locked --python 3.11 --extra dev ruff check .
+uv run --locked --python 3.11 --extra dev python -m compileall -q src tests scripts
+uv lock --check
+git diff --check
+```
+
+For contract-specific checks, packaging, installed-module usage and historical
+reproduction commands, follow [CONTRIBUTING.md](CONTRIBUTING.md),
+[AGENTS.md](AGENTS.md) and the linked evidence records. Historical source-pinned
+experiments must not be rerun as if they were current defaults. Protected
+validation/final data requires separate explicit authorisation.
+
+## License
+
+[MIT](LICENSE).
