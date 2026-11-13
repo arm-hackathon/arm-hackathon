@@ -33,7 +33,7 @@ These items wait for issue 91 to merge and are not started:
 
 `step_arrays` and `rollout_arrays` are a test oracle. They are not the batched backend and they are not a port of the plant. They exist so that the interface (field set, units, update order, infeasibility policy, tolerances) can be exercised against `physics.py` before a real kernel exists, and so that the future kernel has an independent FP64 array result to be compared with in addition to the scalar plant.
 
-The axis convention used here (zone axis last, per-world arrays of shape `batch_shape`, plain `float64` NumPy arrays) is provisional. When issue 91 publishes its layout and validation helpers, this module's layout checks (`_check_layout`, `_require_array`) are to be replaced by them where they overlap. The field names, units, domains, update order, excluded-mechanism list and tolerances are the parts intended to survive that change.
+The axis convention used here (zone axis last, per-world arrays of shape `batch_shape`, plain `float64` NumPy arrays) is provisional. When issue 91 publishes its layout and validation helpers, this module adopts that layout; section 9 records what does and does not overlap. The field names, units, domains, update order, excluded-mechanism list and tolerances are the parts intended to survive that change.
 
 ## 2. Authority boundary
 
@@ -428,9 +428,12 @@ The items below paraphrase the issue's acceptance list as this lane understood i
 
 ### Issue 91 airflow interface this lane is designed against
 
-Relayed by the orchestrator on issue 92; unmerged and still under review on the issue 91 side, so it may change. Nothing from that lane is imported here.
+Source: the `INTERFACE (v1)` comment on issue 91, posted with draft PR 95. It is unmerged, so it may still change. Nothing from that lane is imported, copied or vendored here.
 
-- Layout: per-world `[B]`, per-branch `[B, N]`, branch axis in ascending `zone_id` order. This matches the provisional layout above, so no rework is expected.
+- Layout: per-world `[B]`, per-branch `[B, N]`, branch axis in ascending `zone_id` order, `float64` NumPy on the host. The zone order and dtype match this document. Issue 91 uses exactly one leading world axis; this module currently accepts any nonempty leading batch shape, which is wider. The Torch plant step will use the single `[B]` axis.
+- Issue 91's layout dataclass and validator (`AirNetworkBatch`, `validate_air_network_batch`, error type `AirNetworkAnalyticError`) cover air-network fields only. They do not validate plant state, control or disturbance, so this module's checks for those stay; there is no overlapping definition to delete beyond the axis convention.
+- Optional import: the Torch plant step will obtain Torch and the device through `air_network_batched_torch.require_torch()` and `require_device(device)`, which raise `AirNetworkBackendUnavailableError` and substitute no CPU fallback when CUDA is requested and missing.
+- Batch independence stated by issue 91: bit-identical for NumPy FP64; tested to 1e-13 relative (FP64) and 1e-6 relative (FP32) for Torch on CPU, with no bitwise claim; CUDA untested. The Torch plant step therefore cannot declare bit-exact batch independence and will declare a tolerance.
 - Everything is per world, including branch resistances. There is no resistance-multiplier input: the plant step will multiply `open_supply_resistance_pa_s2_m6` by its per-world `[B, N]` fault multiplier before the call, as `_air_network_spec` does.
 - The fan speed passed in is the effective speed (achieved speed times the fault multiplier).
 - Consumed outputs: `zone_flow_m3_s` `[B, N]` and `fan_electrical_power_w` `[B]`.
