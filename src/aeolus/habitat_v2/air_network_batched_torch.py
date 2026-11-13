@@ -5,7 +5,8 @@ lazily inside functions, so importing this module (or any core module) never
 imports Torch. The algebra is the closed form documented in
 ``air_network_analytic``; inputs are validated on the host in FP64 before any
 tensor is created. Results agree with the authoritative bisection solver only
-to declared tolerances and must not enter canonical traces, receipts or hashes.
+to declared tolerances (never bitwise) and must not enter canonical traces,
+receipts or hashes. Only a speed of exactly zero guarantees exact zero outputs.
 
 Plain eager tensor operations only: no CUDA extension, no compilation, no
 autograd requirement and no in-place mutation of caller tensors.
@@ -155,6 +156,7 @@ def air_network_operating_point_torch(
         damper_position,
     ) = inputs
     speed = fan_speed + 0.0
+    shared_resistance = shared_resistance + 0.0
     area_fraction = damper_leak + (1.0 - damper_leak) * damper_position
     branch_resistance = (
         open_supply_resistance / (area_fraction * area_fraction) + return_resistance
@@ -180,7 +182,7 @@ def air_network_operating_point_torch(
     normalized_flow = unit_flow / rated_free_delivery
     fan_curve_pressure = (speed * rated_shutoff_pressure) * speed * (
         1.0 - normalized_flow * normalized_flow
-    )
+    ).clamp_min(0.0)
     return TorchAirNetworkResult(
         fan_pressure_rise_pa=fan_pressure,
         shared_pressure_loss_pa=shared_pressure,

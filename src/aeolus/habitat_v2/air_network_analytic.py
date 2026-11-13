@@ -31,8 +31,16 @@ Algebra (SI units; ``s`` is the dimensionless fan speed fraction):
 ``k`` does not depend on speed because the fan curve scales shutoff pressure
 with ``s**2`` and free delivery with ``s``. Flow is therefore exactly linear in
 speed, pressure quadratic and power cubic, and no division by a tiny speed is
-needed. The fan-curve clamp ``max(0, 1 - (Q / Q_free)**2)`` is never active at
-the operating point because ``R_tot > k`` implies ``Q < Q_free``.
+needed. In exact arithmetic the fan-curve clamp ``max(0, 1 - (Q / Q_free)**2)``
+is never active at the operating point, because ``R_tot > k`` implies
+``Q < Q_free``. In floating point ``R_tot`` can round to ``k`` when the system
+resistance is below about one rounding of ``k``; the computed flow may then sit
+one rounding above free delivery, so the fan-side residual keeps the clamp.
+
+Agreement with the reviewed solver is to declared tolerance, never bitwise, and
+the two deliberately differ at tiny positive speeds: this kernel keeps flow
+linear in speed, whereas the bisection returns zero flow once ``s**2``
+underflows. Only a speed of exactly zero guarantees exact zero outputs.
 """
 
 from __future__ import annotations
@@ -41,6 +49,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Final
 
@@ -123,6 +132,18 @@ _TOLERANCE_FIELDS: Final = frozenset(
     {"absolute", "relative_to_reference", "relative_to_scale"}
 )
 COMPARISON_VARIABLES: Final = RESULT_SCALAR_FIELDS + RESULT_BRANCH_FIELDS
+COMPARISON_IDS: Final = (
+    "numpy_fp64_vs_scalar_reference",
+    "numpy_fp64_vs_high_precision_root",
+    "torch_fp64_vs_numpy_fp64",
+    "torch_fp32_vs_numpy_fp64",
+)
+CASE_PROFILE_IDS: Final = ("fixture_band", "supported_domain_stress")
+# Canonical-JSON SHA-256 of the frozen contract. Editing the contract without
+# editing this pin makes every load fail closed.
+CONTRACT_CANONICAL_SHA256: Final = (
+    "7cc46b05839bee4e9024f611af39766a8647d5c7803b0be47dae666b11269e01"
+)
 
 
 @dataclass(frozen=True)
@@ -229,7 +250,9 @@ def air_network_operating_point_numpy(batch: AirNetworkBatch) -> AirNetworkBatch
     return_resistance = batch.return_resistance_pa_s2_m6
     damper_leak = batch.damper_leak_fraction
     damper_position = batch.damper_position_fraction
-    speed = fan_speed + 0.0  # maps -0.0 to +0.0 so fan-off outputs are +0.0
+    # Adding 0.0 maps -0.0 to +0.0, so every fan-off output is exactly +0.0.
+    speed = fan_speed + 0.0
+    shared_resistance = shared_resistance + 0.0
     area_fraction = damper_leak + (1.0 - damper_leak) * damper_position
     branch_resistance = (
         open_supply_resistance / (area_fraction * area_fraction) + return_resistance
@@ -257,8 +280,8 @@ def air_network_operating_point_numpy(batch: AirNetworkBatch) -> AirNetworkBatch
     # Independent fan-side evaluation: Q / Q_free equals unit_flow / rated free
     # delivery at every speed, so the fan curve needs no division by speed.
     normalized_flow = unit_flow / rated_free_delivery
-    fan_curve_pressure = (speed * rated_shutoff_pressure) * speed * (
-        1.0 - normalized_flow * normalized_flow
+    fan_curve_pressure = (speed * rated_shutoff_pressure) * speed * np.maximum(
+        0.0, 1.0 - normalized_flow * normalized_flow
     )
     return AirNetworkBatchResult(
         fan_pressure_rise_pa=fan_pressure,
@@ -457,12 +480,14 @@ def compare_results(
         within = np.isfinite(error) & (error <= allowed)
         with np.errstate(divide="ignore", invalid="ignore"):
             excess = np.where(error == 0.0, 0.0, error / allowed)
-        excess = np.where(np.isfinite(error), excess, np.inf)
+        worst = float(np.max(np.where(np.isfinite(error), excess, np.inf)))
         report[name] = {
             "passed": finite and bool(within.all()),
             "candidate_finite": finite,
             "max_absolute_error": float(np.max(np.where(np.isfinite(error), error, 0.0))),
-            "max_error_over_allowed": float(np.max(excess)) if finite else None,
+            # None when a nonzero error meets a zero allowance or the candidate
+            # is nonfinite, so a failing report is always canonical JSON.
+            "max_error_over_allowed": worst if math.isfinite(worst) else None,
             "violation_count": int((~within).sum()),
             "element_count": int(within.size),
         }
@@ -492,9 +517,7 @@ def generate_air_network_cases(
         or not MIN_BRANCH_COUNT <= branch_count <= MAX_BRANCH_COUNT
     ):
         raise AirNetworkAnalyticError("branch_count is outside the supported range")
-    variables = profile["variables"]
-    if set(variables) != set(SCALAR_FIELDS + BRANCH_FIELDS):
-        raise AirNetworkAnalyticError("case profile variable set drifted")
+    variables = _validate_case_profile(profile, "case profile")["variables"]
     generator = np.random.Generator(np.random.PCG64(seed))
     arrays: dict[str, np.ndarray] = {}
     for name in SCALAR_FIELDS + BRANCH_FIELDS:
@@ -515,7 +538,7 @@ def generate_air_network_cases(
             )
             scale = np.array([_DECADES[int(value)] for value in decade.ravel()])
             values = (1.0 + 9.0 * first) * scale.reshape(shape)
-        else:
+        else:  # unreachable: _validate_case_profile rejects other kinds
             raise AirNetworkAnalyticError(f"unknown distribution {kind!r} for {name}")
         zero_probability = float(rule.get("exact_zero_probability", 0.0))
         one_probability = float(rule.get("exact_one_probability", 0.0))
@@ -545,84 +568,256 @@ def _canonical_json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def validate_air_network_batched_contract(contract: Any) -> dict[str, Any]:
-    """Fail closed unless the frozen contract matches this module's layout."""
+def _exact(mapping: Any, fields: frozenset[str] | set[str], label: str) -> dict[str, Any]:
+    if type(mapping) is not dict or set(mapping) != set(fields):
+        raise AirNetworkAnalyticError(f"{label} field set drifted")
+    return mapping
 
-    if type(contract) is not dict or set(contract) != _CONTRACT_FIELDS:
-        raise AirNetworkAnalyticError("batched air-network contract field set drifted")
+
+def _real(value: Any, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise AirNetworkAnalyticError(f"{label} must be a real number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise AirNetworkAnalyticError(f"{label} must be finite")
+    return number
+
+
+def _text(value: Any, label: str) -> str:
+    if type(value) is not str or not value:
+        raise AirNetworkAnalyticError(f"{label} must be a non-empty string")
+    return value
+
+
+def _validate_case_rule(name: str, rule: Any, label: str) -> None:
+    """Closed-schema check of one variable's sampling rule against the domain."""
+
+    if type(rule) is not dict:
+        raise AirNetworkAnalyticError(f"{label} must be an object")
+    kind = rule.get("distribution")
+    optional = {"exact_zero_probability", "exact_one_probability"}
+    if kind == "uniform":
+        required = {"distribution", "low", "high"}
+    elif kind == "decade_uniform":
+        required = {"distribution", "low_exponent", "high_exponent"}
+    else:
+        raise AirNetworkAnalyticError(f"unknown distribution {kind!r} for {label}")
+    if not required <= set(rule) or not set(rule) <= required | optional:
+        raise AirNetworkAnalyticError(f"{label} field set drifted")
+    domain_low, domain_high = SUPPORTED_DOMAIN[name]
+    if kind == "uniform":
+        low, high = _real(rule["low"], f"{label}.low"), _real(rule["high"], f"{label}.high")
+    else:
+        exponents = (rule["low_exponent"], rule["high_exponent"])
+        if any(type(exponent) is not int for exponent in exponents):
+            raise AirNetworkAnalyticError(f"{label} exponents must be integers")
+        if not min(_DECADES) <= exponents[0] < exponents[1] <= max(_DECADES) + 1:
+            raise AirNetworkAnalyticError(f"{label} exponents are outside the decade table")
+        low, high = _DECADES[exponents[0]], 10.0 * _DECADES[exponents[1] - 1]
+    if not domain_low <= low < high <= domain_high:
+        raise AirNetworkAnalyticError(
+            f"{label} range is empty or outside the supported domain of {name}"
+        )
+    zero = _real(rule.get("exact_zero_probability", 0.0), f"{label}.exact_zero_probability")
+    one = _real(rule.get("exact_one_probability", 0.0), f"{label}.exact_one_probability")
+    if zero < 0.0 or one < 0.0 or zero + one > 1.0:
+        raise AirNetworkAnalyticError(f"{label} special-value probabilities are invalid")
+    if (zero > 0.0 and domain_low > 0.0) or (one > 0.0 and domain_high < 1.0):
+        raise AirNetworkAnalyticError(
+            f"{label} special value is outside the supported domain of {name}"
+        )
+
+
+def _validate_case_profile(profile: Any, label: str) -> dict[str, Any]:
+    profile = _exact(profile, {"description", "variables"}, label)
+    _text(profile["description"], f"{label}.description")
+    variables = profile["variables"]
+    if type(variables) is not dict or set(variables) != set(SCALAR_FIELDS + BRANCH_FIELDS):
+        raise AirNetworkAnalyticError(f"{label} variable set drifted")
+    for name, rule in variables.items():
+        _validate_case_rule(name, rule, f"{label}.{name}")
+    return profile
+
+
+def validate_air_network_batched_contract(contract: Any) -> dict[str, Any]:
+    """Fail closed unless the contract is complete and matches this module.
+
+    This checks structure, types and consistency with the module layout and
+    supported domain. Freezing of the tolerance *values* is enforced separately
+    by the pinned canonical digest in ``load_air_network_batched_contract``.
+    """
+
+    contract = _exact(contract, _CONTRACT_FIELDS, "batched air-network contract")
     if contract["schema_version"] != CONTRACT_SCHEMA_VERSION:
         raise AirNetworkAnalyticError("unsupported batched air-network contract schema")
-    layout = contract["layout"]
     if (
-        layout.get("world_fields") != list(SCALAR_FIELDS)
-        or layout.get("branch_fields") != list(BRANCH_FIELDS)
-        or layout.get("result_world_fields") != list(RESULT_SCALAR_FIELDS)
-        or layout.get("result_branch_fields") != list(RESULT_BRANCH_FIELDS)
+        contract["contract_id"] != "habitat_v2_air_network_batched_v1"
+        or contract["status"] != "FROZEN_BEFORE_BENCHMARK_RESULTS"
+        or type(contract["issue"]) is not int
+        or contract["issue"] != 91
+    ):
+        raise AirNetworkAnalyticError("contract identity, status or issue drifted")
+    authority = _exact(
+        contract["authority"],
+        {
+            "role",
+            "authoritative_solver",
+            "canonical_replay_or_hash_authority",
+            "actuator_authority",
+        },
+        "contract authority",
+    )
+    if (
+        authority["role"] != "research_only_numerical_candidate"
+        or authority["canonical_replay_or_hash_authority"] is not False
+        or authority["actuator_authority"] is not False
+    ):
+        raise AirNetworkAnalyticError("contract must not grant any authority")
+    _text(authority["authoritative_solver"], "contract authoritative solver")
+    reference = _exact(
+        contract["reference_solver"],
+        {"path", "git_blob_sha1", "sha256_lf_normalised", "method"},
+        "contract reference solver",
+    )
+    for key, value in reference.items():
+        _text(value, f"contract reference solver {key}")
+
+    layout = _exact(
+        contract["layout"],
+        {
+            "batch_axis",
+            "branch_axis",
+            "host_dtype",
+            "world_fields",
+            "branch_fields",
+            "result_world_fields",
+            "result_branch_fields",
+        },
+        "contract layout",
+    )
+    if (
+        layout["world_fields"] != list(SCALAR_FIELDS)
+        or layout["branch_fields"] != list(BRANCH_FIELDS)
+        or layout["result_world_fields"] != list(RESULT_SCALAR_FIELDS)
+        or layout["result_branch_fields"] != list(RESULT_BRANCH_FIELDS)
+        or layout["host_dtype"] != "float64"
     ):
         raise AirNetworkAnalyticError("contract layout drifts from the module layout")
-    declared_domain = {
-        name: tuple(bounds) for name, bounds in contract["supported_domain"].items()
-    }
-    if declared_domain != dict(SUPPORTED_DOMAIN) or contract["branch_count_range"] != [
-        MIN_BRANCH_COUNT,
-        MAX_BRANCH_COUNT,
-    ]:
+    _text(layout["batch_axis"], "contract batch axis")
+    _text(layout["branch_axis"], "contract branch axis")
+
+    domain = _exact(contract["supported_domain"], set(SUPPORTED_DOMAIN), "contract supported domain")
+    for name, bounds in domain.items():
+        if (
+            type(bounds) is not list
+            or len(bounds) != 2
+            or (_real(bounds[0], name), _real(bounds[1], name)) != SUPPORTED_DOMAIN[name]
+        ):
+            raise AirNetworkAnalyticError(
+                "contract supported domain drifts from the module supported domain"
+            )
+    if contract["branch_count_range"] != [MIN_BRANCH_COUNT, MAX_BRANCH_COUNT] or any(
+        type(value) is not int for value in contract["branch_count_range"]
+    ):
         raise AirNetworkAnalyticError(
             "contract supported domain drifts from the module supported domain"
         )
-    if set(contract["comparison_scales"]) != set(COMPARISON_VARIABLES):
-        raise AirNetworkAnalyticError("contract comparison scale set drifted")
-    for comparison_id, comparison in contract["tolerances"].items():
-        variables = comparison.get("variables")
-        if type(variables) is not dict or set(variables) != set(COMPARISON_VARIABLES):
-            raise AirNetworkAnalyticError(
-                f"tolerance variable set drifted for {comparison_id}"
-            )
-        for name, tolerance in variables.items():
-            if type(tolerance) is not dict or set(tolerance) != _TOLERANCE_FIELDS:
-                raise AirNetworkAnalyticError(
-                    f"tolerance field set drifted for {comparison_id}.{name}"
-                )
-            for value in tolerance.values():
-                if (
-                    isinstance(value, bool)
-                    or not isinstance(value, (int, float))
-                    or not 0.0 <= float(value) < 1.0
-                ):
-                    raise AirNetworkAnalyticError(
-                        f"tolerance for {comparison_id}.{name} must be in [0, 1)"
-                    )
-        if comparison.get("case_profile") not in contract["case_profiles"]:
+
+    profiles = _exact(contract["case_profiles"], set(CASE_PROFILE_IDS), "contract case profiles")
+    for profile_id, profile in profiles.items():
+        _validate_case_profile(profile, f"case profile {profile_id}")
+
+    _text(contract["comparison_form"], "contract comparison form")
+    scales = _exact(
+        contract["comparison_scales"], set(COMPARISON_VARIABLES), "contract comparison scale set"
+    )
+    for name, description in scales.items():
+        _text(description, f"contract comparison scale {name}")
+
+    tolerances = _exact(contract["tolerances"], set(COMPARISON_IDS), "contract tolerance set")
+    for comparison_id, comparison in tolerances.items():
+        comparison = _exact(
+            comparison,
+            {"candidate", "reference", "case_profile", "rationale", "variables"},
+            f"tolerance {comparison_id}",
+        )
+        for key in ("candidate", "reference", "rationale"):
+            _text(comparison[key], f"tolerance {comparison_id} {key}")
+        if comparison["case_profile"] not in profiles:
             raise AirNetworkAnalyticError(
                 f"tolerance {comparison_id} names an undeclared case profile"
             )
-    for profile_id, profile in contract["case_profiles"].items():
-        variables = profile.get("variables")
-        if type(variables) is not dict or set(variables) != set(
-            SCALAR_FIELDS + BRANCH_FIELDS
-        ):
-            raise AirNetworkAnalyticError(
-                f"case profile {profile_id} variable set drifted"
+        variables = _exact(
+            comparison["variables"],
+            set(COMPARISON_VARIABLES),
+            f"tolerance variable set for {comparison_id}",
+        )
+        for name, tolerance in variables.items():
+            tolerance = _exact(
+                tolerance, _TOLERANCE_FIELDS, f"tolerance {comparison_id}.{name}"
             )
+            for value in tolerance.values():
+                if not 0.0 <= _real(value, f"tolerance {comparison_id}.{name}") < 1.0:
+                    raise AirNetworkAnalyticError(
+                        f"tolerance for {comparison_id}.{name} must be in [0, 1)"
+                    )
+
+    non_claims = contract["non_claims"]
+    if type(non_claims) is not list or not non_claims:
+        raise AirNetworkAnalyticError("contract non-claims must be a non-empty list")
+    for claim in non_claims:
+        _text(claim, "contract non-claim")
     return contract
+
+
+def _strict_json(raw: bytes) -> Any:
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        mapping: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in mapping:
+                raise AirNetworkAnalyticError(f"contract repeats the key {key!r}")
+            mapping[key] = value
+        return mapping
+
+    def reject_constant(token: str) -> Any:
+        raise AirNetworkAnalyticError(f"contract contains the non-JSON constant {token}")
+
+    try:
+        return json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, ValueError) as error:
+        if isinstance(error, AirNetworkAnalyticError):
+            raise
+        raise AirNetworkAnalyticError(
+            "batched air-network contract is missing or not valid JSON"
+        ) from error
 
 
 def load_air_network_batched_contract(root: str | Path) -> tuple[dict[str, Any], str]:
     """Load the frozen contract; return it with its canonical-JSON SHA-256.
 
     The digest is taken over canonical JSON rather than raw bytes so that it
-    does not depend on checkout line endings.
+    does not depend on checkout line endings. It must equal the digest pinned
+    in this module: changing any tolerance, range or wording requires a
+    deliberate, reviewable edit of the pin (or a new contract version).
     """
 
-    path = Path(root) / CONTRACT_RELATIVE_PATH
     try:
-        contract = json.loads(path.read_bytes())
-    except (OSError, ValueError) as error:
+        raw = (Path(root) / CONTRACT_RELATIVE_PATH).read_bytes()
+    except OSError as error:
         raise AirNetworkAnalyticError(
             "batched air-network contract is missing or not valid JSON"
         ) from error
-    validate_air_network_batched_contract(contract)
-    return contract, hashlib.sha256(_canonical_json_bytes(contract)).hexdigest()
+    contract = validate_air_network_batched_contract(_strict_json(raw))
+    digest = hashlib.sha256(_canonical_json_bytes(contract)).hexdigest()
+    if digest != CONTRACT_CANONICAL_SHA256:
+        raise AirNetworkAnalyticError(
+            "batched air-network contract drifts from the pinned frozen digest"
+        )
+    return contract, digest
 
 
 __all__ = [
@@ -630,7 +825,10 @@ __all__ = [
     "AirNetworkBatch",
     "AirNetworkBatchResult",
     "BRANCH_FIELDS",
+    "CASE_PROFILE_IDS",
+    "COMPARISON_IDS",
     "COMPARISON_VARIABLES",
+    "CONTRACT_CANONICAL_SHA256",
     "CONTRACT_RELATIVE_PATH",
     "MAX_BRANCH_COUNT",
     "MIN_BRANCH_COUNT",

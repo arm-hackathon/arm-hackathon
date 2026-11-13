@@ -109,22 +109,22 @@
       "candidate": "air_network_analytic.solve_air_network_analytic (NumPy FP64)",
       "reference": "air_network.solve_air_network (bisection, FP64)",
       "case_profile": "fixture_band",
-      "rationale": "Both sides are FP64. The bisection resolves branch pressure to rounding of the shutoff-pressure scale, so agreement is declared relative to each variable's physical scale rather than to its own magnitude.",
+      "rationale": "Both sides are FP64. The bisection resolves branch pressure to rounding of the shutoff-pressure scale, so agreement is declared relative to each variable's physical scale rather than to its own magnitude. It is declared for the fixture band only: where branch pressure is below roughly 1e-18 of shutoff pressure, 100 bisection iterations do not converge and the reviewed solver itself departs from the exact root. The absolute term covers gradual FP64 underflow.",
       "variables": {
-        "fan_pressure_rise_pa": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "shared_pressure_loss_pa": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "branch_pressure_loss_pa": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "total_flow_m3_s": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "fan_air_power_w": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "fan_electrical_power_w": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "operating_point_residual_pa": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "zone_flow_m3_s": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
-        "zone_mass_flow_kg_s": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12}
+        "fan_pressure_rise_pa": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "shared_pressure_loss_pa": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "branch_pressure_loss_pa": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "total_flow_m3_s": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "fan_air_power_w": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "fan_electrical_power_w": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "operating_point_residual_pa": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "zone_flow_m3_s": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "zone_mass_flow_kg_s": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12}
       }
     },
     "numpy_fp64_vs_high_precision_root": {
       "candidate": "air_network_analytic.solve_air_network_analytic (NumPy FP64)",
-      "reference": "50-digit decimal root of the contract's implicit fan/system equation, written independently in the test suite",
+      "reference": "80-digit decimal bisection of the air-network contract's implicit fan/system equation, written independently of the closed form",
       "case_profile": "supported_domain_stress",
       "rationale": "The closed form uses only products, quotients, square roots and sums of non-negative terms, so each output carries a few FP64 roundings relative to its own magnitude. The residual is a difference of nearly equal pressures and is bounded relative to the shutoff-pressure scale instead.",
       "variables": {
@@ -134,7 +134,7 @@
         "total_flow_m3_s": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
         "fan_air_power_w": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
         "fan_electrical_power_w": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
-        "operating_point_residual_pa": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "operating_point_residual_pa": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
         "zone_flow_m3_s": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
         "zone_mass_flow_kg_s": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0}
       }
@@ -151,7 +151,7 @@
         "total_flow_m3_s": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
         "fan_air_power_w": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
         "fan_electrical_power_w": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
-        "operating_point_residual_pa": {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
+        "operating_point_residual_pa": {"absolute": 1e-300, "relative_to_reference": 0.0, "relative_to_scale": 1e-12},
         "zone_flow_m3_s": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0},
         "zone_mass_flow_kg_s": {"absolute": 1e-300, "relative_to_reference": 1e-13, "relative_to_scale": 0.0}
       }

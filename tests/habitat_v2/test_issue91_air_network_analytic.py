@@ -2,16 +2,17 @@
 
 Everything here runs without PyTorch or a GPU. Expected values come from three
 legs that do not share code with the candidate: the reviewed bisection solver,
-a 50-digit decimal root of the contract's implicit fan/system equation written
+an 80-digit decimal root of the contract's implicit fan/system equation written
 in this file, and direct substitution into the physical laws.
 """
 
 from __future__ import annotations
 
 import copy
-from decimal import Decimal, getcontext
+from decimal import Decimal, localcontext
 import hashlib
 import inspect
+import json
 import math
 from pathlib import Path
 import subprocess
@@ -29,6 +30,7 @@ from aeolus.habitat_v2.air_network import (
 )
 from aeolus.habitat_v2.air_network_analytic import (
     BRANCH_FIELDS,
+    CONTRACT_CANONICAL_SHA256,
     SCALAR_FIELDS,
     AirNetworkAnalyticError,
     AirNetworkBatch,
@@ -36,6 +38,7 @@ from aeolus.habitat_v2.air_network_analytic import (
     air_network_batch_sha256,
     batch_from_operating_points,
     compare_results,
+    comparison_scales,
     generate_air_network_cases,
     load_air_network_batched_contract,
     solve_air_network_analytic,
@@ -120,60 +123,61 @@ def _high_precision_root(batch: AirNetworkBatch) -> AirNetworkBatchResult:
     equivalent-resistance closed form under test.
     """
 
-    getcontext().prec = 80
     rows = []
-    for world in range(batch.batch_size):
-        speed = Decimal(float(batch.fan_speed_fraction[world]))
-        free = Decimal(float(batch.rated_free_delivery_m3_s[world])) * speed
-        shutoff = Decimal(float(batch.rated_shutoff_pressure_pa[world])) * speed * speed
-        shared_r = Decimal(float(batch.shared_resistance_pa_s2_m6[world]))
-        density = Decimal(float(batch.air_density_kg_m3[world]))
-        efficiency = Decimal(float(batch.total_efficiency[world]))
-        inverse_roots = []
-        for index in range(batch.branch_count):
-            leak = Decimal(float(batch.damper_leak_fraction[world, index]))
-            position = Decimal(float(batch.damper_position_fraction[world, index]))
-            area = leak + (1 - leak) * position
-            resistance = Decimal(
-                float(batch.open_supply_resistance_pa_s2_m6[world, index])
-            ) / (area * area) + Decimal(float(batch.return_resistance_pa_s2_m6[world, index]))
-            inverse_roots.append(1 / resistance.sqrt())
-        if speed == 0:
-            rows.append((0.0,) * 7 + ([0.0] * batch.branch_count,) * 2)
-            continue
+    with localcontext() as context:
+        context.prec = 80
+        for world in range(batch.batch_size):
+            speed = Decimal(float(batch.fan_speed_fraction[world]))
+            free = Decimal(float(batch.rated_free_delivery_m3_s[world])) * speed
+            shutoff = Decimal(float(batch.rated_shutoff_pressure_pa[world])) * speed * speed
+            shared_r = Decimal(float(batch.shared_resistance_pa_s2_m6[world]))
+            density = Decimal(float(batch.air_density_kg_m3[world]))
+            efficiency = Decimal(float(batch.total_efficiency[world]))
+            inverse_roots = []
+            for index in range(batch.branch_count):
+                leak = Decimal(float(batch.damper_leak_fraction[world, index]))
+                position = Decimal(float(batch.damper_position_fraction[world, index]))
+                area = leak + (1 - leak) * position
+                resistance = Decimal(
+                    float(batch.open_supply_resistance_pa_s2_m6[world, index])
+                ) / (area * area) + Decimal(float(batch.return_resistance_pa_s2_m6[world, index]))
+                inverse_roots.append(1 / resistance.sqrt())
+            if speed == 0:
+                rows.append((0.0,) * 7 + ([0.0] * batch.branch_count,) * 2)
+                continue
 
-        def branch_flows(pressure: Decimal) -> list[Decimal]:
-            root = pressure.sqrt()
-            return [root * inverse for inverse in inverse_roots]
+            def branch_flows(pressure: Decimal) -> list[Decimal]:
+                root = pressure.sqrt()
+                return [root * inverse for inverse in inverse_roots]
 
-        def fan_pressure(total: Decimal) -> Decimal:
-            return shutoff * max(Decimal(0), 1 - (total / free) ** 2)
+            def fan_pressure(total: Decimal) -> Decimal:
+                return shutoff * max(Decimal(0), 1 - (total / free) ** 2)
 
-        low, high = Decimal(0), shutoff
-        for _ in range(420):
-            middle = (low + high) / 2
-            total = sum(branch_flows(middle))
-            if fan_pressure(total) - shared_r * total * total - middle > 0:
-                low = middle
-            else:
-                high = middle
-        pressure = (low + high) / 2
-        flows = branch_flows(pressure)
-        total = sum(flows)
-        fan = fan_pressure(total)
-        rows.append(
-            (
-                float(fan),
-                float(shared_r * total * total),
-                float(pressure),
-                float(total),
-                float(fan * total),
-                float(fan * total / efficiency),
-                0.0,
-                [float(flow) for flow in flows],
-                [float(flow * density) for flow in flows],
+            low, high = Decimal(0), shutoff
+            for _ in range(420):
+                middle = (low + high) / 2
+                total = sum(branch_flows(middle))
+                if fan_pressure(total) - shared_r * total * total - middle > 0:
+                    low = middle
+                else:
+                    high = middle
+            pressure = (low + high) / 2
+            flows = branch_flows(pressure)
+            total = sum(flows)
+            fan = fan_pressure(total)
+            rows.append(
+                (
+                    float(fan),
+                    float(shared_r * total * total),
+                    float(pressure),
+                    float(total),
+                    float(fan * total),
+                    float(fan * total / efficiency),
+                    0.0,
+                    [float(flow) for flow in flows],
+                    [float(flow * density) for flow in flows],
+                )
             )
-        )
     columns = list(zip(*rows))
     return AirNetworkBatchResult(*(np.array(column, dtype=np.float64) for column in columns))
 
@@ -285,13 +289,21 @@ def test_outputs_satisfy_the_physical_laws_by_direct_substitution() -> None:
     normalized = result.total_flow_m3_s[running] / (
         batch.rated_free_delivery_m3_s[running] * speed[running]
     )
-    assert bool((normalized < 1.0).all()), "operating point must lie below free delivery"
+    # Below free delivery in exact arithmetic; rounding may add a few ulps.
+    assert bool((normalized <= 1.0 + 4.0 * np.finfo(np.float64).eps).all())
     fan_curve = shutoff[running] * (1.0 - normalized**2)
     system = (
         result.shared_pressure_loss_pa[running] + result.branch_pressure_loss_pa[running]
     )
     assert float(np.max(np.abs(fan_curve - system) / shutoff[running])) <= 1e-12
     assert float(np.max(np.abs(result.operating_point_residual_pa[running]) / shutoff[running])) <= 1e-12
+    # The reported residual is the clamped fan curve minus the losses, not a
+    # constant: recompute it from the returned outputs.
+    recomputed = shutoff[running] * np.maximum(0.0, 1.0 - normalized**2) - system
+    assert float(
+        np.max(np.abs(result.operating_point_residual_pa[running] - recomputed) / shutoff[running])
+    ) <= 8.0 * np.finfo(np.float64).eps
+    assert np.count_nonzero(result.operating_point_residual_pa) > 100
     # Pressure rise equals total loss; power and mass definitions.
     np.testing.assert_allclose(
         result.fan_pressure_rise_pa,
@@ -409,6 +421,34 @@ def test_fan_off_is_exactly_zero_and_still_validates_the_specification() -> None
             values = getattr(result, name)
             assert not values.any(), name
             assert not np.signbit(values).any(), name
+
+    # Fan-dominated world found by review: rounding puts the unit-speed flow one
+    # ulp above free delivery, which used to leak a -0.0 residual at fan-off.
+    fan_dominated = AirNetworkBatch(
+        rated_free_delivery_m3_s=np.array([0.00010160200152086619] * 2),
+        rated_shutoff_pressure_pa=np.array([6538735.763003341] * 2),
+        total_efficiency=np.array([0.423934216603324] * 2),
+        shared_resistance_pa_s2_m6=np.array([0.0, -0.0]),
+        air_density_kg_m3=np.array([0.85] * 2),
+        fan_speed_fraction=np.array([0.0, -0.0]),
+        open_supply_resistance_pa_s2_m6=np.array([[0.013209198462124311]] * 2),
+        return_resistance_pa_s2_m6=np.array([[0.03824337072633355]] * 2),
+        damper_leak_fraction=np.array([[0.00032751340371570256]] * 2),
+        damper_position_fraction=np.array([[0.9111857685020996]] * 2),
+    )
+    result = solve_air_network_analytic(fan_dominated)
+    for name in analytic.COMPARISON_VARIABLES:
+        values = getattr(result, name)
+        assert not values.any() and not np.signbit(values).any(), name
+    running = solve_air_network_analytic(
+        _replace(fan_dominated, fan_speed_fraction=np.array([1.0, 1.0]))
+    )
+    # Here the clamped fan-curve side is exactly zero, so the residual is minus
+    # the (tiny) system loss: bounded relative to shutoff pressure, not zero.
+    assert bool(
+        (np.abs(running.operating_point_residual_pa) <= 1e-12 * 6538735.763003341).all()
+    )
+    assert not np.signbit(running.shared_pressure_loss_pa).any()
 
     invalid = AirNetworkSpec(
         fan=FanSpec("fan", 0.40, 500.0, 1.01),
@@ -682,20 +722,31 @@ def test_branch_axis_is_sorted_by_zone_id_like_the_reference_result() -> None:
             BranchSpec("alpha", "d_a", 8000.0, 2000.0, 0.08),
         ),
     )
-    dampers = {"d_a": 1.0, "d_b": 0.25}
-    batch, zone_ids = batch_from_operating_points([(spec, 1.0, dampers)])
-    reference = solve_air_network(spec, fan_speed_fraction=1.0, damper_position_by_id=dampers)
+    # Insertion order deliberately differs from zone order: lookup is by id.
+    dampers = {"d_b": 0.25, "d_a": 1.0}
+    batch, zone_ids = batch_from_operating_points([(spec, 0.9, dampers)])
+    reference = solve_air_network(spec, fan_speed_fraction=0.9, damper_position_by_id=dampers)
     candidate = solve_air_network_analytic_scalar(
-        spec, fan_speed_fraction=1.0, damper_position_by_id=dampers
+        spec, fan_speed_fraction=0.9, damper_position_by_id=dampers
     )
 
     assert zone_ids == ("alpha", "beta") == tuple(reference.zone_flow_m3_s)
     assert batch.open_supply_resistance_pa_s2_m6.tolist() == [[8000.0, 5500.0]]
-    assert list(candidate.zone_flow_m3_s) == ["alpha", "beta"]
-    for zone in zone_ids:
-        assert candidate.zone_flow_m3_s[zone] == pytest.approx(
-            reference.zone_flow_m3_s[zone], rel=1e-12
-        )
+    assert batch.return_resistance_pa_s2_m6.tolist() == [[2000.0, 3000.0]]
+    assert batch.damper_position_fraction.tolist() == [[1.0, 0.25]]
+    assert candidate.zone_flow_m3_s["alpha"] > candidate.zone_flow_m3_s["beta"]
+    for name in (
+        "fan_pressure_rise_pa", "shared_pressure_loss_pa", "total_flow_m3_s",
+        "fan_air_power_w", "fan_electrical_power_w", "total_efficiency", "air_density_kg_m3",
+    ):
+        assert getattr(candidate, name) == pytest.approx(getattr(reference, name), rel=1e-12), name
+    for name in ("branch_pressure_loss_pa", "zone_flow_m3_s", "zone_mass_flow_kg_s"):
+        mapping = getattr(candidate, name)
+        assert list(mapping) == ["alpha", "beta"], name
+        for zone in zone_ids:
+            assert mapping[zone] == pytest.approx(getattr(reference, name)[zone], rel=1e-12), name
+    assert candidate.mass_balance_residual_kg_s == reference.mass_balance_residual_kg_s
+    assert abs(candidate.operating_point_residual_pa) <= 1e-12 * 900.0
 
 
 def test_every_solver_call_of_the_checked_in_scenario_runs_is_reproduced(
@@ -778,6 +829,11 @@ def test_generator_is_deterministic_seed_separated_and_inside_the_domain() -> No
     # Pinned bytes: the generator uses only Generator.random and exact IEEE
     # operations, so this identity is expected to hold across platforms.
     assert air_network_batch_sha256(first) == PINNED_STRESS_SHA256
+    assert air_network_batch_sha256(
+        generate_air_network_cases(
+            PROFILES["fixture_band"], seed=91, batch_size=64, branch_count=8
+        )
+    ) == PINNED_FIXTURE_BAND_SHA256
     assert first.batch_size == 64 and first.branch_count == 8
     # The stress profile must actually reach the declared special cases.
     assert (first.fan_speed_fraction == 0.0).any() or (other.fan_speed_fraction == 0.0).any()
@@ -801,6 +857,7 @@ def test_generator_is_deterministic_seed_separated_and_inside_the_domain() -> No
 
 
 PINNED_STRESS_SHA256 = "d05cd1f8c9771d117856aea1d7a71e37348bf3d88464b853bb53e322e41bca09"
+PINNED_FIXTURE_BAND_SHA256 = "d4a59d45ee4078305bd47cdcaa3b8e85f16a667862af9587e3e03378173e2b23"
 
 
 @pytest.mark.parametrize(
@@ -866,45 +923,132 @@ def test_comparison_reports_violations_and_nonfinite_candidates() -> None:
         compare_results(reference, reference, batch, drifted)
 
 
-def test_contract_is_frozen_consistent_and_fails_closed_on_drift() -> None:
+def _write_contract(root: Path, raw: bytes) -> Path:
+    path = root / analytic.CONTRACT_RELATIVE_PATH
+    path.parent.mkdir(parents=True)
+    path.write_bytes(raw)
+    return root
+
+
+def test_contract_digest_is_pinned_so_tolerances_cannot_drift_silently(tmp_path: Path) -> None:
     assert CONTRACT["status"] == "FROZEN_BEFORE_BENCHMARK_RESULTS"
-    assert len(CONTRACT_SHA256) == 64
+    assert CONTRACT_SHA256 == CONTRACT_CANONICAL_SHA256
     assert CONTRACT["authority"]["canonical_replay_or_hash_authority"] is False
     assert CONTRACT["authority"]["actuator_authority"] is False
-    assert set(TOLERANCES) == {
-        "numpy_fp64_vs_scalar_reference",
-        "numpy_fp64_vs_high_precision_root",
-        "torch_fp64_vs_numpy_fp64",
-        "torch_fp32_vs_numpy_fp64",
-    }
+    assert tuple(TOLERANCES) == analytic.COMPARISON_IDS
+    assert tuple(PROFILES) == analytic.CASE_PROFILE_IDS
 
+    # A structurally valid contract with one loosened tolerance is refused.
+    loosened = copy.deepcopy(CONTRACT)
+    loosened["tolerances"]["torch_fp32_vs_numpy_fp64"]["variables"]["total_flow_m3_s"][
+        "relative_to_reference"
+    ] = 1e-3
+    validate_air_network_batched_contract(copy.deepcopy(loosened))
+    with pytest.raises(AirNetworkAnalyticError, match="pinned frozen digest"):
+        load_air_network_batched_contract(
+            _write_contract(tmp_path / "loosened", json.dumps(loosened).encode("utf-8"))
+        )
+    # Reformatting alone (different key order, indentation, CRLF) is accepted.
+    reformatted = json.dumps(CONTRACT, indent=4, sort_keys=True).replace("\n", "\r\n")
+    reloaded, digest = load_air_network_batched_contract(
+        _write_contract(tmp_path / "reformatted", reformatted.encode("utf-8"))
+    )
+    assert reloaded == CONTRACT and digest == CONTRACT_CANONICAL_SHA256
+
+
+def test_contract_loader_rejects_malformed_bytes(tmp_path: Path) -> None:
+    raw = json.dumps(CONTRACT)
+    cases = {
+        "duplicate": (raw[:-1] + ', "issue": 91}', "repeats the key"),
+        "nan": (raw.replace("1e-37", "NaN", 1), "non-JSON constant"),
+        "infinity": (raw.replace("1e-37", "Infinity", 1), "non-JSON constant"),
+        "truncated": (raw[: len(raw) // 2], "missing or not valid JSON"),
+        "array": ("[]", "field set drifted"),
+        "not-utf8": (None, "missing or not valid JSON"),
+    }
+    for label, (text, message) in cases.items():
+        payload = b"\xff\xfe" if text is None else text.encode("utf-8")
+        with pytest.raises(AirNetworkAnalyticError, match=message):
+            load_air_network_batched_contract(_write_contract(tmp_path / label, payload))
+    with pytest.raises(AirNetworkAnalyticError, match="missing or not valid JSON"):
+        load_air_network_batched_contract(tmp_path / "does-not-exist")
+
+
+def test_contract_validation_fails_closed_on_every_section() -> None:
     def mutated(mutation) -> dict:
         contract = copy.deepcopy(CONTRACT)
         mutation(contract)
         return contract
 
+    fp32 = lambda c: c["tolerances"]["torch_fp32_vs_numpy_fp64"]  # noqa: E731
+    band = lambda c: c["case_profiles"]["fixture_band"]["variables"]  # noqa: E731
+    stress = lambda c: c["case_profiles"]["supported_domain_stress"]["variables"]  # noqa: E731
     mutations = (
         (lambda c: c.pop("non_claims"), "field set drifted"),
         (lambda c: c.update(extra=1), "field set drifted"),
         (lambda c: c.update(schema_version="v2"), "unsupported"),
+        (lambda c: c.update(status="DRAFT"), "identity, status or issue"),
+        (lambda c: c.update(issue=True), "identity, status or issue"),
+        (lambda c: c.update(contract_id="other"), "identity, status or issue"),
+        (lambda c: c.update(authority=[]), "authority field set"),
+        (lambda c: c["authority"].update(actuator_authority=True), "must not grant any authority"),
+        (lambda c: c["authority"].update(canonical_replay_or_hash_authority=1), "must not grant"),
+        (lambda c: c["authority"].update(role="controller"), "must not grant any authority"),
+        (lambda c: c["reference_solver"].pop("git_blob_sha1"), "reference solver field set"),
+        (lambda c: c["reference_solver"].update(method=""), "non-empty string"),
+        (lambda c: c.update(layout="flat"), "layout field set"),
         (lambda c: c["layout"]["branch_fields"].reverse(), "layout drifts"),
+        (lambda c: c["layout"].update(host_dtype="float32"), "layout drifts"),
         (lambda c: c["supported_domain"].update(fan_speed_fraction=[0.0, 2.0]), "supported domain drifts"),
+        (lambda c: c["supported_domain"].update(fan_speed_fraction="0..1"), "supported domain drifts"),
+        (lambda c: c["supported_domain"].pop("air_density_kg_m3"), "supported domain field set"),
         (lambda c: c.update(branch_count_range=[1, 32]), "supported domain drifts"),
+        (lambda c: c.update(branch_count_range=[1.0, 16.0]), "supported domain drifts"),
         (lambda c: c["comparison_scales"].pop("total_flow_m3_s"), "comparison scale set"),
-        (lambda c: c["tolerances"]["torch_fp32_vs_numpy_fp64"]["variables"].pop("total_flow_m3_s"), "variable set drifted"),
-        (lambda c: c["tolerances"]["torch_fp32_vs_numpy_fp64"]["variables"]["total_flow_m3_s"].update(absolute=-1.0), r"must be in \[0, 1\)"),
-        (lambda c: c["tolerances"]["torch_fp32_vs_numpy_fp64"]["variables"]["total_flow_m3_s"].update(absolute=True), r"must be in \[0, 1\)"),
-        (lambda c: c["tolerances"]["torch_fp32_vs_numpy_fp64"]["variables"]["total_flow_m3_s"].pop("absolute"), "field set drifted"),
-        (lambda c: c["tolerances"]["torch_fp32_vs_numpy_fp64"].update(case_profile="unknown"), "undeclared case profile"),
-        (lambda c: c["case_profiles"]["fixture_band"]["variables"].pop("total_efficiency"), "variable set drifted"),
+        (lambda c: c["comparison_scales"].update(total_flow_m3_s=3), "non-empty string"),
+        (lambda c: c.update(comparison_form=None), "non-empty string"),
+        (lambda c: c["tolerances"].pop("torch_fp64_vs_numpy_fp64"), "tolerance set field set"),
+        (lambda c: c["tolerances"].update(extra_comparison={}), "tolerance set field set"),
+        (lambda c: fp32(c).pop("rationale"), "torch_fp32_vs_numpy_fp64 field set"),
+        (lambda c: fp32(c)["variables"].pop("total_flow_m3_s"), "variable set"),
+        (lambda c: fp32(c)["variables"]["total_flow_m3_s"].update(absolute=-1.0), r"must be in \[0, 1\)"),
+        (lambda c: fp32(c)["variables"]["total_flow_m3_s"].update(absolute=1.0), r"must be in \[0, 1\)"),
+        (lambda c: fp32(c)["variables"]["total_flow_m3_s"].update(absolute=True), "real number"),
+        (lambda c: fp32(c)["variables"]["total_flow_m3_s"].update(absolute="0"), "real number"),
+        (lambda c: fp32(c)["variables"]["total_flow_m3_s"].pop("absolute"), "field set drifted"),
+        (lambda c: fp32(c).update(case_profile="unknown"), "undeclared case profile"),
+        (lambda c: c["case_profiles"].pop("fixture_band"), "case profiles field set"),
+        (lambda c: c["case_profiles"]["fixture_band"].pop("description"), "fixture_band field set"),
+        (lambda c: band(c).pop("total_efficiency"), "variable set drifted"),
+        (lambda c: band(c).update(total_efficiency=[0.5, 0.85]), "must be an object"),
+        (lambda c: band(c)["total_efficiency"].pop("low"), "field set drifted"),
+        (lambda c: band(c)["total_efficiency"].update(extra=1), "field set drifted"),
+        (lambda c: band(c)["total_efficiency"].update(distribution="normal"), "unknown distribution"),
+        (lambda c: band(c)["total_efficiency"].update(low="0.5"), "real number"),
+        (lambda c: band(c)["total_efficiency"].update(low=True), "real number"),
+        (lambda c: band(c)["total_efficiency"].update(low=0.9), "empty or outside"),
+        (lambda c: band(c)["total_efficiency"].update(high=1.5), "empty or outside"),
+        (lambda c: band(c)["total_efficiency"].update(exact_zero_probability=0.1), "special value is outside"),
+        (lambda c: band(c)["fan_speed_fraction"].update(exact_zero_probability=0.7, exact_one_probability=0.7), "probabilities are invalid"),
+        (lambda c: band(c)["fan_speed_fraction"].update(exact_zero_probability=-0.1), "probabilities are invalid"),
+        (lambda c: stress(c)["air_density_kg_m3"].update(low_exponent=-3.0), "exponents must be integers"),
+        (lambda c: stress(c)["air_density_kg_m3"].update(low_exponent=-40), "outside the decade table"),
+        (lambda c: stress(c)["air_density_kg_m3"].update(high_exponent=-3), "outside the decade table"),
+        (lambda c: stress(c)["air_density_kg_m3"].update(high_exponent=5), "empty or outside"),
+        (lambda c: stress(c)["air_density_kg_m3"].update(exact_one_probability=0.1), None),
+        (lambda c: stress(c)["rated_free_delivery_m3_s"].update(exact_zero_probability=0.1), "special value is outside"),
+        (lambda c: c.update(non_claims=[]), "non-empty list"),
+        (lambda c: c.update(non_claims=[1]), "non-empty string"),
     )
-    for mutation, message in mutations:
+    for index, (mutation, message) in enumerate(mutations):
+        if message is None:  # a legal edit: validation passes, only the pin protects it
+            validate_air_network_batched_contract(mutated(mutation))
+            continue
         with pytest.raises(AirNetworkAnalyticError, match=message):
             validate_air_network_batched_contract(mutated(mutation))
+            pytest.fail(f"mutation {index} was accepted")
     with pytest.raises(AirNetworkAnalyticError, match="field set drifted"):
         validate_air_network_batched_contract([])
-    with pytest.raises(AirNetworkAnalyticError, match="missing or not valid JSON"):
-        load_air_network_batched_contract(REPO_ROOT / "does-not-exist")
 
 
 def test_reviewed_reference_solver_bytes_are_the_ones_the_contract_binds() -> None:
@@ -920,8 +1064,8 @@ def test_reviewed_reference_solver_bytes_are_the_ones_the_contract_binds() -> No
 
 def test_candidate_has_no_plant_hmc_or_torch_dependency() -> None:
     source = inspect.getsource(analytic)
-    for forbidden in ("from .hmc", "from .physics", "from .runner", "from .trace", "torch"):
-        assert forbidden not in source.replace("air_network_batched_torch", ""), forbidden
+    for forbidden in ("from .hmc", "from .physics", "from .runner", "from .trace", "import torch"):
+        assert forbidden not in source, forbidden
 
     script = (
         "import sys\n"
@@ -936,3 +1080,150 @@ def test_candidate_has_no_plant_hmc_or_torch_dependency() -> None:
         capture_output=True, text=True, check=False,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_comparison_scales_are_the_declared_physical_scales() -> None:
+    batch = AirNetworkBatch(
+        rated_free_delivery_m3_s=np.array([0.8, 2.0]),
+        rated_shutoff_pressure_pa=np.array([1000.0, 50.0]),
+        total_efficiency=np.array([0.5, 0.25]),
+        shared_resistance_pa_s2_m6=np.array([1000.0, 10.0]),
+        air_density_kg_m3=np.array([0.9, 1.2]),
+        fan_speed_fraction=np.array([0.5, 0.1]),
+        open_supply_resistance_pa_s2_m6=np.full((2, 3), 7000.0),
+        return_resistance_pa_s2_m6=np.full((2, 3), 3000.0),
+        damper_leak_fraction=np.full((2, 3), 0.08),
+        damper_position_fraction=np.full((2, 3), 0.5),
+    )
+    scales = comparison_scales(batch)
+
+    # Hand-computed: pressure P0*s^2, flow Q0*s, power P0*Q0*s^3 (/efficiency), mass rho*Q0*s.
+    expected = {
+        "fan_pressure_rise_pa": [250.0, 0.5],
+        "shared_pressure_loss_pa": [250.0, 0.5],
+        "branch_pressure_loss_pa": [250.0, 0.5],
+        "operating_point_residual_pa": [250.0, 0.5],
+        "total_flow_m3_s": [0.4, 0.2],
+        "fan_air_power_w": [100.0, 0.1],
+        "fan_electrical_power_w": [200.0, 0.4],
+        "zone_flow_m3_s": [[0.4], [0.2]],
+        "zone_mass_flow_kg_s": [[0.36], [0.24]],
+    }
+    assert set(scales) == set(expected) == set(analytic.COMPARISON_VARIABLES)
+    for name, values in expected.items():
+        np.testing.assert_allclose(scales[name], np.array(values), rtol=1e-14, err_msg=name)
+
+    # A scale-relative tolerance must tighten with speed: an error of 1e-10 of
+    # the unit-speed flow passes at full speed and fails at 1e-3 speed.
+    scale_only = {
+        name: {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-9}
+        for name in analytic.COMPARISON_VARIABLES
+    }
+    for speed, should_pass in ((1.0, True), (1e-3, False)):
+        slowed = _replace(batch, fan_speed_fraction=np.full(2, speed))
+        reference = solve_air_network_analytic(slowed)
+        values = {name: getattr(reference, name) for name in analytic.COMPARISON_VARIABLES}
+        values["total_flow_m3_s"] = values["total_flow_m3_s"] + 1e-10 * batch.rated_free_delivery_m3_s
+        report = compare_results(AirNetworkBatchResult(**values), reference, slowed, scale_only)
+        assert report["total_flow_m3_s"]["passed"] is should_pass, speed
+
+
+def test_comparison_report_stays_serialisable_when_a_zero_allowance_is_violated() -> None:
+    batch = _replace(_valid_batch(), fan_speed_fraction=np.zeros(4))
+    reference = solve_air_network_analytic(batch)
+    values = {name: getattr(reference, name) for name in analytic.COMPARISON_VARIABLES}
+    values["total_flow_m3_s"] = values["total_flow_m3_s"] + 1e-6
+    scale_only = {
+        name: {"absolute": 0.0, "relative_to_reference": 0.0, "relative_to_scale": 1e-12}
+        for name in analytic.COMPARISON_VARIABLES
+    }
+    report = compare_results(AirNetworkBatchResult(**values), reference, batch, scale_only)
+
+    assert report["total_flow_m3_s"]["passed"] is False
+    assert report["total_flow_m3_s"]["violation_count"] == 4
+    assert report["total_flow_m3_s"]["max_error_over_allowed"] is None
+    json.dumps(report, allow_nan=False)
+
+
+def test_speed_scaling_keeps_pressure_accurate_when_speed_squared_is_subnormal() -> None:
+    # s*s = 1e-312 is subnormal (about 1e-12 relative precision) while the
+    # pressure P0*s^2 = 1e-305 is a normal number: scaling as (s*x)*s keeps it
+    # accurate, scaling as x*(s*s) would not.
+    speed = 1e-156
+    batch = AirNetworkBatch(
+        rated_free_delivery_m3_s=np.array([1e4]),
+        rated_shutoff_pressure_pa=np.array([1e7]),
+        total_efficiency=np.array([1.0]),
+        shared_resistance_pa_s2_m6=np.array([1e9]),
+        air_density_kg_m3=np.array([1.0]),
+        fan_speed_fraction=np.array([1.0]),
+        open_supply_resistance_pa_s2_m6=np.array([[1e9]]),
+        return_resistance_pa_s2_m6=np.array([[1e9]]),
+        damper_leak_fraction=np.array([[1.0]]),
+        damper_position_fraction=np.array([[1.0]]),
+    )
+    unit = solve_air_network_analytic(batch)
+    tiny = solve_air_network_analytic(_replace(batch, fan_speed_fraction=np.array([speed])))
+
+    assert unit.fan_pressure_rise_pa[0] > 0.99e7
+    for name in ("fan_pressure_rise_pa", "shared_pressure_loss_pa", "branch_pressure_loss_pa"):
+        expected = (getattr(unit, name)[0] * speed) * speed
+        assert expected > 1e-306, name
+        assert getattr(tiny, name)[0] == pytest.approx(expected, rel=1e-14), name
+    report = compare_results(
+        tiny, _high_precision_root(_replace(batch, fan_speed_fraction=np.array([speed]))),
+        _replace(batch, fan_speed_fraction=np.array([speed])),
+        TOLERANCES["numpy_fp64_vs_high_precision_root"]["variables"],
+    )
+    assert _failures(report) == {}
+
+
+def test_residual_tolerance_holds_at_subnormal_pressure_scale() -> None:
+    batch = generate_air_network_cases(
+        PROFILES["supported_domain_stress"], seed=9950, batch_size=48, branch_count=8
+    )
+    batch = _replace(batch, fan_speed_fraction=np.full(48, 1e-160))
+    report = compare_results(
+        solve_air_network_analytic(batch), _high_precision_root(batch), batch,
+        TOLERANCES["numpy_fp64_vs_high_precision_root"]["variables"],
+    )
+
+    assert _failures(report) == {}
+
+
+def test_unconverged_reference_bisection_off_the_fixture_band_is_reported() -> None:
+    # Fan-dominated corner of the supported domain at full speed: the branch
+    # pressure is about 8e-21 of shutoff pressure, which 100 bisection steps of
+    # [0, shutoff] cannot resolve. The reviewed solver departs from the exact
+    # root there; the candidate does not. Agreement with the reviewed solver is
+    # therefore declared for the fixture band only.
+    batch = AirNetworkBatch(
+        rated_free_delivery_m3_s=np.array([1e-4]),
+        rated_shutoff_pressure_pa=np.array([1e7]),
+        total_efficiency=np.array([1e-3]),
+        shared_resistance_pa_s2_m6=np.array([1e9]),
+        air_density_kg_m3=np.array([1e-3]),
+        fan_speed_fraction=np.array([1.0]),
+        open_supply_resistance_pa_s2_m6=np.full((1, 16), 1e-3),
+        return_resistance_pa_s2_m6=np.full((1, 16), 1e-3),
+        damper_leak_fraction=np.full((1, 16), 1e-5),
+        damper_position_fraction=np.full((1, 16), 1.0),
+    )
+    exact = _high_precision_root(batch)
+    candidate = solve_air_network_analytic(batch)
+    reference = _reference_batch_result(batch)
+    assert exact.branch_pressure_loss_pa[0] / 1e7 < 1e-19
+
+    assert _failures(
+        compare_results(
+            candidate, exact, batch, TOLERANCES["numpy_fp64_vs_high_precision_root"]["variables"]
+        )
+    ) == {}
+    reference_vs_exact = compare_results(
+        reference, exact, batch, TOLERANCES["numpy_fp64_vs_scalar_reference"]["variables"]
+    )
+    assert reference_vs_exact["fan_pressure_rise_pa"]["passed"] is False
+    assert reference_vs_exact["total_flow_m3_s"]["passed"] is False
+    assert reference_vs_exact["branch_pressure_loss_pa"]["passed"] is True
+    assert abs(reference.operating_point_residual_pa[0]) > 1e-5
+    assert abs(candidate.operating_point_residual_pa[0]) <= 1e-12 * 1e7

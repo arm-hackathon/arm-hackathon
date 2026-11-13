@@ -213,6 +213,52 @@ def test_fp32_fan_off_is_exact_zero_and_tiny_speeds_stay_finite() -> None:
 
 
 @pytest.mark.parametrize("precision", ("fp32", "fp64"))
+def test_fan_off_is_exact_positive_zero_across_the_whole_supported_domain(precision: str) -> None:
+    _torch()
+    # Wide-domain worlds include fan-dominated ones where rounding puts the
+    # unit-speed flow above free delivery; the clamp keeps fan-off at +0.0.
+    batch = _cases("supported_domain_stress", seed=9960, batch_size=4096, branch_count=16)
+    values = {name: getattr(batch, name) for name in SCALAR_FIELDS + BRANCH_FIELDS}
+    values["fan_speed_fraction"] = np.where(np.arange(4096) % 2 == 0, 0.0, -0.0)
+    values["shared_resistance_pa_s2_m6"] = np.where(
+        np.arange(4096) % 3 == 0, -0.0, batch.shared_resistance_pa_s2_m6
+    )
+    result = solve_air_network_torch(AirNetworkBatch(**values), precision=precision)
+
+    for name in COMPARISON_VARIABLES:
+        output = getattr(result, name)
+        assert not output.any(), name
+        assert not np.signbit(output).any(), name
+
+
+def test_fp32_speed_scaling_keeps_pressure_accurate_when_speed_squared_is_subnormal() -> None:
+    _torch()
+    # In FP32 s*s = 1e-42 is subnormal (about 1e-3 relative precision) while
+    # the pressure near 1e7 * 1e-42 = 1e-35 is a normal number.
+    speed = 1e-21
+    batch = AirNetworkBatch(
+        rated_free_delivery_m3_s=np.array([1e4]),
+        rated_shutoff_pressure_pa=np.array([1e7]),
+        total_efficiency=np.array([1.0]),
+        shared_resistance_pa_s2_m6=np.array([1e9]),
+        air_density_kg_m3=np.array([1.0]),
+        fan_speed_fraction=np.array([speed]),
+        open_supply_resistance_pa_s2_m6=np.array([[1e9]]),
+        return_resistance_pa_s2_m6=np.array([[1e9]]),
+        damper_leak_fraction=np.array([[1.0]]),
+        damper_position_fraction=np.array([[1.0]]),
+    )
+    result = solve_air_network_torch(batch, precision="fp32")
+    reference = solve_air_network_analytic(batch)
+
+    assert reference.fan_pressure_rise_pa[0] > 1e-36
+    for name in ("fan_pressure_rise_pa", "shared_pressure_loss_pa", "branch_pressure_loss_pa"):
+        np.testing.assert_allclose(
+            getattr(result, name), getattr(reference, name), rtol=1e-5, atol=0.0, err_msg=name
+        )
+
+
+@pytest.mark.parametrize("precision", ("fp32", "fp64"))
 def test_worlds_are_isolated_from_batch_size_order_and_chunking(precision: str) -> None:
     _torch()
     batch = _cases("supported_domain_stress", seed=9700, batch_size=96)
