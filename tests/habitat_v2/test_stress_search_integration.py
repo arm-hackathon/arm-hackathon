@@ -1435,4 +1435,3 @@ def test_accelerated_screening_backend_is_refused_before_any_run(tmp_path: Path)
     with pytest.raises(ss.StressSearchSpecError, match="accelerated screening is refused"):
         ss.validate_spec_mapping(mapping)
     assert list(tmp_path.iterdir()) == []
-
