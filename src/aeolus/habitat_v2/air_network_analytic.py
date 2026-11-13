@@ -212,20 +212,23 @@ def validate_air_network_batch(batch: AirNetworkBatch) -> None:
             )
 
 
-def _operating_point_kernel(
-    rated_free_delivery: np.ndarray,
-    rated_shutoff_pressure: np.ndarray,
-    total_efficiency: np.ndarray,
-    shared_resistance: np.ndarray,
-    air_density: np.ndarray,
-    fan_speed: np.ndarray,
-    open_supply_resistance: np.ndarray,
-    return_resistance: np.ndarray,
-    damper_leak: np.ndarray,
-    damper_position: np.ndarray,
-) -> AirNetworkBatchResult:
-    """Unvalidated closed-form kernel; callers must validate first."""
+def air_network_operating_point_numpy(batch: AirNetworkBatch) -> AirNetworkBatchResult:
+    """Unvalidated closed-form kernel; callers must validate ``batch`` first.
 
+    Exposed so that kernel time can be measured separately from validation.
+    Outside the supported domain it may return nonfinite values silently.
+    """
+
+    rated_free_delivery = batch.rated_free_delivery_m3_s
+    rated_shutoff_pressure = batch.rated_shutoff_pressure_pa
+    total_efficiency = batch.total_efficiency
+    shared_resistance = batch.shared_resistance_pa_s2_m6
+    air_density = batch.air_density_kg_m3
+    fan_speed = batch.fan_speed_fraction
+    open_supply_resistance = batch.open_supply_resistance_pa_s2_m6
+    return_resistance = batch.return_resistance_pa_s2_m6
+    damper_leak = batch.damper_leak_fraction
+    damper_position = batch.damper_position_fraction
     speed = fan_speed + 0.0  # maps -0.0 to +0.0 so fan-off outputs are +0.0
     area_fraction = damper_leak + (1.0 - damper_leak) * damper_position
     branch_resistance = (
@@ -276,9 +279,7 @@ def solve_air_network_analytic(batch: AirNetworkBatch) -> AirNetworkBatchResult:
     """Validate ``batch`` and return its FP64 closed-form operating points."""
 
     validate_air_network_batch(batch)
-    return _operating_point_kernel(
-        *(getattr(batch, name) for name in SCALAR_FIELDS + BRANCH_FIELDS)
-    )
+    return air_network_operating_point_numpy(batch)
 
 
 def batch_from_operating_points(
@@ -638,6 +639,7 @@ __all__ = [
     "SCALAR_FIELDS",
     "SUPPORTED_DOMAIN",
     "air_network_batch_sha256",
+    "air_network_operating_point_numpy",
     "batch_from_operating_points",
     "compare_results",
     "comparison_scales",
