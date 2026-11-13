@@ -1,0 +1,120 @@
+{
+  "schema_version": "aeolus_habitat_v2_bdm_v1_tcn_preregistration_v1",
+  "preregistration_id": "habitat_v2_bdm_v1_tcn_preregistration_v1",
+  "status": "FROZEN_BEFORE_FINAL_RUNS",
+  "authorization": {
+    "authorized_by": "repository_owner",
+    "authorized_via_issue": 75,
+    "authorized_at": "2026-09-06"
+  },
+  "architecture": {
+    "window_steps": 16,
+    "sequence_channels": 209,
+    "candidate_encoding_dim": 31,
+    "input_dim": 240,
+    "channels": 32,
+    "kernel_size": 3,
+    "dilations": [1, 2, 4, 8],
+    "residual_blocks": 3,
+    "activation": "relu",
+    "pool": "last_step",
+    "heads": {
+      "trajectory": 153,
+      "trajectory_quantiles": 459,
+      "delta": 5,
+      "delta_quantiles": 15,
+      "total": 632
+    },
+    "quantiles": [0.1, 0.5, 0.9],
+    "parameter_count": 53240,
+    "parameter_budget_cap": 100000,
+    "receptive_field": 31
+  },
+  "input_recipe": {
+    "sequence_layout": [
+      "o2_mole_fraction by zone (8)",
+      "co2_ppm by zone (8)",
+      "temperature_k by zone (8)",
+      "pressure_pa by zone (8)",
+      "relative_humidity by zone (8)",
+      "branch_airflow_m3_s by zone (8)",
+      "observed_value_mask same layout (48)",
+      "steps_since_last_valid_observation same layout (48)",
+      "requested_command_vector (27)",
+      "achieved_actuator_state (27)",
+      "resource gauges (3)",
+      "operating_mode_one_hot (4)",
+      "prior_proposal_dispositions (4)"
+    ],
+    "candidate_encoding": "candidate action one-hot (4) plus candidate_action_command_vector (27), broadcast over the window",
+    "source": "Issue #72 corpus declared fields only; subset check enforced at import"
+  },
+  "training": {
+    "fit_partition": "TRAIN",
+    "model_choice_partition": "DEV",
+    "blind_access": "prohibited",
+    "standardization": "per-channel mean/scale over TRAIN only, digest-bound",
+    "loss": {
+      "trajectory_mse_weight": 1.0,
+      "delta_huber_weight": 1.0,
+      "huber_delta": 1.0,
+      "quantile_pinball_weight": 0.5
+    },
+    "optimizer": {
+      "name": "adam",
+      "learning_rate": 0.001,
+      "betas": [0.9, 0.999],
+      "eps": 1e-8
+    },
+    "batch_size": 256,
+    "epochs_max": 40,
+    "early_stopping": {
+      "metric": "dev_delta_mse",
+      "patience": 5,
+      "keeps_best_weights": true
+    },
+    "seeds": ["bdm75-s1", "bdm75-s2", "bdm75-s3", "bdm75-s4", "bdm75-s5"],
+    "initialization": "random per seed; no pretrained or teacher-initialized weights"
+  },
+  "evaluation": {
+    "partition": "DEV",
+    "independent_unit": "causal_group",
+    "decision_steps": [16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+    "primary_hierarchy": [
+      "action_ranking",
+      "finite_catalogue_regret",
+      "action_value_error",
+      "safety_exposure_error",
+      "useful_action_coverage"
+    ],
+    "secondary": ["trajectory_mae"],
+    "statistics": {
+      "bootstrap_resamples": 10000,
+      "alpha": 0.05,
+      "seed": "issue75-bootstrap-v1"
+    },
+    "baseline_binding": {
+      "rule": "refit the three Issue #74 baselines from the same corpus with the Issue #74 constants and assert their weight digests equal the bound values before any paired comparison",
+      "expected_digests": {
+        "action_agnostic_ridge": "9c5879d6328552baa9a82aa8c4a626ab4d880b1ffdaff8d8799e20ae1c8e6a5a",
+        "action_conditioned_ridge": "551c08940877ccc794ed14752b251b4d8c34f1b8781886771fda7d62754b9d8d",
+        "controlled_linear_state_space": "879a1f6de07b00ffb532f8137b56c34e6caab2a64bde1d2fb2591ce9a108949c"
+      },
+      "ridge_lambda": 0.001,
+      "seed": "issue74-baselines-v1"
+    },
+    "pooled_view": "ensemble mean of the five seed delta predictions per sample, reported alongside every individual seed"
+  },
+  "promotion_gate": {
+    "rule": "the pooled model must beat the refit action_conditioned_ridge on the primary hierarchy at causal-group level: paired bootstrap CIs of the difference must exclude zero in the beneficial direction for action ranking and useful-action coverage, and for regret and exposure error; ties count as not-beat",
+    "on_failure": "retain the negative result, do not promote the model, publish the development evidence unchanged"
+  },
+  "authority": {
+    "model_role": "propose or abstain only; HMC remains sole arbitration, final-command, plant-step, and replay authority",
+    "no_onnx_quantisation_arm_or_release_work": true
+  },
+  "freeze": {
+    "frozen_before_final_runs": true,
+    "no_result_derived_value_may_be_marked_frozen": true
+  }
+}
