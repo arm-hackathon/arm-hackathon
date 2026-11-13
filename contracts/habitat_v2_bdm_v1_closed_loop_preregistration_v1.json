@@ -1,0 +1,88 @@
+{
+  "schema_version": "aeolus_habitat_v2_bdm_v1_closed_loop_preregistration_v1",
+  "preregistration_id": "habitat_v2_bdm_v1_closed_loop_preregistration_v1",
+  "status": "FROZEN_BEFORE_STUDY_RUNS",
+  "authorization": {
+    "authorized_by": "repository_owner",
+    "authorized_via_issue": 77,
+    "authorized_at": "2026-09-06"
+  },
+  "arms": [
+    {
+      "arm_id": "hmc_rules_only",
+      "policy": "zero proposals; HMC canonical behaviour"
+    },
+    {
+      "arm_id": "hold_current_command",
+      "policy": "zero proposals; current command continues under HMC safe hold"
+    },
+    {
+      "arm_id": "c8_guard_ridge",
+      "policy": "deterministic O2-excess guard override to dormant; otherwise the Issue #73 ridge screen proposes its most improving catalogue action when the predicted action-minus-hold safety exposure is negative"
+    },
+    {
+      "arm_id": "c9_guard_mlp",
+      "policy": "deterministic O2-excess guard override to dormant; otherwise the Issue #73 MLP screen proposes its most improving catalogue action when the predicted action-minus-hold safety exposure is negative"
+    },
+    {
+      "arm_id": "linear_action_conditioned_ridge",
+      "policy": "Issue #74 action-conditioned ridge proposes its most improving catalogue action when the predicted action-minus-hold safety exposure is negative; no guard"
+    },
+    {
+      "arm_id": "calibrated_bdm_v1",
+      "policy": "seed-mean Issue #75 TCN delta prediction gated by the Issue #76 calibrated abstention layer; proposes the most improving catalogue action only when not abstaining"
+    }
+  ],
+  "episode": {
+    "steps": 96,
+    "decision_steps": [16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+    "study_partition": "DEV",
+    "blind_access": "prohibited"
+  },
+  "bindings": {
+    "corpus_digest": "ecec280680a0ba3c984c7182dc288241014b46b3c0687f8bcc91e3322510c219",
+    "ablation_receipt_sha256": "b22f477a0580fdd9bc635083d5a39bf9f4d8d6378f60f002f32dd4d5d1d13a8b",
+    "screen_digests": {
+      "ridge": "0c830367d06c82d100a979995e1feb938bf7710563598cd36e4cf4b6147b0146",
+      "mlp": "1b1208d8f7b6129b63bd7243d491571f14dc4a596d10703be6e3cb443bcd9025"
+    },
+    "baselines_receipt_sha256": "f0f3ac0a4850a5f7a580fec8c1f73c42c156988d9d68ffe1ab1519e2126d6e8f",
+    "linear_conditioned_ridge_digest": "551c08940877ccc794ed14752b251b4d8c34f1b8781886771fda7d62754b9d8d",
+    "bdm_receipt_sha256": "ba6f97ca6c1e7aec3b9543362713a1563c91d69b97ba0c4aedd1268ffea46c2a",
+    "bdm_seed_digests": {
+      "bdm75-s1": "5223d794f6c7dd4a0b07060b1eb587418043d516d55ca8064afbf1166a1771ba",
+      "bdm75-s2": "cf6698df66e5f4d45307971cf5ad5b7b02c6d06b26d30ab230e2f177aea5753e",
+      "bdm75-s3": "9105ad42e72899b98f3355cdac63139d7a93438f20f96ec9e9f1668fa247073d",
+      "bdm75-s4": "7f37f1ee90acffaef4d64940cbd21d757c793e0b313ed1e1592aa5876142a21a",
+      "bdm75-s5": "a794c1cfde9fd6274f5b8014907159ed98339c03d3204e128c2811436f90dce1"
+    },
+    "abstention_contract_sha256": "dcdec9e0b247b8cedfc3d98cc96d6abdb0f4ee562cba3c2d4635d8204c1bdb65",
+    "abstention_layer_digest": "f464423021343e844c4a5013f1cd896a5470d2ec9624e69d7c57dbd249bc00dc"
+  },
+  "gates": {
+    "order": [
+      "zero_hard_safety_violations_all_arms",
+      "per_family_safety_non_inferiority",
+      "paired_safety_benefit_group_ci",
+      "ranking_and_regret_vs_linear",
+      "useful_action_precision_recall",
+      "resource_comfort_group_ci_after_safety"
+    ],
+    "non_inferiority_margin": 0.0,
+    "alpha": 0.05,
+    "bootstrap_resamples": 10000,
+    "statistics_seed": "issue77-bootstrap-v1",
+    "independent_unit": "causal_group",
+    "model_path_latency_p99_ms_maximum": 250.0
+  },
+  "on_failure": {
+    "candidate_packet": "withheld",
+    "blind_protocol_draft": "written but marked WITHHELD and UNAUTHORIZED",
+    "blind_population": "sealed",
+    "publication": "failure published as a development result unchanged"
+  },
+  "freeze": {
+    "frozen_before_study_runs": true,
+    "no_result_derived_value_may_be_marked_frozen": true
+  }
+}
