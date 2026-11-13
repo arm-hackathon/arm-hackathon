@@ -1,0 +1,84 @@
+Processing ./inputs/numpy-2.2.6-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl
+Processing ./inputs/aeolus-0.8.0-py3-none-any.whl
+Installing collected packages: numpy, aeolus
+  Attempting uninstall: numpy
+    Found existing installation: numpy 2.1.0
+    Not uninstalling numpy at /usr/local/lib/python3.12/dist-packages, outside environment /workspace/out/package-venv
+    Can't uninstall 'numpy'. No files were found to uninstall.
+
+Successfully installed aeolus-0.8.0 numpy-2.2.6
+ISOLATED_NUMPY_AND_IMAGE_TORCH_OK 2.2.6 2.10.0a0+b558c986e8.nv25.11
+installed_module=/workspace/out/package-venv/lib/python3.12/site-packages/aeolus/__init__.py
+installed_version=0.8.0
+requested_wheel_sha256=sha256=4d8e15ad7d268faf188052b9e5bda916ec43ce697b072764828bf9e297fedeaf
+run_id=27c12082c718955bef67e322f1811cd4f822bd6ad553f204b75ea8c161573910 steps=4 trace=/workspace/out/installed-compound-faults.jsonl
+air_processing_bay co2_ppm=518.627284 temperature_k=296.115252 relative_humidity=0.395794 pressure_pa=71942.400041
+airlock_suitport co2_ppm=660.858684 temperature_k=295.138538 relative_humidity=0.441974 pressure_pa=71978.096570
+common_galley co2_ppm=727.868833 temperature_k=295.136796 relative_humidity=0.446506 pressure_pa=71989.834504
+crew_quarters_a co2_ppm=648.204601 temperature_k=295.136626 relative_humidity=0.439057 pressure_pa=71964.711578
+crew_quarters_b co2_ppm=636.778009 temperature_k=295.145574 relative_humidity=0.436747 pressure_pa=71951.538297
+equipment_power_bay co2_ppm=533.679898 temperature_k=296.128989 relative_humidity=0.396317 pressure_pa=71951.172784
+hygiene_medical co2_ppm=622.034503 temperature_k=295.148180 relative_humidity=0.436069 pressure_pa=71947.763266
+laboratory co2_ppm=786.050372 temperature_k=295.127067 relative_humidity=0.452137 pressure_pa=72009.093142
+battery_energy_wh=12136.879344 oxygen_store_mol=499.802000 co2_sorbent_remaining_mol=1499.347200
+compound_fault_trace=/workspace/out/installed-compound-faults.jsonl
+FORECAST_D1_CONTRACT_OK
+/usr/local/lib/python3.12/dist-packages/torch/backends/__init__.py:46: UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at /opt/pytorch/pytorch/aten/src/ATen/Context.cpp:45.)
+  self.setter(val)
+{
+  "scope": "synthetic_runtime_only_not_AEOLUS_model_or_throughput_projection",
+  "architecture": "aarch64",
+  "python": "3.12.3",
+  "torch": "2.10.0a0+b558c986e8.nv25.11",
+  "torch_cuda": "13.0",
+  "cudnn": 91500,
+  "numpy": "2.2.6",
+  "device": "NVIDIA GB10",
+  "compute_capability": [
+    12,
+    1
+  ],
+  "compiled_arches": [
+    "sm_80",
+    "sm_86",
+    "sm_90",
+    "sm_100",
+    "sm_110",
+    "sm_120",
+    "compute_120"
+  ],
+  "bf16_supported": true,
+  "dtype": "float32",
+  "input_shape": [
+    128,
+    32,
+    64
+  ],
+  "parameters": 19080,
+  "cpu_gpu_forward_parity": {
+    "rtol": 0.0001,
+    "atol": 1e-05,
+    "passed": true
+  },
+  "cuda_updates": 37,
+  "timed_updates": 32,
+  "timed_seconds": 0.08368740099831484,
+  "synthetic_gpu_resident_examples_per_second": 48944.045951223634,
+  "final_synthetic_loss": 0.9271193742752075,
+  "all_parameter_tensors_changed": true,
+  "peak_cuda_allocated_bytes": 29739520,
+  "peak_cuda_reserved_bytes": 46137344,
+  "checkpoint_sha256": "f6566e3f52eb01d45eb7d5bd1d0d0af45caf2bd1e1a8769db45cea3bed177005",
+  "resume": {
+    "cpu_fresh_process_resume": "exact_model_and_optimizer_match",
+    "updates": 12
+  },
+  "limits": [
+    "No AEOLUS learned model trained",
+    "Not the proposed causal TCN or full trainer",
+    "No BF16 or compilation benchmark",
+    "CPU resume uses fixed synthetic batches",
+    "Full data cursor/RNG/sampler training resume remains a separate gate"
+  ]
+}
+AEOLUS_SPARK_PREFLIGHT_CORE_OK

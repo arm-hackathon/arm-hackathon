@@ -214,6 +214,37 @@ they do not establish physical-board deployment, energy performance or model
 qualification. Version history lives in [CHANGELOG.md](CHANGELOG.md), not in the
 getting-started path.
 
+### NVIDIA DGX Spark execution
+
+**AEOLUS 0.8.0 ran on an NVIDIA DGX Spark on 13 November 2026.** The installed
+wheel executed the Habitat V2 compound-fault scenario on the Spark's Arm64 CPU.
+A separate, small synthetic neural-network probe exercised its NVIDIA GB10 GPU.
+This was an execution smoke test, not validation of a learned AEOLUS controller.
+
+| Check | Recorded result |
+| --- | --- |
+| AEOLUS installed-wheel simulation | 4 steps; all 5 recorded states passed invariants, including the initial state |
+| Frozen forecast-contract loading | Passed |
+| Synthetic GPU optimisation | 19,080 parameters, FP32; 37 Adam updates, including 5 warm-up updates |
+| Synthetic GPU timing | 32 timed updates in 83.69 ms; approximately **48,944 synthetic examples/s** |
+| Synthetic GPU memory | **28.36 MiB** peak PyTorch-allocated CUDA memory |
+| Synthetic CPU/GPU forward parity | Passed at `rtol=1e-4`, `atol=1e-5` |
+| Synthetic CPU checkpoint resume | Recorded exact model and optimiser-state match at 12 updates in a fresh process |
+
+The timing is one short measurement on a repeatedly reused, GPU-resident batch
+of 128 synthetic examples. It excludes data loading and host-to-device input
+transfer. It is **not AEOLUS simulation throughput, an end-to-end training
+benchmark, or evidence of predictive/control quality**. No AEOLUS learned model
+was trained in this run, and the simulator was not GPU-accelerated.
+
+The [DGX Spark evidence bundle](docs/evidence/dgx-spark-2026-11-13/README.md)
+contains the original trace, runtime metrics, installation log, source and image
+identities, archived probe source, checksum verification and limitations.
+The measurements belong to source commit
+[`4e1d5aced1214875c72c611cadd0677218d77196`](https://github.com/arm-hackathon/arm-hackathon/commit/4e1d5aced1214875c72c611cadd0677218d77196),
+not automatically to later revisions. Bit-exact replay across different runtimes
+is not established; the bundle documents a local Windows replay mismatch.
+
 ## Research direction
 
 The goal is environmental decision support under incomplete observations:

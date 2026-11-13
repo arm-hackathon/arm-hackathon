@@ -1,0 +1,14 @@
+set -euo pipefail
+umask 077
+export HOME=/workspace/out/home
+mkdir "$HOME"
+python -m venv --system-site-packages --without-pip /workspace/out/package-venv
+PY=/workspace/out/package-venv/bin/python
+# Override constraints only for these two explicit local wheels in this venv.
+# The image and its constraint file/Torch/CUDA installation remain untouched.
+env -u PIP_CONSTRAINT "$PY" -m pip install --no-index --no-deps /workspace/inputs/numpy-2.2.6-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl /workspace/inputs/aeolus-0.8.0-py3-none-any.whl
+"$PY" -c 'import numpy,torch,sys; from pathlib import Path; assert numpy.__version__ == "2.2.6", numpy.__version__; assert Path(numpy.__file__).is_relative_to(Path(sys.prefix)); assert torch.__version__ == "2.10.0a0+b558c986e8.nv25.11"; print("ISOLATED_NUMPY_AND_IMAGE_TORCH_OK",numpy.__version__,torch.__version__)'
+"$PY" /workspace/source/scripts/verify_installed_habitat_v2.py --source-root /workspace/source --wheel /workspace/inputs/aeolus-0.8.0-py3-none-any.whl --scenario /workspace/source/scenarios/habitat_v2_compound_faults.json --trace /workspace/out/installed-compound-faults.jsonl
+"$PY" -c 'from aeolus.habitat_v2.forecast.contracts import load_forecast_contracts; load_forecast_contracts("/workspace/source"); print("FORECAST_D1_CONTRACT_OK")'
+"$PY" /workspace/inputs/runtime_probe.py --out /workspace/out/runtime-v1
+printf 'AEOLUS_SPARK_PREFLIGHT_CORE_OK\n'

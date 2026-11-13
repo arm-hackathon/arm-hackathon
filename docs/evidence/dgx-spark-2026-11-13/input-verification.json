@@ -1,0 +1,45 @@
+{
+  "source_commit": "4e1d5aced1214875c72c611cadd0677218d77196",
+  "source_tree": "59ef9c9d5b626453c2676512fcaded8aeb8eb071",
+  "verified_inputs": [
+    {
+      "name": "spark-preflight-source.tar.gz",
+      "bytes": 653239,
+      "sha256": "18bf6660671d80ab6ceee5c873c137108cffb1454d0d9fcd1e41c78d4a5d0bf4"
+    },
+    {
+      "name": "aeolus-0.8.0-py3-none-any.whl",
+      "bytes": 505362,
+      "sha256": "4d8e15ad7d268faf188052b9e5bda916ec43ce697b072764828bf9e297fedeaf"
+    },
+    {
+      "name": "runtime_probe.py",
+      "bytes": 7210,
+      "sha256": "b15450a2e02689ddbbe992f7f39fae6d7ed2ef9887d3047354edc92b189b12bb"
+    },
+    {
+      "name": "numpy-2.2.6-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+      "bytes": 14018462,
+      "sha256": "f2618db89be1b4e05f7a1a847a9c1c0abd63e63a1607d892dd54668dd92faf87"
+    },
+    {
+      "name": "run_spark_preflight_v2.sh",
+      "bytes": 1428,
+      "sha256": "f9530dd2ec5c39048114cdbd717c53fadf8f39db91ba750df24986c384678e59"
+    }
+  ],
+  "numpy_upstream_pypi_sha256": "f2618db89be1b4e05f7a1a847a9c1c0abd63e63a1607d892dd54668dd92faf87",
+  "scope": "additive isolated venv; image stack unchanged",
+  "archive_file_count": 121,
+  "canonical_archive": {
+    "name": "spark-preflight-source-v3.tar.gz",
+    "bytes": 649311,
+    "sha256": "71a25c644c13123a5e02064e1c2214b1b5d69e841c71a21135badfb591ada22b"
+  },
+  "export_config": {
+    "core.autocrlf": false,
+    "core.eol": "lf"
+  },
+  "reviewed_source_files_verified": 27,
+  "attempt": "preflight-v3"
+}

@@ -1,0 +1,4 @@
+# Preserve historical evidence bytes and checksums on every checkout.
+* -text
+# The original image receipt uses CRLF; do not normalise its bytes.
+image-receipt.json whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
