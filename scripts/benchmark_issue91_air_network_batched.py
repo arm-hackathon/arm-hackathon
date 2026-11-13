@@ -359,6 +359,7 @@ def run_benchmark(
     reference_iterations: int = 5,
     torch_devices: Sequence[str] = (),
     precisions: Sequence[str] = ("fp32", "fp64"),
+    torch_num_threads: int | None = None,
     image_digest: str | None = None,
     hardware_label: str | None = None,
 ) -> dict[str, Any]:
@@ -376,6 +377,15 @@ def run_benchmark(
         raise AirNetworkBenchmarkError("torch devices must be distinct and precisions fp32/fp64")
     if torch_devices and not precisions:
         raise AirNetworkBenchmarkError("at least one precision is required with a torch device")
+    if torch_num_threads is not None and (
+        isinstance(torch_num_threads, bool)
+        or not isinstance(torch_num_threads, int)
+        or torch_num_threads < 1
+        or not torch_devices
+    ):
+        raise AirNetworkBenchmarkError(
+            "torch thread count must be a positive integer and needs a torch device"
+        )
 
     contract, contract_sha256 = load_air_network_batched_contract(repo_root)
     tolerances = contract["tolerances"]
@@ -384,9 +394,12 @@ def run_benchmark(
         # Fail before any measurement if the backend or a device is unavailable.
         from aeolus.habitat_v2.air_network_batched_torch import (
             require_device,
+            require_torch,
             torch_runtime_identity,
         )
 
+        if torch_num_threads is not None:
+            require_torch().set_num_threads(torch_num_threads)
         for device in torch_devices:
             require_device(device)
             torch_identity[device] = torch_runtime_identity(device)
@@ -520,6 +533,7 @@ def run_benchmark(
             "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
             "openblas_num_threads": os.environ.get("OPENBLAS_NUM_THREADS"),
             "torch": torch_identity or None,
+            "torch_num_threads_requested": torch_num_threads,
             "container_image_digest": {
                 "value": image_digest,
                 "source": "operator_declared_cli_argument" if image_digest else "not_provided",
@@ -598,6 +612,10 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         "A requested but unavailable backend or device is an error, never a fallback.",
     )
     parser.add_argument("--precisions", nargs="+", choices=("fp32", "fp64"), default=["fp32", "fp64"])
+    parser.add_argument(
+        "--torch-num-threads", type=int, default=None,
+        help="set PyTorch intra-op threads before measuring; default leaves PyTorch's own setting",
+    )
     parser.add_argument("--image-digest", default=None, help="operator-declared container image digest")
     parser.add_argument("--hardware-label", default=None, help="operator-declared hardware label")
     return parser.parse_args(argv)
@@ -616,6 +634,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             reference_iterations=arguments.reference_iterations,
             torch_devices=tuple(arguments.torch_devices),
             precisions=tuple(arguments.precisions),
+            torch_num_threads=arguments.torch_num_threads,
             image_digest=arguments.image_digest,
             hardware_label=arguments.hardware_label,
         )

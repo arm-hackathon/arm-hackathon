@@ -74,6 +74,7 @@ def test_numpy_only_receipt_is_complete_honest_and_canonical() -> None:
     assert claims["canonical_replay_or_hash_authority"] is False
     assert claims["end_to_end_simulator_speedup_claimed"] is False
     assert receipt["environment"]["torch"] is None
+    assert receipt["environment"]["torch_num_threads_requested"] is None
     assert receipt["environment"]["container_image_digest"] == {
         "value": None, "source": "not_provided",
     }
@@ -228,6 +229,9 @@ def test_output_must_be_a_new_directory_below_out(
         ({"torch_devices": ("cpu", "cpu")}, "torch devices"),
         ({"precisions": ("fp16",)}, "torch devices"),
         ({"torch_devices": ("cpu",), "precisions": ()}, "precision"),
+        ({"torch_num_threads": 1}, "thread count"),
+        ({"torch_devices": ("cpu",), "torch_num_threads": 0}, "thread count"),
+        ({"torch_devices": ("cpu",), "torch_num_threads": True}, "thread count"),
     ),
 )
 def test_invalid_benchmark_requests_fail_closed(overrides: dict[str, object], message: str) -> None:
@@ -277,8 +281,10 @@ def test_torch_cpu_measurements_are_gated_and_never_claimed_as_cuda() -> None:
     module = _load_script()
     receipt = _small_run(
         module, torch_devices=("cpu",), image_digest="sha256:" + "a" * 64,
-        hardware_label="declared-label",
+        hardware_label="declared-label", torch_num_threads=1,
     )
+    assert receipt["environment"]["torch_num_threads_requested"] == 1
+    assert receipt["environment"]["torch"]["cpu"]["torch_num_threads"] == 1
 
     assert receipt["gate"]["passed"] is True
     # 2 batch sizes x (numpy + 2 torch precisions) + 2 stress torch comparisons.
