@@ -71,10 +71,19 @@ OXYGEN_CAP_RELATIVE_SLACK = 1e-12
 # The scalar plant can leave the battery marginally outside [0, capacity] and
 # then keeps stepping: a discharge is accepted up to
 # ``max(1e-12, 1e-10 * max(1, served_load_wh))`` beyond the available energy,
-# and a headroom-limited charge can round one ulp above capacity.  A state the
-# plant produces must be a legal next input, so the battery domain carries this
-# declared slack on both sides.
+# and a headroom-limited charge can round one ulp above capacity.  Inside the
+# supported domain a state the plant produces must be a legal next input, so
+# the battery domain carries a declared slack on both sides.
+#
+# The discharge overshoot grows with served load, so a fixed slack is only
+# sufficient for a bounded load.  The supported served electrical load per
+# step is therefore capped: at the cap the scalar tolerance is
+# ``1e-10 * 5e3 = 5e-7`` Wh, half the slack.  The capacity bound keeps one ulp
+# of capacity (about 1.2e-7 Wh at 1e9 Wh) below the slack as well.  A world
+# whose served load exceeds the cap is reported ``OUTSIDE_SUPPORTED_DOMAIN``.
 BATTERY_STATE_SLACK_WH = 1e-6
+SUPPORTED_SERVED_LOAD_WH_PER_STEP = 5.0e3
+SUPPORTED_BATTERY_CAPACITY_WH = 1.0e9
 
 # Per-world outcome codes, in the order the scalar plant evaluates them.  The
 # scalar plant raises ``InfeasibleActionError`` before the state advances, so a
@@ -83,11 +92,13 @@ FEASIBLE = 0
 INFEASIBLE_OXYGEN_LOAD = 1
 INFEASIBLE_OXYGEN_STORE = 2
 INFEASIBLE_ELECTRICAL = 3
-# Not a scalar-plant refusal.  The step's result for this world would be
-# nonfinite or outside the declared state domain (for example a temperature
-# outside ``SUPPORTED_TEMPERATURE_K``), where the scalar plant would either
-# continue outside the validated range or fail with a math error.  The world is
-# held and reported so that it cannot abort or contaminate its neighbours.
+# Not a scalar-plant refusal.  The step for this world lies outside the
+# supported domain: its result would be nonfinite or outside the declared state
+# domain (for example a temperature outside ``SUPPORTED_TEMPERATURE_K``), or
+# its served electrical load exceeds ``SUPPORTED_SERVED_LOAD_WH_PER_STEP``.
+# The scalar plant would continue outside the validated range or fail with a
+# math error.  The world is held and reported so that it cannot abort or
+# contaminate its neighbours, and it is outside any scalar comparison.
 OUTSIDE_SUPPORTED_DOMAIN = 4
 INFEASIBLE_CODE_NAMES: Mapping[int, str] = MappingProxyType(
     {
@@ -95,7 +106,7 @@ INFEASIBLE_CODE_NAMES: Mapping[int, str] = MappingProxyType(
         INFEASIBLE_OXYGEN_LOAD: "oxygen_load_exceeds_zone_inventory",
         INFEASIBLE_OXYGEN_STORE: "oxygen_injection_exceeds_store",
         INFEASIBLE_ELECTRICAL: "electrical_demand_exceeds_supply",
-        OUTSIDE_SUPPORTED_DOMAIN: "result_outside_supported_domain",
+        OUTSIDE_SUPPORTED_DOMAIN: "outside_supported_domain",
     }
 )
 
@@ -453,7 +464,13 @@ class PlantParameters:
                 getattr(self, name),
                 low=0.0,
                 strict_low=name in strictly_positive,
-                high=(1.0 if name.endswith("_efficiency") else None),
+                high=(
+                    1.0
+                    if name.endswith("_efficiency")
+                    else SUPPORTED_BATTERY_CAPACITY_WH
+                    if name == "battery_capacity_wh"
+                    else None
+                ),
             )
 
     @classmethod
@@ -805,8 +822,10 @@ __all__ = [
     "REFERENCE_ROLLOUT_MAX_STEPS",
     "SPECIES_FIELDS",
     "STATE_FIELDS",
+    "SUPPORTED_BATTERY_CAPACITY_WH",
     "SUPPORTED_DT_SECONDS",
     "SUPPORTED_SCENARIO_SCHEMA_VERSION",
+    "SUPPORTED_SERVED_LOAD_WH_PER_STEP",
     "SUPPORTED_TEMPERATURE_K",
     "SUPPORTED_ZONE_IDS",
     "Tolerance",

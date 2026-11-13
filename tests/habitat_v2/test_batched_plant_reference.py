@@ -27,17 +27,21 @@ import numpy as np
 import pytest
 
 from aeolus.habitat_v2.batched_plant_contract import (
+    BATTERY_STATE_SLACK_WH,
     FEASIBLE,
     INFEASIBLE_ELECTRICAL,
     INFEASIBLE_OXYGEN_LOAD,
     INFEASIBLE_OXYGEN_STORE,
+    OUTSIDE_SUPPORTED_DOMAIN,
     STATE_FIELDS,
+    SUPPORTED_SERVED_LOAD_WH_PER_STEP,
     SUPPORTED_ZONE_IDS,
     AchievedControl,
     PlantParameters,
     PlantStateArrays,
     Tolerance,
     reference_tolerances,
+    validate_step_inputs,
 )
 from aeolus.habitat_v2.batched_plant_reference import (
     ScalarReferenceStep,
@@ -1600,3 +1604,216 @@ def test_one_step_tolerances_reject_a_candidate_that_returns_its_input_unchanged
                     f"unchanged state at step {index}"
                 )
         previous = reference.state
+
+
+# --------------------------------------------------------------------------
+# Passive heat received: scalar parity with sinks warmer than the zones
+# --------------------------------------------------------------------------
+
+
+def _warm_sink_scenario() -> Scenario:
+    mapping = copy.deepcopy(scenario_mapping())
+    for index, zone in enumerate(mapping["zones"]):
+        # Half the zones warm, half left cold, so both passive branches run.
+        if index % 2 == 0:
+            zone["sink_temperature_k"] = 315.0
+    return Scenario.from_mapping(mapping)
+
+
+def test_oracle_matches_scalar_plant_when_sinks_are_warmer_than_zones() -> None:
+    scenario = _warm_sink_scenario()
+    parameters = PlantParameters.from_scenario(scenario)
+    initial, references = scalar_trajectory(scenario)
+    assert references[-1].state.external_heat_received_j[0] > 1.0e4, (
+        "fixture must exercise the passive-heat-received branch"
+    )
+    assert references[-1].plant_state.utility.external_heat_rejected_j > 0.0
+
+    previous = _arrays(initial)
+    for index, reference in enumerate(references):
+        output = step_arrays(
+            parameters,
+            previous,
+            reference.control,
+            reference.disturbance,
+            dt_seconds=_dt(scenario),
+        )
+        assert output.diagnostics.infeasible_code.tolist() == [FEASIBLE]
+        assert_state_within_tolerance(
+            output.state, reference.state, ONE_STEP, f"warm sinks, step {index}"
+        )
+        received = reference.receipt["thermal"]["external_heat_received_j"]
+        assert output.diagnostics.external_heat_received_step_j[0] == pytest.approx(
+            received, rel=1e-12, abs=1e-6
+        )
+        assert received > 0.0
+        previous = reference.state
+
+    rollout = rollout_arrays(
+        parameters,
+        _arrays(initial),
+        tuple(reference.control for reference in references),
+        tuple(reference.disturbance for reference in references),
+        dt_seconds=_dt(scenario),
+    )
+    assert rollout.infeasible_code.tolist() == [FEASIBLE]
+    assert_state_within_tolerance(
+        rollout.final_state, references[-1].state, ROLLOUT, "warm sinks, rollout"
+    )
+
+
+# --------------------------------------------------------------------------
+# Battery slack against the scalar plant's load-dependent withdrawal tolerance
+# --------------------------------------------------------------------------
+
+
+def _heavy_load_mapping(base_load_w: float, battery_wh: float) -> dict[str, Any]:
+    """All actuators off, no generation, long step, one large fixed load."""
+
+    mapping = copy.deepcopy(scenario_mapping())
+    mapping["dt_seconds"] = 600.0
+    mapping["steps"] = 2
+    mapping["equipment"]["base_load_w"] = base_load_w
+    mapping["equipment"]["battery_capacity_wh"] = 200000.0
+    mapping["equipment"]["battery_max_discharge_w"] = 2.0e6
+    mapping["initial_utility"]["battery_energy_wh"] = battery_wh
+    segment = mapping["timeline"][0]
+    segment["end_step"] = 2
+    segment["generation_w"] = 0.0
+    command = segment["command"]
+    command["fan_speed_fraction"] = 0.0
+    command["scrubber_duty"] = 0.0
+    command["condenser_duty"] = 0.0
+    for zone_id in SUPPORTED_ZONE_IDS:
+        command["cooling_removed_w"][zone_id] = 0.0
+        command["oxygen_injection_mol_s"][zone_id] = 0.0
+    return mapping
+
+
+def _battery_inside_scalar_tolerance(base_load_w: float) -> tuple[Scenario, float]:
+    """Scenario whose battery sits below the required withdrawal, inside tolerance."""
+
+    probe = Scenario.from_mapping(_heavy_load_mapping(base_load_w, 150000.0))
+    electrical = scalar_reference_step(probe, initial_state(probe)).receipt["electrical"]
+    served = float(electrical["served_load_wh"])
+    required = float(electrical["battery_withdrawn_wh"])
+    tolerance = max(1e-12, 1e-10 * max(1.0, served))
+    scenario = Scenario.from_mapping(
+        _heavy_load_mapping(base_load_w, required - 0.9 * tolerance)
+    )
+    return scenario, served
+
+
+@pytest.mark.parametrize("base_load_w", [600.0, 6000.0, 29000.0])
+def test_scalar_plant_battery_overshoot_is_a_legal_next_input_inside_the_load_cap(
+    base_load_w: float,
+) -> None:
+    scenario, served = _battery_inside_scalar_tolerance(base_load_w)
+    assert served <= SUPPORTED_SERVED_LOAD_WH_PER_STEP
+    parameters = PlantParameters.from_scenario(scenario)
+    initial = initial_state(scenario)
+    reference = scalar_reference_step(scenario, initial)
+    assert reference.infeasible_code == FEASIBLE
+    overshoot = reference.plant_state.utility.battery_energy_wh
+    assert -BATTERY_STATE_SLACK_WH <= overshoot < 0.0
+
+    output = step_arrays(
+        parameters,
+        _arrays(initial),
+        reference.control,
+        reference.disturbance,
+        dt_seconds=_dt(scenario),
+    )
+    assert output.diagnostics.infeasible_code.tolist() == [FEASIBLE]
+    assert_state_within_tolerance(
+        output.state, reference.state, ONE_STEP, "battery overshoot step"
+    )
+    # Both the scalar plant's own next state and the oracle's are legal inputs,
+    # and both sides then refuse the following step for the same reason.
+    for state in (reference.state, output.state):
+        validate_step_inputs(
+            parameters, state, reference.control, reference.disturbance, _dt(scenario)
+        )
+    following = scalar_reference_step(scenario, reference.plant_state)
+    assert following.infeasible_code == INFEASIBLE_ELECTRICAL
+    held = step_arrays(
+        parameters,
+        output.state,
+        reference.control,
+        following.disturbance,
+        dt_seconds=_dt(scenario),
+    )
+    assert held.diagnostics.infeasible_code.tolist() == [INFEASIBLE_ELECTRICAL]
+
+
+def test_served_load_above_the_cap_is_reported_outside_the_supported_domain() -> None:
+    # Reviewer's case: 200 kW base load over a 600 s step.  The scalar plant
+    # accepts it and leaves the battery further below zero than the declared
+    # slack, so this load is outside the research domain by declaration.
+    scenario, served = _battery_inside_scalar_tolerance(200000.0)
+    assert served > SUPPORTED_SERVED_LOAD_WH_PER_STEP
+    parameters = PlantParameters.from_scenario(scenario)
+    initial = initial_state(scenario)
+    reference = scalar_reference_step(scenario, initial)
+    assert reference.infeasible_code == FEASIBLE
+    assert reference.plant_state.utility.battery_energy_wh < -BATTERY_STATE_SLACK_WH
+
+    before = _arrays(initial)
+    output = step_arrays(
+        parameters,
+        before,
+        reference.control,
+        reference.disturbance,
+        dt_seconds=_dt(scenario),
+    )
+    assert output.diagnostics.infeasible_code.tolist() == [OUTSIDE_SUPPORTED_DOMAIN]
+    assert_bit_identical(output.state, before, "held world above the load cap")
+
+
+def test_no_in_cap_discharge_can_leave_the_battery_below_the_declared_slack() -> None:
+    parameters = PlantParameters.from_scenario(
+        Scenario.from_mapping(_heavy_load_mapping(600.0, 1000.0))
+    )
+    rng = np.random.default_rng(920511)
+    worlds = 4096
+    zeros = np.zeros((worlds, len(SUPPORTED_ZONE_IDS)))
+    fan_power = rng.uniform(0.0, 60000.0, worlds)
+    hours = 600.0 / 3600.0
+    served = (parameters.base_load_w + fan_power) * hours
+    required = served / parameters.battery_discharge_efficiency
+    tolerance = np.maximum(1e-12, 1e-10 * np.maximum(1.0, served))
+    battery = np.maximum(0.0, required - rng.uniform(0.0, 1.0, worlds) * tolerance)
+    state = _arrays(initial_state(load_scenario()))
+    batch_state = concatenate_worlds((state,) * worlds)
+    batch_state = replace_fields(batch_state, battery_energy_wh=battery)
+    control = AchievedControl(
+        zone_airflow_m3_s=zeros.copy(),
+        achieved_cooling_removed_w=zeros.copy(),
+        effective_cooling_delivery_w=zeros.copy(),
+        achieved_oxygen_injection_mol_s=zeros.copy(),
+        effective_oxygen_delivery_mol_s=zeros.copy(),
+        fan_electrical_power_w=fan_power,
+        achieved_scrubber_duty=np.zeros(worlds),
+        achieved_condenser_duty=np.zeros(worlds),
+        scrubber_capture_ability=np.ones(worlds),
+        condenser_removal_ability=np.ones(worlds),
+    )
+    from aeolus.habitat_v2.batched_plant_contract import Disturbance
+
+    disturbance = Disturbance(
+        co2_generation_mol_s=zeros.copy(),
+        o2_consumption_mol_s=zeros.copy(),
+        water_vapor_generation_mol_s=zeros.copy(),
+        sensible_heat_w=zeros.copy(),
+        generation_w=np.zeros(worlds),
+    )
+    output = step_arrays(
+        parameters, batch_state, control, disturbance, dt_seconds=600.0
+    )
+    in_cap = served <= SUPPORTED_SERVED_LOAD_WH_PER_STEP
+    assert int(np.sum(in_cap)) > 1000 and int(np.sum(~in_cap)) > 1000
+    codes = output.diagnostics.infeasible_code
+    assert np.all(codes[in_cap] == FEASIBLE)
+    assert np.all(codes[~in_cap] == OUTSIDE_SUPPORTED_DOMAIN)
+    assert float(np.min(output.state.battery_energy_wh[in_cap])) < 0.0
+    assert np.all(output.state.battery_energy_wh >= -BATTERY_STATE_SLACK_WH)

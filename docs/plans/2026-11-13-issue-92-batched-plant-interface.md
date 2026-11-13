@@ -159,7 +159,9 @@ Thermal, gas and store state. Actuator state and `last_operational_feedback` are
 | `external_heat_rejected_j` | world | J | `>= 0` |
 | `external_heat_received_j` | world | J | `>= 0` |
 
-The battery slack exists because the scalar plant can leave the battery marginally outside `[0, capacity]` and then keeps stepping: `_electrical_balance` accepts a discharge up to `max(1e-12, 1e-10 * max(1, served_load_wh))` beyond the available energy, and a headroom-limited charge can round one unit in the last place above capacity. A state the plant produces has to be a legal next input.
+The battery slack exists because the scalar plant can leave the battery marginally outside `[0, capacity]` and then keeps stepping: `_electrical_balance` accepts a discharge up to `max(1e-12, 1e-10 * max(1, served_load_wh))` beyond the available energy, and a headroom-limited charge can round one unit in the last place above capacity. Inside the supported domain, a state the plant produces has to be a legal next input.
+
+That discharge overshoot grows with served load, so a fixed slack is only enough for a bounded load. The supported served electrical load is capped at `SUPPORTED_SERVED_LOAD_WH_PER_STEP` = 5000 Wh per step, where the scalar tolerance is 5e-7 Wh, half the slack. A world above the cap is reported with code 4 (section 5). `battery_capacity_wh` is bounded by `SUPPORTED_BATTERY_CAPACITY_WH` = 1e9 Wh so that one rounding step of capacity also stays below the slack. A scenario the production validator accepts can exceed the load cap (for example a 200 kW base load over a 600 s step); the scalar plant then leaves the battery further below zero than the slack, and that step is outside the research domain by declaration.
 
 The temperature band is narrower than the stated validity range of the Murphy-Koop liquid-water saturation formula (123 K to 332 K) and wider than the scenario validator's initial-temperature range (250 K to 330 K).
 
@@ -201,7 +203,7 @@ The step looks nothing up by step index and draws no random numbers. A stochasti
 | Achieved | What the actuator reached after slew limits and the oxygen cap projection | `actual_*` fields of `UtilityState`; `achieved_*` in the step receipt | yes: `achieved_*` fields |
 | Effective | Achieved value after physical-fault multipliers; what reaches the air | `effective_*` fields of `UtilityState`; `effective_*` in the step receipt | yes: `effective_*` fields, the two abilities, and the air-network solution |
 
-Only achieved and effective values are accepted because turning a requested command into an achieved one needs the previous actuator state, the slew limits, the cap projection, the fault schedule and the air-network solve. Those are exactly the mechanisms that stay authoritative on the scalar path (section 6). `AchievedControl` has no field that could hold a requested or HMC-final command, and `validate_step_inputs` rejects any other type, so a requested command cannot be handed to the step by mistake. If a caller treated a requested value as achieved it would skip slew and fault effects silently; the interface is shaped to make that hard, but it cannot detect it.
+Only achieved and effective values are accepted because turning a requested command into an achieved one needs the previous actuator state, the slew limits, the cap projection, the fault schedule and the air-network solve. Those are exactly the mechanisms that stay authoritative on the scalar path (section 6). `AchievedControl` has no field that could hold a requested or HMC-final command, and `validate_step_inputs` rejects any other type, so a requested command cannot be handed to the step by mistake. If a caller treated a requested value as achieved it would skip slew and fault effects silently; the interface is shaped to make that hard, but it cannot detect it. The state carries no actuator state, so `step_arrays` has nothing to check a claimed achieved value against. The restriction is therefore executable only on the `scalar_reference_step` path, where the scalar plant itself turns a requested command into achieved values. A checked entry point that takes the previous achieved actuator state is a candidate for interface v2.
 
 Which value drives what:
 
@@ -273,7 +275,7 @@ In-domain inputs that the scalar plant would refuse with `InfeasibleActionError`
 | 1 `INFEASIBLE_OXYGEN_LOAD` | `oxygen_load_exceeds_zone_inventory` | `o2_consumption * dt > o2_mol` in any zone | "oxygen load exceeds inventory" |
 | 2 `INFEASIBLE_OXYGEN_STORE` | `oxygen_injection_exceeds_store` | zone total of `effective_oxygen_delivery * dt` exceeds `oxygen_store_mol` | "oxygen injection exceeds stored oxygen" |
 | 3 `INFEASIBLE_ELECTRICAL` | `electrical_demand_exceeds_supply` | required battery withdrawal exceeds the available withdrawal plus the scalar plant's tolerance | "electrical demand exceeds" |
-| 4 `OUTSIDE_SUPPORTED_DOMAIN` | `result_outside_supported_domain` | the step's result for this world would be nonfinite or outside `state_field_domain` (for example a temperature outside the supported band) | none: not a scalar-plant refusal |
+| 4 `OUTSIDE_SUPPORTED_DOMAIN` | `outside_supported_domain` | the step's result for this world would be nonfinite or outside `state_field_domain` (for example a temperature outside the supported band), or its served electrical load exceeds `SUPPORTED_SERVED_LOAD_WH_PER_STEP` | none: not a scalar-plant refusal |
 
 Code 4 is a research-domain outcome with no scalar counterpart. The scalar plant has no temperature band: in the same situation it either continues outside the validated range or fails with a math error in the saturation formula. Reporting it per world keeps the step's output a legal next input and stops one world from aborting a batch. A comparison with the scalar plant must treat code 4 worlds as outside the comparison, and report their count.
 
@@ -423,6 +425,7 @@ The items below paraphrase the issue's acceptance list as this lane understood i
 2. Confirm the code 4 policy (hold and report a world whose result leaves the supported domain). It is a research-domain choice with no scalar counterpart.
 3. Decide whether airflow, loads and generation should get declared upper bounds. Today they are unbounded and an extreme value surfaces as code 4.
 4. Per-world plant parameters are excluded in this interface version. Adding them is an interface revision.
+7. Interface v2 for the Torch step. Version 1 has no fields for what the issue 91 backend needs (effective fan speed, damper positions, resistance multipliers, fan and duct parameters). They will be added as a new interface version, not as an edit to v1, together with a per-world pre-check against issue 91's supported domain so that one world leaving that domain is held with code 4 and does not raise for the whole batch.
 5. The adapter identifies the scalar plant's infeasibility reason by message fragment. If `physics.py` ever rewords those messages the adapter re-raises instead of misclassifying, but the mapping would need updating.
 6. Set the Torch kernel's reproducibility tolerance and confirm or revise the FP32 table from measurements on real hardware, as a recorded interface revision if any value changes.
 

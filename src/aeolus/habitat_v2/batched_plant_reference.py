@@ -36,6 +36,7 @@ from .batched_plant_contract import (
     OUTSIDE_SUPPORTED_DOMAIN,
     REFERENCE_ROLLOUT_MAX_STEPS,
     STATE_FIELDS,
+    SUPPORTED_SERVED_LOAD_WH_PER_STEP,
     SUPPORTED_ZONE_IDS,
     ZONE_COUNT,
     AchievedControl,
@@ -317,7 +318,9 @@ def _step_validated(
         "external_heat_rejected_j": state.external_heat_rejected_j + heat_rejected,
         "external_heat_received_j": state.external_heat_received_j + heat_received,
     }
-    in_domain = temperature_in_band
+    in_domain = temperature_in_band & (
+        served_load <= SUPPORTED_SERVED_LOAD_WH_PER_STEP
+    )
     for name, value in result.items():
         low, high = state_field_domain(p, name)
         ok = np.isfinite(value) & (value >= low)
