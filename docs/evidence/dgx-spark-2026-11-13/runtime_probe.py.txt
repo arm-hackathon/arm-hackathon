@@ -1,0 +1,157 @@
+"""Bounded synthetic runtime check, not an AEOLUS training implementation."""
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import subprocess
+import sys
+import time
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path)
+    parser.add_argument("--resume", type=Path)
+    args = parser.parse_args()
+    import numpy as np
+    import torch
+
+    torch.set_num_threads(2)
+    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.manual_seed(713)
+
+    def model():
+        return torch.nn.Sequential(
+            torch.nn.Conv1d(32, 64, 3, padding=2),
+            torch.nn.ReLU(),
+            torch.nn.Conv1d(64, 64, 3, padding=2),
+            torch.nn.ReLU(),
+            torch.nn.AdaptiveAvgPool1d(1),
+            torch.nn.Flatten(),
+            torch.nn.Linear(64, 8),
+        )
+
+    def update(network, optimizer, x, y):
+        optimizer.zero_grad(set_to_none=True)
+        loss = (network(x) - y).square().mean()
+        if not torch.isfinite(loss).item():
+            raise RuntimeError("non-finite synthetic loss")
+        loss.backward()
+        if any(p.grad is None or not torch.isfinite(p.grad).all().item() for p in network.parameters()):
+            raise RuntimeError("absent or non-finite gradient")
+        optimizer.step()
+        if any(not torch.isfinite(p).all().item() for p in network.parameters()):
+            raise RuntimeError("non-finite model parameter")
+        return loss.detach()
+
+    def numeric_state(network, optimizer):
+        result = {f"model_{k}": v.detach().cpu().numpy() for k, v in network.state_dict().items()}
+        for index, state in optimizer.state_dict()["state"].items():
+            for key, value in state.items():
+                result[f"optimizer_{index}_{key}"] = value.detach().cpu().numpy()
+        return result
+
+    if args.resume is not None:
+        checkpoint = torch.load(args.resume, map_location="cpu", weights_only=True)
+        network = model()
+        optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
+        network.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        torch.set_rng_state(checkpoint["rng"])
+        for _ in range(checkpoint["updates"], 12):
+            update(network, optimizer, checkpoint["x"], checkpoint["y"])
+        actual = numeric_state(network, optimizer)
+        with np.load(args.resume.with_suffix(".expected.npz"), allow_pickle=False) as expected:
+            if set(expected.files) != set(actual):
+                raise RuntimeError("resumed state fields differ")
+            for key, value in actual.items():
+                np.testing.assert_array_equal(value, expected[key], err_msg=key)
+        if any(float(state["step"]) != 12 for state in optimizer.state.values()):
+            raise RuntimeError("resumed optimizer update counter differs")
+        print(json.dumps({"cpu_fresh_process_resume": "exact_model_and_optimizer_match", "updates": 12}))
+        return
+
+    if args.out is None:
+        parser.error("--out or --resume is required")
+    args.out.mkdir(parents=False, exist_ok=False)
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available in this image")
+    network = model()
+    x = torch.randn(128, 32, 64)
+    y = torch.randn(128, 8)
+    cpu_initial = network(x).detach()
+    gpu = copy.deepcopy(network).cuda()
+    gx, gy = x.cuda(), y.cuda()
+    with torch.no_grad():
+        actual = gpu(gx).cpu()
+    torch.testing.assert_close(actual, cpu_initial, rtol=1e-4, atol=1e-5)
+    optimizer = torch.optim.Adam(gpu.parameters(), lr=0.001)
+    before = [p.detach().clone() for p in gpu.parameters()]
+    torch.cuda.reset_peak_memory_stats()
+    for _ in range(5):
+        update(gpu, optimizer, gx, gy)
+    torch.cuda.synchronize()
+    start = time.perf_counter()
+    for _ in range(32):
+        last_loss = update(gpu, optimizer, gx, gy)
+    torch.cuda.synchronize()
+    seconds = time.perf_counter() - start
+    changed = [not torch.equal(a, b) for a, b in zip(before, gpu.parameters(), strict=True)]
+    if not all(changed) or any(float(s["step"].cpu()) != 37 for s in optimizer.state.values()):
+        raise RuntimeError("real optimizer update proof failed")
+
+    cpu_optimizer = torch.optim.Adam(network.parameters(), lr=0.001)
+    for _ in range(6):
+        update(network, cpu_optimizer, x[:8], y[:8])
+    checkpoint_path = args.out / "synthetic-cpu-checkpoint.pt"
+    temporary = checkpoint_path.with_suffix(".tmp")
+    with temporary.open("xb") as stream:
+        torch.save({"model": network.state_dict(), "optimizer": cpu_optimizer.state_dict(),
+                    "rng": torch.get_rng_state(), "x": x[:8], "y": y[:8], "updates": 6}, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(checkpoint_path)
+    for _ in range(6):
+        update(network, cpu_optimizer, x[:8], y[:8])
+    np.savez(checkpoint_path.with_suffix(".expected.npz"), **numeric_state(network, cpu_optimizer))
+    resumed = subprocess.run([sys.executable, __file__, "--resume", str(checkpoint_path)],
+                             check=True, capture_output=True, text=True, timeout=90)
+    resume_result = json.loads(resumed.stdout.strip().splitlines()[-1])
+    result = {
+        "scope": "synthetic_runtime_only_not_AEOLUS_model_or_throughput_projection",
+        "architecture": platform.machine(), "python": sys.version.split()[0],
+        "torch": torch.__version__, "torch_cuda": torch.version.cuda,
+        "cudnn": torch.backends.cudnn.version(), "numpy": np.__version__,
+        "device": torch.cuda.get_device_name(0),
+        "compute_capability": list(torch.cuda.get_device_capability(0)),
+        "compiled_arches": torch.cuda.get_arch_list(),
+        "bf16_supported": torch.cuda.is_bf16_supported(),
+        "dtype": "float32", "input_shape": list(gx.shape),
+        "parameters": sum(p.numel() for p in gpu.parameters()),
+        "cpu_gpu_forward_parity": {"rtol": 1e-4, "atol": 1e-5, "passed": True},
+        "cuda_updates": 37, "timed_updates": 32, "timed_seconds": seconds,
+        "synthetic_gpu_resident_examples_per_second": 32 * len(gx) / seconds,
+        "final_synthetic_loss": float(last_loss.cpu()),
+        "all_parameter_tensors_changed": all(changed),
+        "peak_cuda_allocated_bytes": torch.cuda.max_memory_allocated(),
+        "peak_cuda_reserved_bytes": torch.cuda.max_memory_reserved(),
+        "checkpoint_sha256": hashlib.sha256(checkpoint_path.read_bytes()).hexdigest(),
+        "resume": resume_result,
+        "limits": ["No AEOLUS learned model trained", "Not the proposed causal TCN or full trainer",
+                   "No BF16 or compilation benchmark", "CPU resume uses fixed synthetic batches",
+                   "Full data cursor/RNG/sampler training resume remains a separate gate"],
+    }
+    raw = json.dumps(result, indent=2, allow_nan=False) + "\n"
+    with (args.out / "runtime.json").open("x", encoding="utf-8") as stream:
+        stream.write(raw)
+    print(raw, end="")
+
+
+if __name__ == "__main__":
+    main()

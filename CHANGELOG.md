@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased - DGX Spark execution evidence
+
+- Added the recorded AEOLUS 0.8.0 installed-wheel smoke run on a DGX Spark,
+  including the compound-fault trace, runtime/image receipts, archived synthetic
+  probe source and checksum verification.
+- Added README metrics that explicitly separate Arm64 CPU simulation from the
+  synthetic GB10 GPU probe; no learned-controller or physical-validation claim.
+- Version impact: `none`; historical documentation and evidence only. Package
+  version, runtime behaviour, dependencies and release artifacts are unchanged.
+
 ## Unreleased - Issue #56 V4 model line concluded (V4 outperforms frozen V3) / 0.9.0
 
 - Concluded the Issue #56 action-risk V4 model study line at protocol revision

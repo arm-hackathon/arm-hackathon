@@ -1,0 +1,9 @@
+{
+  "exit_code": 0,
+  "elapsed_seconds": 7.008269400001154,
+  "network": "none",
+  "cpu_limit": 4,
+  "memory_limit": "16g",
+  "inner_time_limit_seconds": 240,
+  "image_receipt": "image-receipt.json"
+}

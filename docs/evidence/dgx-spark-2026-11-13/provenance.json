@@ -1,0 +1,82 @@
+{
+  "scope": "historical_execution_smoke_and_synthetic_runtime_probe_not_model_qualification",
+  "run_date": "2026-11-13",
+  "attempt": "preflight-v3",
+  "aeolus_version": "0.8.0",
+  "source_commit": "4e1d5aced1214875c72c611cadd0677218d77196",
+  "source_tree": "59ef9c9d5b626453c2676512fcaded8aeb8eb071",
+  "canonical_source_archive": {
+    "name": "spark-preflight-source-v3.tar.gz",
+    "bytes": 649311,
+    "sha256": "71a25c644c13123a5e02064e1c2214b1b5d69e841c71a21135badfb591ada22b"
+  },
+  "original_export_manifest_sha256": "b97aaa7a88d253ee1ea2ea5d66dca01d1025aa0617ad4e1e179578897843d10a",
+  "original_exports_verified_before_copy": 6,
+  "included_original_exports": [
+    {
+      "path": "runtime.json",
+      "bytes": 1435,
+      "sha256": "cf4bc299bd14fba6492366ca0286672a4ba582875717b0615b645e2a6cc1f3eb",
+      "original_export_path": "runtime-v1/runtime.json"
+    },
+    {
+      "path": "installed-compound-faults.jsonl",
+      "bytes": 96718,
+      "sha256": "76fed2293d6623b8fcd7732c68cafbf0aa68b645f818c7b7f35c841eff8132a8",
+      "original_export_path": "installed-compound-faults.jsonl"
+    },
+    {
+      "path": "input-verification.json",
+      "bytes": 1520,
+      "sha256": "ebfb2674a07a2155df43949809ba0d25a34a79247abcb1be0f28398433c85d5f",
+      "original_export_path": "input-verification.json"
+    },
+    {
+      "path": "container-preflight.log",
+      "bytes": 4097,
+      "sha256": "d17e4b5218607e23447864a15beb0c74480e322e7e74d63cbc92c392c1cd3c56",
+      "original_export_path": "container-preflight.log"
+    }
+  ],
+  "omitted_original_exports": [
+    {
+      "path": "runtime-v1/synthetic-cpu-checkpoint.pt",
+      "bytes": 1294738,
+      "sha256": "f6566e3f52eb01d45eb7d5bd1d0d0af45caf2bd1e1a8769db45cea3bed177005"
+    },
+    {
+      "path": "runtime-v1/synthetic-cpu-checkpoint.expected.npz",
+      "bytes": 235414,
+      "sha256": "e39cf2e6c952043ffea777d01d0d48610b0e7b971a6a42717dd015ae47e9e7be"
+    }
+  ],
+  "omitted_export_reason": "Synthetic checkpoint binaries remain outside this repository; this bundle cannot independently replay the recorded resume check.",
+  "additional_byte_exact_files": [
+    {
+      "path": "image-receipt.json",
+      "bytes": 542,
+      "sha256": "57b551d0aea2d24f9754a7aef9658f22284a37cf0a09b556f35140d01f993719"
+    },
+    {
+      "path": "runtime_probe.py.txt",
+      "bytes": 7210,
+      "sha256": "b15450a2e02689ddbbe992f7f39fae6d7ed2ef9887d3047354edc92b189b12bb",
+      "original_input_name": "runtime_probe.py"
+    },
+    {
+      "path": "run_spark_preflight_v2.sh.txt",
+      "bytes": 1428,
+      "sha256": "f9530dd2ec5c39048114cdbd717c53fadf8f39db91ba750df24986c384678e59",
+      "original_input_name": "run_spark_preflight_v2.sh"
+    }
+  ],
+  "derived_files": [
+    {
+      "path": "container-status.json",
+      "original_sha256": "38875586cdbc6065f1476a323c8a93725f7a6d0e2b4410c79c300bc270fc1174",
+      "transformation": "Retained exit/timing/network/resource-limit fields, replaced the duplicated image object with an image-receipt link, and omitted container/user identifiers."
+    }
+  ],
+  "publication_boundary": "No SSH endpoint, account identity, credential material, or host-local paths are included. Generic /workspace container paths remain in original logs and scripts.",
+  "authenticity_boundary": "Checksums bind retained bytes and support consistency checks; they are not independent execution attestation."
+}

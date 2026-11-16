@@ -1,0 +1,56 @@
+{
+  "scope": "synthetic_runtime_only_not_AEOLUS_model_or_throughput_projection",
+  "architecture": "aarch64",
+  "python": "3.12.3",
+  "torch": "2.10.0a0+b558c986e8.nv25.11",
+  "torch_cuda": "13.0",
+  "cudnn": 91500,
+  "numpy": "2.2.6",
+  "device": "NVIDIA GB10",
+  "compute_capability": [
+    12,
+    1
+  ],
+  "compiled_arches": [
+    "sm_80",
+    "sm_86",
+    "sm_90",
+    "sm_100",
+    "sm_110",
+    "sm_120",
+    "compute_120"
+  ],
+  "bf16_supported": true,
+  "dtype": "float32",
+  "input_shape": [
+    128,
+    32,
+    64
+  ],
+  "parameters": 19080,
+  "cpu_gpu_forward_parity": {
+    "rtol": 0.0001,
+    "atol": 1e-05,
+    "passed": true
+  },
+  "cuda_updates": 37,
+  "timed_updates": 32,
+  "timed_seconds": 0.08368740099831484,
+  "synthetic_gpu_resident_examples_per_second": 48944.045951223634,
+  "final_synthetic_loss": 0.9271193742752075,
+  "all_parameter_tensors_changed": true,
+  "peak_cuda_allocated_bytes": 29739520,
+  "peak_cuda_reserved_bytes": 46137344,
+  "checkpoint_sha256": "f6566e3f52eb01d45eb7d5bd1d0d0af45caf2bd1e1a8769db45cea3bed177005",
+  "resume": {
+    "cpu_fresh_process_resume": "exact_model_and_optimizer_match",
+    "updates": 12
+  },
+  "limits": [
+    "No AEOLUS learned model trained",
+    "Not the proposed causal TCN or full trainer",
+    "No BF16 or compilation benchmark",
+    "CPU resume uses fixed synthetic batches",
+    "Full data cursor/RNG/sampler training resume remains a separate gate"
+  ]
+}

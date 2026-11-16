@@ -1,0 +1,9 @@
+{
+  "index_reference": "nvcr.io/nvidia/pytorch@sha256:417cbf33f87b5378849df37983552cd1f8bc8b62fe1ceabe004de816a55dff21",
+  "arm64_manifest_digest": "sha256:4a85d8cf6fb3a943280960b8948cf4e9b6eca77b4414c68c9b2c7bb863f79b70",
+  "local_image_id": "sha256:417cbf33f87b5378849df37983552cd1f8bc8b62fe1ceabe004de816a55dff21",
+  "arm64_config_digest": "sha256:eea3fe49e8a583008e4ea66fbeb36b2a7a111db8e1e322d2f310fd697baad95b",
+  "architecture": "arm64",
+  "image_size_bytes": 9505763305,
+  "verified_at": "2026-11-13T13:35:21.490578+00:00"
+}
