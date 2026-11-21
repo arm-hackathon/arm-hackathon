@@ -1,0 +1,78 @@
+{
+  "schema_version": "aeolus_habitat_v2_stress_search_spec_v1",
+  "spec_id": "stress-search-nominal-hold-v1",
+  "status": "PROPOSED_NOT_YET_AGREED",
+  "population": {
+    "scope": "DEVELOPMENT_ONLY",
+    "protected_population_access": "prohibited"
+  },
+  "fixture": {
+    "fixture_id": "stress-search-nominal-hold-v1",
+    "base_scenario_relative_path": "scenarios/habitat_v2_forecast_development.json",
+    "base_scenario_sha256": "d321f86acddbdc3fb73df47f03367fc7acab0c8cfb6dbd66096d30bef5c0e3e8",
+    "horizon_steps": 96,
+    "dt_seconds": 60.0,
+    "initial_achieved_state": "scheduled_command",
+    "sensor_random_seed": 93000001
+  },
+  "policy": {
+    "policy_id": "hmc_hold_no_adviser_v1",
+    "hmc_contract_relative_path": "contracts/habitat_v2_hmc_v1.json",
+    "hmc_contract_sha256": "9f4d269ad8d073d6370f5239d8a78f2541db3001097a460447a8feb84fee2414"
+  },
+  "search_space": {
+    "min_faults": 1,
+    "max_faults": 3,
+    "fault_types": {
+      "fan_speed_degradation": {"multiplier_range": [0.80, 0.98]},
+      "branch_resistance_increase": {"multiplier_range": [1.30, 3.00]},
+      "cooling_delivery_degradation": {"multiplier_range": [0.65, 0.95]},
+      "oxygen_delivery_degradation": {"multiplier_range": [0.65, 0.95]},
+      "scrubber_effectiveness_degradation": {"multiplier_range": [0.50, 0.90]},
+      "condenser_effectiveness_degradation": {"multiplier_range": [0.50, 0.90]},
+      "damper_jam": {}
+    },
+    "onset_step_range": [8, 72],
+    "duration_steps_range": [16, 64],
+    "latest_end_step": 95,
+    "ramp_shapes": ["worsening", "sustained", "recovery"],
+    "multiplier_decimals": 4
+  },
+  "objective": {
+    "objective_id": "peak_hazard_shift_v1",
+    "direction": "maximize",
+    "units": "Issue 55 channel scale units (dimensionless); largest fault-minus-twin movement toward an HMC warning-enter threshold over steps, zones and hazard families",
+    "baseline": "healthy_twin"
+  },
+  "discovery_tiers": [
+    {"tier_id": "A_threshold_crossing", "metric": "hazard_exposure_delta", "operator": ">", "value": 0.0},
+    {"tier_id": "B_half_scale_shift", "metric": "peak_hazard_shift", "operator": ">=", "value": 0.5}
+  ],
+  "methods": {
+    "random_search": {},
+    "cross_entropy": {
+      "population_size": 12,
+      "elite_count": 3,
+      "smoothing": 0.7,
+      "min_sigma": 0.05
+    }
+  },
+  "budget": {
+    "max_simulation_calls": 120,
+    "max_candidate_attempts": 480,
+    "max_wall_seconds": 1800.0
+  },
+  "seeds": ["issue93-s1", "issue93-s2", "issue93-s3", "issue93-s4", "issue93-s5"],
+  "selection": {
+    "shortlist_size": 5,
+    "max_per_causal_family": 1,
+    "minimum_objective_exclusive": 0.0
+  },
+  "replay": {
+    "metric_absolute_tolerance": 1e-9,
+    "require_identical_trace_sha256": true
+  },
+  "screening": {
+    "backend": "none"
+  }
+}
